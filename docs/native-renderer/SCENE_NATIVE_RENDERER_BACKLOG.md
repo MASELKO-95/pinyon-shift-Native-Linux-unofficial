@@ -315,11 +315,11 @@ Effort is relative scope, not a time estimate.
    outside the race, and no stale or blank output. Keep native default-off
    and document any unsupported resolution.
 2. Prove a retained-HUD boundary before trying to skip compatibility draws.
-   The race and title captures both place their UI after the world, but the
-   shared shader sequence is only an injection candidate. Correlate the title
-   UI emitter's PM4 packets with a RenderDoc capture of the same source/output
-   frame before choosing a first retained draw. Inject the native world before
-   that draw in a bounded race probe and verify the complete original HUD.
+   A same-frame race capture now identifies the first HUD packet and confirms
+   the world-only image immediately before it. Trace this packet boundary
+   through the title UI emitter, then check pause, free-roam and title output
+   before using it as a mode-gated rule. Inject the native world before the
+   first retained draw in a bounded race probe and verify the complete HUD.
    Reject the entire native frame when the boundary or race mode is uncertain;
    verify pause, free-roam and title keep complete compatibility output.
 3. Attribute live-race cost before another capture optimization. The committed
@@ -1237,15 +1237,28 @@ the complete compatibility frame available when those checks fail.
 
 **Guest draw-state cross-check (2026-09-25):** a temporary one-frame
 `IssueDraw` trace on the normal-exit native race route recorded 3,126 draws
-for source frame 5029, including guest shader hashes, packet addresses and
-render-target registers. Only its last two draws had target-0 bound with
-`RB_COLOR_INFO=0x00020000` (the guest 2:10:10:10 format); both used the same
-fullscreen shader pair. No retained HUD block was identifiable from that
-guest register predicate. The earlier RenderDoc event counts refer to a
-different captured frame, so these traces do not yet establish how the guest
-packet stream maps onto the host R10 target's UI draws. Correlate a same-frame
-RenderDoc capture and title UI packet provenance before using a target or
-shader rule for native injection. The temporary draw logger was removed.
+for source frame 5029. Its last two draws used target-0 with
+`RB_COLOR_INFO=0x00020000` and the fullscreen postprocess shader pair. This
+source frame precedes the HUD-bearing output; it cannot establish the UI cut.
+
+**Same-frame race HUD boundary (2026-09-25):** a compatibility race run
+captured output frame 5030 in RenderDoc while logging its 3,633 guest draws.
+The local RDC, draw log, alignment result and target images are under
+`.local/native-renderer/ui-sameframe-20260925/`.
+The capture SHA-256 is
+`7D27F9AB4F0073ED21E4B756A24DC4BCFBCBD5332D5CDD6D52F1EC1367F7CA71`.
+The final two guest postprocess packets, ending at `0x130646C8`, use
+`RB_COLOR_INFO=0x00020000`. The next packet, `0x16E15398`, changes to
+`0x000A0000` and the UI shader pair `984DBF6AF14DBEBD/6FDA0F1CDE67D12F`.
+All 166 guest draws with that target state match 166 RenderDoc draws in order
+by shader pair and index count, beginning at event 24414 and ending at 25412.
+The host target is `R10G10B10A2_UNORM`; the guest format-10 alias therefore
+belongs in any boundary predicate. Exported target images show the race world
+without HUD after event 24390 and a minimap after event 24414; by event
+24500, HUD panels are visible. This proves the cut for this captured race
+frame, not for other modes or adjacent frames. Trace title UI packet ownership
+and validate pause/free-roam/title before permitting injection or suppression.
+The temporary draw logger was removed after capture.
 
 1. Add the narrow D3D12 output-takeover seam first. The current FH1 output
    callback is an observer after compatibility output processing; it cannot
