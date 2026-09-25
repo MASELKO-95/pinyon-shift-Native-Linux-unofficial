@@ -1051,12 +1051,21 @@ in `race-sustained.ppm`), but the join gap prevents continuous native driving.
 A shortened rerun of the same route joined car draws and reached native
 output (20,221 native-sky pixels), so this case is intermittent. Do not remove
 the car-draw requirement merely to admit a frame with missing vehicles.
-Remaining L2 work is
-ordered ownership for resolve-backed inputs and more complete vehicle and
-scene materials, alongside responsive sustained gameplay. Evidence:
+Two more shortened reruns and one full race/pause/free-roam/title rerun also
+reached native race output; the full rerun passed the mode-boundary verifier.
+Temporary source-5020 draw logging in the passing state found the known car
+shader on the selected target with nonzero dispatch keys. It did not capture
+the failing state, so the cause of its absent join remains unproven. Reproduce
+that camera/car state and compare the title dispatch/target keys with actual
+GPU draws before broadening the join or changing frame tags. Remaining L2
+work is ordered ownership for resolve-backed inputs, more complete vehicle
+and scene materials, and responsive sustained gameplay. Evidence:
 `.local/native-renderer/car-body-continuity-20260925`,
 `.local/native-renderer/car-body-mode-boundary-20260925`,
-`.local/native-renderer/car-join-diagnostic-20260925`, and the source-5000
+`.local/native-renderer/car-join-diagnostic-20260925`,
+`.local/native-renderer/car-join-diagnostic-b-20260925`,
+`.local/native-renderer/car-join-diagnostic-c-20260925`,
+`.local/native-renderer/car-join-diagnostic-full-20260925`, and the source-5000
 remainder fixture cited above.
 
 **Track material dependency checkpoint (2026-09-25):** the source-5000
