@@ -488,6 +488,20 @@ version guarantee and measure a larger CPU boundary next. The timer was
 removed. Evidence: AppData preview log session `20260925T105813Z-p35704`
 and its `.perf.csv`.
 
+The committed `fh1-native-race-profile.fh1test` route now reproduces this
+window without screenshots at output frames 5000–5029. With native output on,
+it exited normally and admitted the scene without logged output/texture
+rejection. The current RelWithDebInfo performance CSV
+`20260925T114902Z-p28812.perf.csv` measured 28.78 ms median over rows
+4900–4929 and 206.58 ms over rows 5002–5028 (single run, not a matched
+optimization comparison). The [CPU capture command](CPU_HOTSPOT_PROFILING.md)
+now accepts native-mode arguments; a new symbolized sampled trace is still
+needed to attribute the remaining wall time before a responsiveness fix. In
+that captured window the guest-frame GPU timer had 26 valid samples and a
+16.78 ms median, while native GPU timer fields had no samples. This does not
+locate the CPU cost or measure all GPU work; it only rules out treating the
+timed guest-frame span as the entire 206.58 ms frame.
+
 **Texture-continuity check (2026-09-25):** two normal saved-race visual runs
 each exited successfully but `verify-native-track-output.py` failed on one
 or two of 20 consecutive frames. Each failed image was a complete

@@ -16,6 +16,21 @@ then run an elevated PowerShell from the repository root:
   -RenderTestScript config/render-tests/fh1-race-sustained.fh1test
 ```
 
+For the opt-in native race path, use the saved-race route with no screenshots
+inside the measured source-frame window. In an elevated PowerShell, after
+building and staging the current RelWithDebInfo runtime, run:
+
+```powershell
+.\tools\capture-cpu-profile.ps1 -SkipBuild `
+  -RenderTestScript config/render-tests/fh1-native-race-profile.fh1test `
+  -GameArguments @('--pinyon_shift_native_race=true',
+                   '--pinyon_shift_native_race_capture_start_frame=5000')
+```
+
+Compare source frames 5000–5029 with the preceding race window in the same
+capture. The route retains the race-ready and race-moving checkpoints but
+does not take a full-resolution screenshot in the measured window.
+
 The script verifies the AppData save, rejects an already-running game, builds
 `RelWithDebInfo`, checks the title, generated guest facades, and ShiftGlue
 binaries against their PDBs, records a focused kernel

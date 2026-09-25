@@ -7,6 +7,7 @@ param(
     [int]$TimeoutSeconds = 180,
     [ValidateRange(1, 32)]
     [int]$Parallel = [Math]::Max(2, [Math]::Min(16, [Environment]::ProcessorCount - 1)),
+    [string[]]$GameArguments = @(),
     [switch]$SkipBuild,
     [switch]$MarkersOnly,
     [switch]$OpenInWpa
@@ -73,7 +74,8 @@ try {
         '-RenderTestScript', $RenderTestScript,
         '-RenderTestOutput', (Join-Path $Output 'render-test'),
         '-RenderTestTimeoutSeconds', "$TimeoutSeconds", '-Hidden',
-        '-GameArgumentsJson', '["--pinyon_shift_capture_performance=true","--perf_log_max_mb=512"]',
+        '-GameArgumentsJson', (@('--pinyon_shift_capture_performance=true',
+            '--perf_log_max_mb=512') + $GameArguments | ConvertTo-Json -Compress),
         '-Json'
     )
     & (Join-Path $PSHOME 'pwsh.exe') @launchArguments |
