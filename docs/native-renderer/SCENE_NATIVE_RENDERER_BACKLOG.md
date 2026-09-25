@@ -1,7 +1,9 @@
 # Scene-native renderer backlog
 
 Status (2026-09-25): L1 is implemented as an opt-in race pilot and has passed
-scripted moving-frame, toggle and unsupported-mode fallback checks. The live
+scripted moving-frame, toggle and unsupported-mode fallback checks. A guarded
+pre-UI path now draws the owned scene beneath the game's original HUD on
+consecutive race frames. The live
 settings-UI toggle has been exercised in both directions; longer unscripted
 driving still needs validation before closing L1. L2 is open: the road and
 some foliage use current textures, the race HUD is readable, and the
@@ -314,17 +316,15 @@ Effort is relative scope, not a time estimate.
    changing current-frame geometry and HUD, complete compatibility frames
    outside the race, and no stale or blank output. Keep native default-off
    and document any unsupported resolution.
-2. Prove a retained-HUD boundary before trying to skip compatibility draws.
-   Same-frame race, pause and title captures now identify the first UI packet
-   after the world-only output and match every UI draw to RenderDoc. A guarded
-   flat-color injection at that point now preserves the original race HUD.
-   Next render the owned native scene into that same target before the UI
-   draws and verify its geometry, materials and retained HUD together. Admit
-   this path only on an independently validated race
-   frame with the proved target and draw sequence. Reject the entire native
-   frame when scene, boundary or race admission is uncertain; check pause,
-   free roam and title still use complete compatibility output. Keep the
-   existing late takeover as the fallback while proving this early path.
+2. Promote the retained-HUD scene handoff after broader player validation.
+   The guarded early path now renders the current owned race scene into the
+   proved target before the guest HUD draws. Two adjacent saved-race frames
+   show native geometry, materials and the updating original HUD; a full
+   scripted race/pause/free-roam/title route exits normally and keeps
+   compatibility output outside active race. Next test a longer unscripted
+   drive, resize/resolution rejection and missing-scene fallback before
+   removing the extra probe switches. Keep the late takeover available
+   until those admission checks pass.
 3. Attribute live-race cost before another capture optimization. The committed
    `fh1-native-race-profile.fh1test` route captures no screenshots; its most
    recent pre-capture/captured medians were 25.35/219.05 ms. Capture a sampled
@@ -1332,6 +1332,26 @@ native-race mode verifier is specific to the native renderer's different
 sky pixel and therefore does not apply to this flat-color probe. Replace
 the clear with the owned native scene next, restoring guest D3D12 bindings
 before the first UI draw.
+
+**Owned scene beneath original HUD (2026-09-25):** the separate default-off
+`pinyon_shift_native_ui_scene_probe` uses the same validated pre-UI target,
+renders the current owned race scene there, restores guest GPU bindings and
+lets the game's remaining UI draws run. The late output compositor remains
+available if the early path is not admitted. The short saved-race route at
+`.local/native-renderer/scene-ui-20260925/` exited normally; captures at
+frames 5008 and 5012 show changing geometry and race time with the original
+lap, place, minimap and speed HUD over the native car, road and foliage. The
+final short replay after removing the unused early HUD snapshot also exited
+normally and produced different consecutive frame hashes; its captures are
+at `.local/native-renderer/scene-ui-final-20260925/`. The
+full route at `.local/native-renderer/scene-ui-mode-boundary-20260925/` also
+exited normally. Its active race capture shows the same composition, while
+pause and free-roam captures show complete compatibility rendering. The title
+capture has the same colored background corruption as the earlier clear-probe
+control, so this route does not establish clean title rendering. These tests
+prove a bounded early scene/HUD handoff, not longer player-driven stability,
+resolution independence or L2 usability. The scene still has flat car paint,
+crude terrain/props and a costly compatibility/capture path.
 
 1. Add the narrow D3D12 output-takeover seam first. The current FH1 output
    callback is an observer after compatibility output processing; it cannot

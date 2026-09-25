@@ -119,7 +119,7 @@ struct TrackGraphics {
   ComPtr<ID3DBlob> pixel, pixel_textured, pixel_road, pixel_foliage,
       pixel_car, pixel_car_dark, pixel_car_body;
   ComPtr<ID3D12RootSignature> blit_root;
-  ComPtr<ID3D12PipelineState> blit_pipeline;
+  ComPtr<ID3D12PipelineState> blit_pipeline, scene_blit_pipeline;
   std::map<PipelineKey, ComPtr<ID3D12PipelineState>> pipelines;
   std::map<std::tuple<uint64_t, uint64_t, bool>,
            ComPtr<ID3D12PipelineState>> item_pipelines;
@@ -142,6 +142,7 @@ struct TrackGraphics {
       pixel_car_body.Reset();
       blit_root.Reset();
       blit_pipeline.Reset();
+      scene_blit_pipeline.Reset();
       device = current;
     }
     if (root && pixel && pixel_textured && pixel_road && pixel_foliage &&
@@ -432,7 +433,7 @@ struct TrackGraphics {
   }
 
   bool BlitReady() {
-    if (blit_pipeline) return true;
+    if (blit_pipeline && scene_blit_pipeline) return true;
     constexpr char vertex[] =
         "float4 main(uint id : SV_VertexID) : SV_Position {"
         " float2 p[3] = {float2(-1,-1),float2(-1,3),float2(3,-1)};"
@@ -453,11 +454,18 @@ struct TrackGraphics {
         " float map=1-smoothstep(68,78,length(q-float2(135,540)));"
         " float speed=1-smoothstep(96,108,length(q-float2(1128,592)));"
         " return lerp(s,g,max(text,max(map,speed))); }";
-    ComPtr<ID3DBlob> vs, ps, errors, serialized;
+    constexpr char scene_fragment[] =
+        "Texture2D<float4> scene : register(t0);"
+        "float4 main(float4 p : SV_Position) : SV_Target0 {"
+        " return scene.Load(int3(1279-int(p.x),719-int(p.y),0)); }";
+    ComPtr<ID3DBlob> vs, ps, scene_ps, errors, serialized;
     if (FAILED(D3DCompile(vertex, sizeof(vertex) - 1, nullptr, nullptr,
                           nullptr, "main", "vs_5_1", 0, 0, &vs, &errors)) ||
         FAILED(D3DCompile(fragment, sizeof(fragment) - 1, nullptr, nullptr,
-                          nullptr, "main", "ps_5_1", 0, 0, &ps, &errors)))
+                          nullptr, "main", "ps_5_1", 0, 0, &ps, &errors)) ||
+        FAILED(D3DCompile(scene_fragment, sizeof(scene_fragment) - 1,
+                          nullptr, nullptr, nullptr, "main", "ps_5_1", 0, 0,
+                          &scene_ps, &errors)))
       return false;
     D3D12_DESCRIPTOR_RANGE range{};
     range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
@@ -489,8 +497,17 @@ struct TrackGraphics {
     desc.NumRenderTargets = 1;
     desc.RTVFormats[0] = DXGI_FORMAT_R10G10B10A2_UNORM;
     desc.SampleDesc.Count = 1;
-    return SUCCEEDED(device->CreateGraphicsPipelineState(
-        &desc, IID_PPV_ARGS(&blit_pipeline)));
+    if (FAILED(device->CreateGraphicsPipelineState(
+            &desc, IID_PPV_ARGS(&blit_pipeline))))
+      return false;
+    desc.PS = {scene_ps->GetBufferPointer(), scene_ps->GetBufferSize()};
+    if (FAILED(device->CreateGraphicsPipelineState(
+            &desc, IID_PPV_ARGS(&scene_blit_pipeline)))) {
+      blit_pipeline.Reset();
+      blit_root.Reset();
+      return false;
+    }
+    return true;
   }
 };
 
@@ -695,7 +712,7 @@ bool PrepareRemainder(
 }
 
 bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
-                 const UploadArena& arena, TrackFrame& frame) {
+                 const UploadArena& arena, bool pre_ui, TrackFrame& frame) {
   D3D12_HEAP_PROPERTIES upload_heap{};
   upload_heap.Type = D3D12_HEAP_TYPE_UPLOAD;
   D3D12_RESOURCE_DESC upload_desc{};
@@ -732,12 +749,14 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
           D3D12_RESOURCE_STATE_RENDER_TARGET, nullptr,
           IID_PPV_ARGS(&frame.color))))
     return false;
-  color_desc.Flags = D3D12_RESOURCE_FLAG_NONE;
-  if (FAILED(device->CreateCommittedResource(
-          &default_heap, D3D12_HEAP_FLAG_NONE, &color_desc,
-          D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-          IID_PPV_ARGS(&frame.hud))))
-    return false;
+  if (!pre_ui) {
+    color_desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+    if (FAILED(device->CreateCommittedResource(
+            &default_heap, D3D12_HEAP_FLAG_NONE, &color_desc,
+            D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            IID_PPV_ARGS(&frame.hud))))
+      return false;
+  }
 
   D3D12_HEAP_PROPERTIES depth_heap{};
   depth_heap.Type = D3D12_HEAP_TYPE_DEFAULT;
@@ -797,12 +816,14 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
   auto hud_view = frame.srv->GetCPUDescriptorHandleForHeapStart();
   hud_view.ptr += device->GetDescriptorHandleIncrementSize(
       D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-  device->CreateShaderResourceView(frame.hud.Get(), &view, hud_view);
+  if (!pre_ui) device->CreateShaderResourceView(frame.hud.Get(), &view, hud_view);
   return true;
 }
 
 bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
                const Snr04LiveScene& live, TrackGraphics& graphics) {
+  const bool pre_ui =
+      context.phase == rex::system::NativeGuestOutputPhase::kBeforeUi;
   auto* device = static_cast<ID3D12Device*>(context.device);
   auto* output = static_cast<ID3D12Resource*>(context.guest_output);
   auto* list = static_cast<rex::graphics::d3d12::DeferredCommandList*>(
@@ -810,6 +831,10 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   if (!device || !output || !list || !live.track || !live.items ||
       !live.vegetation || !live.remainder ||
       output->GetDesc().Format != DXGI_FORMAT_R10G10B10A2_UNORM ||
+      output->GetDesc().Width != 1280 ||
+      output->GetDesc().Height < 720 ||
+      (pre_ui && context.guest_output_state !=
+                     D3D12_RESOURCE_STATE_RENDER_TARGET) ||
       !graphics.Ready(device) || !graphics.BlitReady())
     return false;
   auto scene = ParseSnr04TrackScene(*live.track);
@@ -998,7 +1023,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       return false;
   }
   TrackFrame frame;
-  if (!CreateFrame(device, output, arena, frame)) return false;
+  if (!CreateFrame(device, output, arena, pre_ui, frame)) return false;
   if (!materials.empty()) {
     D3D12_HEAP_PROPERTIES heap_properties{};
     heap_properties.Type = D3D12_HEAP_TYPE_DEFAULT;
@@ -1089,14 +1114,16 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   D3D12_RESOURCE_BARRIER barrier{};
   barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
   barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-  barrier.Transition.pResource = output;
-  barrier.Transition.StateBefore = D3D12_RESOURCE_STATES(
-      context.guest_output_state);
-  barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
-  list->D3DResourceBarrier(1, &barrier);
-  list->D3DCopyResource(hud, output);
-  std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
-  list->D3DResourceBarrier(1, &barrier);
+  if (!pre_ui) {
+    barrier.Transition.pResource = output;
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATES(
+        context.guest_output_state);
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    list->D3DResourceBarrier(1, &barrier);
+    list->D3DCopyResource(hud, output);
+    std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+    list->D3DResourceBarrier(1, &barrier);
+  }
   const float sky[]{0.11f, 0.22f, 0.43f, 1.f};
   list->D3DClearRenderTargetView(rtv, sky, 0, nullptr);
   list->D3DClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 0, 0, 0,
@@ -1199,29 +1226,34 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
   barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
   list->D3DResourceBarrier(1, &barrier);
-  barrier.Transition.pResource = output;
-  barrier.Transition.StateBefore = D3D12_RESOURCE_STATES(
-      context.guest_output_state);
-  barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-  list->D3DResourceBarrier(1, &barrier);
-  barrier.Transition.pResource = hud;
-  barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-  barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-  list->D3DResourceBarrier(1, &barrier);
+  if (!pre_ui) {
+    barrier.Transition.pResource = output;
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATES(
+        context.guest_output_state);
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    list->D3DResourceBarrier(1, &barrier);
+    barrier.Transition.pResource = hud;
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    list->D3DResourceBarrier(1, &barrier);
+  }
   list->D3DOMSetRenderTargets(1, &output_rtv, FALSE, nullptr);
   list->RSSetViewport({0, 0, 1280, 720, 0, 1});
   list->RSSetScissorRect({0, 0, 1280, 720});
   list->SetDescriptorHeaps(scene_srv, nullptr);
   list->D3DSetGraphicsRootSignature(graphics.blit_root.Get());
-  list->D3DSetPipelineState(graphics.blit_pipeline.Get());
+  list->D3DSetPipelineState((pre_ui ? graphics.scene_blit_pipeline
+                                   : graphics.blit_pipeline).Get());
   list->D3DSetGraphicsRootDescriptorTable(0, scene_srv_gpu);
   list->D3DIASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   list->D3DDrawInstanced(3, 1, 0, 0);
-  barrier.Transition.pResource = output;
-  barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-  barrier.Transition.StateAfter = D3D12_RESOURCE_STATES(
-      context.guest_output_state);
-  list->D3DResourceBarrier(1, &barrier);
+  if (!pre_ui) {
+    barrier.Transition.pResource = output;
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATES(
+        context.guest_output_state);
+    list->D3DResourceBarrier(1, &barrier);
+  }
   return true;
 }
 }  // namespace

@@ -38,6 +38,9 @@ REXCVAR_DEFINE_BOOL(pinyon_shift_native_race, false, "Pinyon Shift",
 REXCVAR_DEFINE_BOOL(pinyon_shift_native_ui_clear_probe, false, "Pinyon Shift",
                     "Test guest HUD retention over a flat native race background")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+REXCVAR_DEFINE_BOOL(pinyon_shift_native_ui_scene_probe, false, "Pinyon Shift",
+                    "Render the owned race scene before original guest HUD draws")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 #endif
 
 namespace {
@@ -71,13 +74,18 @@ bool ObserveRenderTestOutput(
     capture_scene();
     REXGPU_INFO("FH1 native pre-UI scene output_frame={} capture_us={}",
                 captured_frame, capture_us);
-    if (REXCVAR_GET(pinyon_shift_native_ui_clear_probe) &&
-        context.clear_color) {
-      if (pinyon_shift::native_renderer::SnapshotSnr04LiveScene(
-              context.frame_sequence)) {
+    if (REXCVAR_GET(pinyon_shift_native_ui_clear_probe) ||
+        REXCVAR_GET(pinyon_shift_native_ui_scene_probe)) {
+      auto scene = pinyon_shift::native_renderer::SnapshotSnr04LiveScene(
+          context.frame_sequence);
+      if (scene && REXCVAR_GET(pinyon_shift_native_ui_clear_probe) &&
+          context.clear_color) {
         const float sky[4]{0.11f, 0.22f, 0.43f, 1.f};
         return context.clear_color(context, sky);
       }
+      if (scene && REXCVAR_GET(pinyon_shift_native_ui_scene_probe))
+        return pinyon_shift::native_renderer::DrawNativeOutputTrack(
+            context, *scene);
     }
 #endif
     return false;
