@@ -647,7 +647,11 @@ bool PrepareRemainder(
                            sizeof(draw.bound_fetch));
     if (RemainderMaterialKind(draw) == 1) {
       if (draw.pixel_specialization != 0x400000000003ull ||
-          draw.texture_count != 1 || draw.system[61] != 0x3F800000u)
+          draw.texture_count != 1 || draw.system[61] != 0x3F800000u ||
+          (draw.system[11] & 3u) != 0 ||
+          (draw.bound_fetch[2] & 0x1FFFu) != 63 ||
+          ((draw.bound_fetch[2] >> 13) & 0x1FFFu) != 63 ||
+          ((draw.bound_fetch[3] >> 13) & 63u) != 0)
         return false;
       std::array<uint32_t, 20> constants{};
       for (uint32_t slot = 0; slot < 5; ++slot) {

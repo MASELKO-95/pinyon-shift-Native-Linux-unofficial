@@ -979,6 +979,15 @@ title. Evidence:
 `.local/native-renderer/car-rear-alpha-continuous-20260925` and
 `.local/native-renderer/car-rear-alpha-mode-boundary-20260925`.
 
+**Sampled rear input contract (2026-09-25):** the translated pixel shader
+derives its UV offset and mask gain from bound fetch words. Across saved
+source frames 5000–5010 the selected draws use a 64×64 mask, unsigned sample
+mode zero and unity gain; the native shader currently implements that mode.
+Admission now checks those fields and yields the whole frame to compatibility
+for an unsupported variant. A startup-on 20-frame moving route exited
+normally and passed `verify-native-track-output.py --native-first --car-body`.
+Evidence: `.local/native-renderer/car-rear-contract-continuous-20260925`.
+
 **Remainder material census (2026-09-25):** parsing the complete `SNR03R5`
 source-5000 fixture found 762 draws: 702 family-1, 15 family-2 and 45
 family-3. Only 52 family-1 draws have no texture binding; the other 650 bind
