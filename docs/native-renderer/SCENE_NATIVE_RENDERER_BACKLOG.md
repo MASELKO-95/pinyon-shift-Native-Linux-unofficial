@@ -332,7 +332,9 @@ Effort is relative scope, not a time estimate.
    body remain placeholders. The source-5000 remainder capture has 650
    family-1 draws with two to eight texture bindings; resolve each selected
    shader's actually sampled fetches from the existing current-frame identity
-   ledger before adding paint/glass or broad terrain/trackside shading. Keep
+   ledger before adding paint/glass or broad terrain/trackside shading. For
+   track materials, establish the ordered handoff of the resolve-backed
+   fetch-13 image before shading families that sample it. Keep
    road texture, foliage cutouts and the bounded
    HUD bridge. Missing or stale resources must reject the entire native frame
    before submission; do not invent a fixed tint or single-fetch material for
@@ -1003,6 +1005,23 @@ material, then admit the frame only when all inputs for that material have
 current-frame versions. Evidence: fixture
 `.local/native-renderer/remainder-r5-material-capture-20260925/snr03-remainder-5000.bin`
 and local census `.local/native-renderer/analyze-r5-car.py`.
+
+**Track material dependency checkpoint (2026-09-25):** the source-5000
+`SNR02T5` fixture has 666 track draws; 644 bind the same fetch-13 descriptor,
+a 1280×720 image at guest address `0x1CE2D000`. The GPU corpus records a
+resolve writing that address. The leading road pair
+`07425D208E8BD688`/`6F7CDE74CDACCB08` has 117 draws with fetches 0 and 13;
+its translated pixel shader samples both, while the current native shader
+uses only fetch-0 albedo. The next pair
+`0CBC533419F61E0D`/`EFCA69AA2BEE366B` has 69 draws with fetches 0, 5 and 13,
+and translated samples from all three. Binding a texture pointer or carrying
+the descriptor identity alone does not prove the resolve's source-frame
+content or its producer/consumer order. Establish that handoff and the
+material constants before adding those shaders; keep the current bounded
+albedo approximation for the leading pair. Evidence: fixture
+`.local/native-renderer/remainder-r5-material-capture-20260925/snr02-track-5000.bin`,
+translated pixel shaders in `.local/native-renderer/managed`, and the corpus
+resolve record for address `0x1CE2D000`.
 
 **Final-pass boundary check (2026-09-24):** the existing race RenderDoc
 capture `renderdoc-gatea-full-b_frame5001.rdc` (SHA-256
