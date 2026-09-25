@@ -41,6 +41,7 @@
 #include <rex/system/xmemory.h>
 
 #include "native_renderer/fh1_gpu_corpus.h"
+#include "native_renderer/guest_output_renderer.h"
 #include "fh1_render_test.h"
 #include "pinyon_shift_diagnostics.h"
 #if defined(_WIN32)
@@ -102,8 +103,15 @@ REXCVAR_DEFINE_INT32(pinyon_shift_native_race_capture_start_frame, 0,
 
 namespace {
 
+int32_t NativeRaceCaptureStartFrame() {
+  static const int32_t configured =
+      REXCVAR_GET(pinyon_shift_native_race_capture_start_frame);
+  return configured > 0 ? configured
+                        : pinyon_shift::native_renderer::NativeRaceRequested() ? 1 : 0;
+}
+
 bool NativeRaceCaptureEnabled() {
-  return REXCVAR_GET(pinyon_shift_native_race_capture_start_frame) > 0;
+  return NativeRaceCaptureStartFrame() > 0;
 }
 
 bool Snr04LiveCaptureEnabled() {
@@ -892,6 +900,8 @@ struct Snr03CarScene {
 thread_local std::vector<Snr03CarSceneRecord> snr03_car_title_records;
 thread_local bool snr03_car_title_rejected = false;
 std::map<uint64_t, std::shared_ptr<const Snr03CarScene>> snr03_car_scenes;
+// GPU draws may arrive before view-end publication; these IDs are provisional.
+std::map<uint64_t, std::vector<Snr03CarSceneRecord>> snr03_car_pending_records;
 struct Snr03ScalarRecord {
   uint64_t direct_ordinal = 0, scalar_ordinal = 0;
   uint32_t packet = 0, caller = 0, object = 0, object_vtable = 0;
@@ -917,7 +927,7 @@ struct Snr03RemainderFetch {
 struct Snr03RemainderDraw {
   uint64_t sequence = 0, shader = 0, pixel_shader = 0;
   uint64_t specialization = 0, dynamic = 0;
-  uint32_t family = 0, title_key = 0, packet = 0, count = 0;
+  uint32_t family = 0, title_key = 0, target = 0, packet = 0, count = 0;
   uint32_t guest_primitive = 0, host_primitive = 0, index_type = 0;
   uint32_t host_index_format = 0, index_endianness = 0;
   uint32_t host_shader_index_endianness = 0, host_primitive_reset = 0;
@@ -1060,10 +1070,9 @@ uint32_t SnrM02ReadU32(uint32_t address) {
 }
 
 int32_t Snr03TargetFrame() {
-  static const int32_t target = NativeRaceCaptureEnabled()
-      ? REXCVAR_GET(pinyon_shift_native_race_capture_start_frame)
-      : REXCVAR_GET(pinyon_shift_snr03_probe_frame);
-  return target;
+  static const int32_t diagnostic = REXCVAR_GET(pinyon_shift_snr03_probe_frame);
+  const int32_t native = NativeRaceCaptureStartFrame();
+  return native > 0 ? native : diagnostic;
 }
 
 std::mutex snr02_resource_generation_mutex;
@@ -1166,25 +1175,25 @@ std::array<uint64_t, 7> Snr02ResourceGenerations(uint32_t chain, uint32_t base) 
 }
 
 int32_t Snr02ItemTargetFrame() {
-  static const int32_t target = NativeRaceCaptureEnabled()
-                                    ? REXCVAR_GET(pinyon_shift_native_race_capture_start_frame)
-                                    : REXCVAR_GET(pinyon_shift_snr02_item_payload_probe)
-                                    ? (REXCVAR_GET(pinyon_shift_snr04_live_handoff)
-                                           ? REXCVAR_GET(pinyon_shift_snr04_live_source_frame)
-                                           : REXCVAR_GET(pinyon_shift_snr01_trace_source_frame))
-                                    : 0;
-  return target;
+  static const int32_t diagnostic =
+      REXCVAR_GET(pinyon_shift_snr02_item_payload_probe)
+          ? (REXCVAR_GET(pinyon_shift_snr04_live_handoff)
+                 ? REXCVAR_GET(pinyon_shift_snr04_live_source_frame)
+                 : REXCVAR_GET(pinyon_shift_snr01_trace_source_frame))
+          : 0;
+  const int32_t native = NativeRaceCaptureStartFrame();
+  return native > 0 ? native : diagnostic;
 }
 
 int32_t Snr02TrackTargetFrame() {
-  static const int32_t target = NativeRaceCaptureEnabled()
-                                    ? REXCVAR_GET(pinyon_shift_native_race_capture_start_frame)
-                                    : REXCVAR_GET(pinyon_shift_snr02_track_payload_probe)
-                                    ? (REXCVAR_GET(pinyon_shift_snr04_live_handoff)
-                                           ? REXCVAR_GET(pinyon_shift_snr04_live_source_frame)
-                                           : REXCVAR_GET(pinyon_shift_snr01_trace_source_frame))
-                                    : 0;
-  return target;
+  static const int32_t diagnostic =
+      REXCVAR_GET(pinyon_shift_snr02_track_payload_probe)
+          ? (REXCVAR_GET(pinyon_shift_snr04_live_handoff)
+                 ? REXCVAR_GET(pinyon_shift_snr04_live_source_frame)
+                 : REXCVAR_GET(pinyon_shift_snr01_trace_source_frame))
+          : 0;
+  const int32_t native = NativeRaceCaptureStartFrame();
+  return native > 0 ? native : diagnostic;
 }
 
 bool SnrProbeSourceFrame(int32_t target, uint64_t frame) {
@@ -1196,7 +1205,9 @@ bool SnrProbeSourceFrame(int32_t target, uint64_t frame) {
 
 bool Snr04ContinuousSourceFrame(int32_t target, uint64_t frame) {
   return target > 0 && frame >= uint64_t(target) &&
-         Snr04LiveContinuous();
+         Snr04LiveContinuous() &&
+         (!NativeRaceCaptureEnabled() ||
+          pinyon_shift::native_renderer::NativeRaceAdmittedForOutput(frame));
 }
 
 bool Snr03ProbeSourceFrame(uint64_t frame) {
@@ -1613,6 +1624,7 @@ namespace pinyon_shift::native_renderer {
 namespace {
 
 std::array<std::atomic<uint64_t>, 4096> native_race_admission{};
+std::atomic_bool prepared_draw_diagnostic_enabled{false};
 
 bool Snr04LiveVerifyFixtures() {
   return diagnostics::EnvironmentPath(
@@ -1923,6 +1935,7 @@ void ObserveSnr03RemainderPayloadLocked(
   draw.specialization = observation.vertex_specialization_mask;
   draw.family = family;
   draw.title_key = title_key;
+  draw.target = observation.command_buffer_physical_address;
   draw.packet = observation.draw_packet_physical_address;
   draw.count = observation.index_count;
   draw.guest_primitive = observation.guest_primitive_type;
@@ -2522,15 +2535,21 @@ void ObservePreparedDraw(
       observation.bound_render_target_bits == 3) {
     std::lock_guard lock(snr03_scene_mutex);
     uint32_t family = 0, title_key = 0;
-    if (const auto scene = snr03_car_scenes.find(observation.frame_sequence - 1);
-        scene != snr03_car_scenes.end()) {
-      const auto record = std::find_if(scene->second->records.begin(),
-                                       scene->second->records.end(),
+    const auto source_frame = observation.frame_sequence - 1;
+    const std::vector<Snr03CarSceneRecord>* car_records = nullptr;
+    if (const auto scene = snr03_car_scenes.find(source_frame);
+        scene != snr03_car_scenes.end())
+      car_records = &scene->second->records;
+    else if (const auto pending = snr03_car_pending_records.find(source_frame);
+             pending != snr03_car_pending_records.end())
+      car_records = &pending->second;
+    if (car_records) {
+      const auto record = std::find_if(car_records->begin(), car_records->end(),
                                        [&](const auto& row) {
         return row.dispatch ==
             observation.indirect_dispatch_packet_physical_address;
       });
-      if (record != scene->second->records.end()) {
+      if (record != car_records->end()) {
         const bool vertices = observation.vertex_fetches &&
             observation.vertex_fetch_count <= observation.vertex_fetch_capacity &&
             std::all_of(observation.vertex_fetches,
@@ -3010,10 +3029,13 @@ bool NativeRaceAdmittedForOutput(uint64_t output_frame) {
 }
 
 bool NativeRaceCaptureEligibleForOutput(uint64_t output_frame) {
+  if (prepared_draw_diagnostic_enabled.load(std::memory_order_acquire))
+    return true;
   // Draw preparation can race with title-state updates for its own frame.
   // A completed previous frame only warms capture; output still checks the
   // exact current-frame admission above.
-  return output_frame > 1 && NativeRaceAdmittedForOutput(output_frame - 1);
+  return NativeRaceCaptureEnabled() && output_frame > 1 &&
+         NativeRaceAdmittedForOutput(output_frame - 1);
 }
 
 void InstallGraphicsCensus(rex::system::IGraphicsSystem* graphics_system,
@@ -3040,21 +3062,17 @@ void InstallGraphicsCensus(rex::system::IGraphicsSystem* graphics_system,
                 kSnr01PacketLimit);
   }
   const bool enabled = ResetFh1GpuCorpus();
-  graphics_system->SetPreparedDrawObserver(
+  prepared_draw_diagnostic_enabled.store(
       enabled || REXCVAR_GET(pinyon_shift_snr01_trace_source_frame) > 0 ||
-              REXCVAR_GET(pinyon_shift_snr02_trace_first_rebuild_after_frame) > 0 ||
-              Snr03ProbeEnabled()
-          ? &ObservePreparedDraw
-          : nullptr);
-  graphics_system->SetPreparedDrawSnapshotSelector(
-      Snr02TrackTargetFrame() > 0 ? &Snr02SelectTrackSnapshot : nullptr);
-  graphics_system->SetPreparedDrawFrameSelector(
-      NativeRaceCaptureEnabled() ? &NativeRaceCaptureEligibleForOutput
-                                 : nullptr);
-  graphics_system->SetFinalDrawStateObserver(
-      Snr03ProbeEnabled() || Snr02ItemProbeEnabled() ||
-              Snr02TrackTargetFrame() > 0
-          ? &ObserveSnr03FinalDrawState : nullptr);
+          REXCVAR_GET(pinyon_shift_snr02_trace_first_rebuild_after_frame) > 0 ||
+          REXCVAR_GET(pinyon_shift_snr03_probe_frame) > 0 ||
+          REXCVAR_GET(pinyon_shift_snr02_item_payload_probe) ||
+          REXCVAR_GET(pinyon_shift_snr02_track_payload_probe),
+      std::memory_order_release);
+  graphics_system->SetPreparedDrawObserver(&ObservePreparedDraw);
+  graphics_system->SetPreparedDrawSnapshotSelector(&Snr02SelectTrackSnapshot);
+  graphics_system->SetPreparedDrawFrameSelector(&NativeRaceCaptureEligibleForOutput);
+  graphics_system->SetFinalDrawStateObserver(&ObserveSnr03FinalDrawState);
   graphics_system->SetIndirectBufferObserver(
       REXCVAR_GET(pinyon_shift_snr01_trace_source_frame) > 0 ||
               REXCVAR_GET(pinyon_shift_snr02_trace_first_rebuild_after_frame) > 0
@@ -3075,6 +3093,7 @@ void UninstallGraphicsCensus(rex::system::IGraphicsSystem* graphics_system) {
     graphics_system->SetIndirectBufferObserver(nullptr);
     graphics_system->SetCopyObserver(nullptr);
   }
+  prepared_draw_diagnostic_enabled.store(false, std::memory_order_release);
   auto* memory = snr01_memory.exchange(nullptr, std::memory_order_acq_rel);
   if (memory && snr01_watch_access_handle) {
     memory->UnregisterPhysicalMemoryAccessCallback(snr01_watch_access_handle);
@@ -3090,6 +3109,7 @@ void UninstallGraphicsCensus(rex::system::IGraphicsSystem* graphics_system) {
     std::lock_guard lock(snr03_scene_mutex);
     snr03_scenes.clear();
     snr03_payloads.clear();
+    snr03_car_pending_records.clear();
   }
   {
     std::lock_guard lock(snr02_item_scene_mutex);
@@ -3537,9 +3557,10 @@ void ObserveSnr03RemainderOutputFrame(uint64_t output_frame) {
     for (const auto& fetch : draw.fetches)
       valid &= payload.vertices.contains(fetch.range);
     if (draw.family == 1 && car) {
+      // Final current-frame title ownership must confirm every early join.
       valid &= std::any_of(car->records.begin(), car->records.end(),
                            [&](const auto& row) {
-        return row.dispatch == draw.title_key;
+        return row.dispatch == draw.title_key && row.target == draw.target;
       });
     } else if ((draw.family == 2 || draw.family == 3) && scalar) {
       valid &= std::any_of(scalar->records.begin(), scalar->records.end(),
@@ -4539,6 +4560,12 @@ void PinyonShiftObservePresentationViewBegin(
       snr03_manager_title_rejected = false;
       snr03_car_title_records.clear();
       snr03_car_title_rejected = false;
+      {
+        std::lock_guard lock(snr03_scene_mutex);
+        if (snr03_car_pending_records.size() >= 2)
+          snr03_car_pending_records.erase(snr03_car_pending_records.begin());
+        snr03_car_pending_records[frame].clear();
+      }
       snr03_scalar_title_records.clear();
       snr03_scalar_title_rejected = false;
     }
@@ -4750,6 +4777,8 @@ void PinyonShiftObservePresentationViewEnd() {
                   " overflow={}", frame, snr03_car_title_records.size(),
                   snr03_car_title_rejected);
     }
+    std::lock_guard lock(snr03_scene_mutex);
+    snr03_car_pending_records.erase(frame);
   }
   if (scope.ordinal == 8 && Snr03ProbeSourceFrame(frame)) {
     if (!snr03_scalar_title_rejected && !snr03_scalar_title_records.empty() &&
@@ -7193,10 +7222,15 @@ void PinyonShiftObserveSceneCommandBuffer(PPCRegister& r24, PPCRegister& r10,
             })) {
           snr03_car_title_rejected = true;
         } else {
-          snr03_car_title_records.push_back({
+          Snr03CarSceneRecord record{
               dispatch, target, r11.u32, flush.owner,
               flush.owner_first_word, flush.input, flush.owner_call,
-              flush.owner_args});
+              flush.owner_args};
+          snr03_car_title_records.push_back(record);
+          std::lock_guard lock(snr03_scene_mutex);
+          snr03_car_pending_records[
+              rex::perf::GetTotalCounter(
+                  rex::perf::CounterId::kSourceFrameCount)].push_back(record);
         }
       }
     }

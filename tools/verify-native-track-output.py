@@ -18,18 +18,22 @@ if __name__ == "__main__":
     sky = bytes((28, 56, 110))
     car = bytes((166, 41, 31))
     half = 1280 * 360 * 3
+    native_first = "--native-first" in sys.argv[2:]
     previous = pixels(output / "track-source-5000.ppm")
-    assert previous.count(sky) < 1000, "missing compatibility control"
-    for frame in range(5001, 5021):
+    if not native_first:
+        assert previous.count(sky) < 1000, "missing compatibility control"
+    for frame in range(5000 if native_first else 5001, 5021):
         image = pixels(output / f"track-source-{frame}.ppm")
         sky_pixels = image.count(sky)
         assert 1000 < sky_pixels < 900000, f"missing native track geometry: {frame}"
         assert image[:half].count(sky) == sky_pixels, f"inverted scene: {frame}"
         assert image[half:].count(car) > 10000, f"missing native car: {frame}"
-        assert image != previous, f"stale output frame: {frame}"
+        if frame > 5000:
+            assert image != previous, f"stale output frame: {frame}"
         previous = image
-    if len(sys.argv) > 2:
-        fallback = Path(sys.argv[2])
+    fallback_arg = next((arg for arg in sys.argv[2:] if arg != "--native-first"), None)
+    if fallback_arg:
+        fallback = Path(fallback_arg)
         for name in ("first", "second"):
             image = pixels(fallback / f"{name}.ppm")
             assert image != image[:3] * (1280 * 720), f"missing fallback: {name}"

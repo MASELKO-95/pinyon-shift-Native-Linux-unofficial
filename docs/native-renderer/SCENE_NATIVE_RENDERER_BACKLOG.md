@@ -342,6 +342,21 @@ a second graphics backend to close L1/L2. A bounded suppression trial needs
 a proven retained-pass dependency cut and a full-frame fallback. The
 checkpoints below are evidence, not a prerequisite chain to repeat.
 
+**Runtime opt-in and early car join (2026-09-25):** the default-off
+`pinyon_shift_native_race` setting now activates scene capture and native
+output at runtime without a capture-start launch flag. The output and draw
+callbacks remain installed but do no native snapshot work while disabled;
+continuous title capture follows race admission. Early car title IDs are
+available to GPU observations before view-end publication, and the final
+current-frame scene must confirm both dispatch and target before its car
+draws are admitted. The cold on/off/on route passed after a short scene
+warmup; the original prewarmed immediate-switch route passed. A startup-on
+route reached normal exit with 21 consecutive changing native frames and
+the moving-car image check passed. The first cold-on frame may fall back
+while capture warms; this is safe. Manual settings-UI switching and the
+race/pause/free-roam/title transition remain L1 checks. The startup-on
+continuous route needs a 480-second timeout at the current race pace.
+
 **Capture-cost check (2026-09-25):** a RelWithDebInfo saved-race run with
 scene capture starting at source 5000 and native output off passed normal
 exit. Removing only the route's 21 consecutive full-resolution screenshots

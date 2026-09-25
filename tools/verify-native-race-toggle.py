@@ -15,6 +15,9 @@ expected = {
     "before-on-again": False,
     "native-on-again": True,
 }
+if "--cold-start" in sys.argv[2:]:
+    del expected["before-on"]
+    del expected["before-on-again"]
 for name, native in expected.items():
     image = (output / f"{name}.ppm").read_bytes()
     assert image.startswith(header) and len(image) == len(header) + 1280 * 720 * 3

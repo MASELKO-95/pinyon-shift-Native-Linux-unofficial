@@ -127,6 +127,14 @@ bool ObserveRenderTestOutput(
 
 namespace pinyon_shift::native_renderer {
 
+bool NativeRaceRequested() {
+#if defined(_WIN32)
+  return native_race_enabled.load(std::memory_order_acquire);
+#else
+  return false;
+#endif
+}
+
 void InstallGuestOutputRenderer(rex::system::IGraphicsSystem* graphics_system) {
   if (graphics_system) {
 #if defined(_WIN32)
@@ -140,16 +148,7 @@ void InstallGuestOutputRenderer(rex::system::IGraphicsSystem* graphics_system) {
     native_race_enabled.store(REXCVAR_GET(pinyon_shift_native_race),
                               std::memory_order_release);
 #endif
-    graphics_system->SetNativeGuestOutputRenderer(
-        fh1_render_test::Enabled() || Snr03ProbeEnabled() || Snr02ItemProbeEnabled() ||
-                REXCVAR_GET(pinyon_shift_native_output_clear_probe) ||
-                REXCVAR_GET(pinyon_shift_native_scene_clear_probe)
-#if defined(_WIN32)
-                || REXCVAR_GET(pinyon_shift_native_scene_triangle_probe)
-                || REXCVAR_GET(pinyon_shift_native_track_probe)
-                || REXCVAR_GET(pinyon_shift_native_race)
-#endif
-            ? &ObserveRenderTestOutput : nullptr);
+    graphics_system->SetNativeGuestOutputRenderer(&ObserveRenderTestOutput);
   }
 }
 
