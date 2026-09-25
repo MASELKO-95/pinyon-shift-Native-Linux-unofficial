@@ -1446,6 +1446,18 @@ over source rows 6785–6810 was 164.52 ms. Local images are at
 native-request-only path, suffices to reproduce the omission. This does not
 yet identify which capture stage or scheduling interaction skips the UI pass.
 
+**Prepared-observer cost bound (2026-09-25):** a temporary capture-only build
+disabled `SetPreparedDrawObserver` while retaining the configured title/GPU
+capture start and compatibility presentation. The route exited normally;
+its source-row 6785–6810 median fell from 164.52 to 114.87 ms, and one of
+11 sampled frames lacked the HUD versus four of 11 in the paired full-capture
+run. The observer is a substantial cost contributor, but omitting it removes
+owned vertex/index/draw state and is not a usable renderer fix. The remaining
+114.87 ms and one HUD gap also rule it out as the sole cause. The production
+hook was restored and rebuilt. Local images and CSV:
+`.local/native-renderer/ui-no-prepared-observer-20260925/` and
+`20260925T200337Z-p49920.perf.csv`.
+
 1. Add the narrow D3D12 output-takeover seam first. The current FH1 output
    callback is an observer after compatibility output processing; it cannot
    replace the presented image. Let an opt-in native callback draw to the
