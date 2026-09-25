@@ -329,8 +329,9 @@ Effort is relative scope, not a time estimate.
 3. Make the existing L2 scene legible with owned inputs. Depth-only car draws
    now leave color intact, exposing the red body, but the sampled rear mask
    still uses provisional gray and paint/glass remain placeholders. Use the
-   now-owned per-draw pixel constants to derive car color, then address broad
-   terrain/trackside material families using their observed multi-fetch
+   now-owned per-draw pixel constants and texture bindings for the visible
+   paint/glass families, then address broad terrain/trackside materials
+   using their observed multi-fetch
    bindings. Keep road texture, foliage cutouts and the bounded
    HUD bridge. Missing or stale resources must reject the entire native frame
    before submission; do not invent a fixed tint or single-fetch material for
@@ -939,6 +940,25 @@ qualification. These owned constants are inputs for car paint/glass work,
 not a material rendering improvement by themselves. Evidence:
 `.local/native-renderer/remainder-pixel-toggle-20260925` and
 `.local/native-renderer/remainder-pixel-startup-on-20260925`.
+
+**No-texture car material checkpoint (2026-09-25):** an `SNR03R5` source-5000
+fixture contains 52 car draws with vertex/pixel pair
+`CC2F3F4B3FBA53F5`/`CDA93D7ADC1991D8`, pixel specialization `0x10001`,
+and no texture fetches. Their captured registers 47, 57 and 157 match the
+translated shader's compact constant order: with register 47's blend weight
+zero and the system output bias one, it multiplies varying color by register
+157's RGB, takes the square root of the absolute result and uses register
+57's first component as alpha. The native path now applies that bounded
+shader instead of painting those draws flat red. For that selected pair,
+unexpected blend/bias constants yield whole-frame compatibility fallback.
+The saved-race on/off/on
+route and a startup-on 20-frame moving route exited normally and passed their
+respective image verifiers; frame 5020's remainder scene was admitted.
+Visual review shows no obvious change to the large gray player-car rear, so
+this is material-family coverage, not a claim that paint/glass or L2 visual
+legibility is solved. Evidence:
+`.local/native-renderer/remainder-r5-material-capture-20260925` and
+`.local/native-renderer/car-dark-material-final-20260925`.
 
 **Final-pass boundary check (2026-09-24):** the existing race RenderDoc
 capture `renderdoc-gatea-full-b_frame5001.rdc` (SHA-256

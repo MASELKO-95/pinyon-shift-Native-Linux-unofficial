@@ -3408,6 +3408,7 @@ pinyon_shift::native_renderer::ParseSnr04RemainderScene(
     used_indices.insert(draw.index);
     const auto texture_count = reader.take<uint32_t>();
     require(texture_count <= 16, "unsupported texture count");
+    draw.texture_count = texture_count;
     for (uint32_t texture = 0; texture < texture_count; ++texture)
       reader.take<std::array<uint32_t, 9>>();  // Identity target does not sample.
     const auto bitmap = reader.take<std::array<uint64_t, 4>>();

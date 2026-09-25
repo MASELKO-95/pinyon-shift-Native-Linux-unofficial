@@ -42,8 +42,24 @@ uint32_t TrackMaterialKind(const Snr04TrackDraw& draw) {
 }
 
 uint32_t RemainderMaterialKind(const Snr04RemainderDraw& draw) {
-  return draw.family == 3 && draw.shader == 0x0DF9CA19A93A75D9ull &&
-         draw.pixel_shader == 0xE349204378CA1591ull;
+  if (draw.family == 3 && draw.shader == 0x0DF9CA19A93A75D9ull &&
+      draw.pixel_shader == 0xE349204378CA1591ull) return 1;
+  if (draw.family == 1 && draw.shader == 0xCC2F3F4B3FBA53F5ull &&
+      draw.pixel_shader == 0xCDA93D7ADC1991D8ull &&
+      draw.pixel_specialization == 0x10001ull && !draw.texture_count) return 2;
+  return 0;
+}
+
+const uint32_t* RemainderPixelConstant(const Snr04RemainderDraw& draw,
+                                       uint32_t reg) {
+  if (!(draw.pixel_bitmap[reg / 64] & (uint64_t(1) << (reg % 64))))
+    return nullptr;
+  uint32_t offset = 0;
+  for (uint32_t i = 0; i < reg; ++i)
+    offset += (draw.pixel_bitmap[i / 64] >> (i % 64)) & 1;
+  offset *= 4;
+  return offset + 4 <= draw.pixel_packed.size()
+      ? draw.pixel_packed.data() + offset : nullptr;
 }
 
 struct UploadArena {
@@ -88,6 +104,7 @@ struct RemainderDrawBinding {
   uint32_t count = 0, index_bytes = 0, format = 0, primitive = 0;
   uint32_t family = 0;
   uint32_t material_index = UINT32_MAX;
+  std::array<float, 4> color{};
   D3D12_VIEWPORT viewport{};
   D3D12_RECT scissor{};
 };
@@ -96,7 +113,7 @@ struct TrackGraphics {
   ComPtr<ID3D12Device> device;
   ComPtr<ID3D12RootSignature> root;
   ComPtr<ID3DBlob> pixel, pixel_textured, pixel_road, pixel_foliage,
-      pixel_car;
+      pixel_car, pixel_car_dark;
   ComPtr<ID3D12RootSignature> blit_root;
   ComPtr<ID3D12PipelineState> blit_pipeline;
   std::map<PipelineKey, ComPtr<ID3D12PipelineState>> pipelines;
@@ -117,12 +134,13 @@ struct TrackGraphics {
       pixel_road.Reset();
       pixel_foliage.Reset();
       pixel_car.Reset();
+      pixel_car_dark.Reset();
       blit_root.Reset();
       blit_pipeline.Reset();
       device = current;
     }
     if (root && pixel && pixel_textured && pixel_road && pixel_foliage &&
-        pixel_car)
+        pixel_car && pixel_car_dark)
       return true;
     constexpr char shader[] =
         "cbuffer Color : register(b2) { float4 flat; };"
@@ -171,6 +189,14 @@ struct TrackGraphics {
     if (FAILED(D3DCompile(car_shader, sizeof(car_shader) - 1,
                           nullptr, nullptr, nullptr, "main", "ps_5_1", 0, 0,
                           &pixel_car, &errors)))
+      return false;
+    constexpr char car_dark_shader[] =
+        "cbuffer Color : register(b2) { float4 flat; };"
+        "float4 main(float4 color : TEXCOORD0) : SV_Target0 {"
+        " return float4(sqrt(abs(color.rgb * flat.rgb)), flat.a); }";
+    if (FAILED(D3DCompile(car_dark_shader, sizeof(car_dark_shader) - 1,
+                          nullptr, nullptr, nullptr, "main", "ps_5_1", 0, 0,
+                          &pixel_car_dark, &errors)))
       return false;
     D3D12_ROOT_PARAMETER parameters[7]{};
     for (uint32_t i = 0; i < 4; ++i) {
@@ -331,8 +357,9 @@ struct TrackGraphics {
     D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
     desc.pRootSignature = root.Get();
     desc.VS = {vertex, size};
-    ID3DBlob* fragment = RemainderMaterialKind(draw)
-        ? pixel_car.Get() : pixel.Get();
+    const uint32_t material = RemainderMaterialKind(draw);
+    ID3DBlob* fragment = material == 1 ? pixel_car.Get()
+        : material == 2 ? pixel_car_dark.Get() : pixel.Get();
     desc.PS = {fragment->GetBufferPointer(), fragment->GetBufferSize()};
     desc.BlendState.RenderTarget[0].RenderTargetWriteMask =
         draw.pixel_shader ? D3D12_COLOR_WRITE_ENABLE_ALL : 0;
@@ -576,6 +603,20 @@ bool PrepareRemainder(
     binding.format = draw.format;
     binding.primitive = draw.primitive;
     binding.family = draw.family;
+    binding.color = draw.family == 1
+        ? std::array<float, 4>{0.65f, 0.16f, 0.12f, 1.f}
+        : std::array<float, 4>{0.36f, 0.35f, 0.34f, 1.f};
+    if (RemainderMaterialKind(draw) == 2) {
+      const auto* blend = RemainderPixelConstant(draw, 47);
+      const auto* multiplier = RemainderPixelConstant(draw, 157);
+      const auto* alpha = RemainderPixelConstant(draw, 57);
+      if (!blend || !multiplier || !alpha ||
+          std::bit_cast<float>(blend[3]) != 0.f ||
+          draw.system[61] != 0x3F800000u) return false;
+      for (uint32_t channel = 0; channel < 3; ++channel)
+        binding.color[channel] = std::bit_cast<float>(multiplier[channel]);
+      binding.color[3] = std::bit_cast<float>(alpha[0]);
+    }
     std::array<uint32_t, 120> system{};
     std::copy(draw.system.begin(), draw.system.end(), system.begin());
     binding.b0 = arena.Add(system.data(), sizeof(system));
@@ -876,7 +917,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
               &identity).second)
         return false;
   for (size_t i = 0; i < remainder.draws.size(); ++i) {
-    if (!RemainderMaterialKind(remainder.draws[i])) continue;
+    if (RemainderMaterialKind(remainder.draws[i]) != 1) continue;
     const auto found = remainder_textures.find({remainder.draws[i].sequence, 0});
     if (found == remainder_textures.end() ||
         !resolve_material(*found->second,
@@ -1076,10 +1117,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       handle.ptr += SIZE_T(binding.material_index) * material_stride;
       list->D3DSetGraphicsRootDescriptorTable(6, handle);
     }
-    const float color[]{binding.family == 1 ? 0.65f : 0.36f,
-                        binding.family == 1 ? 0.16f : 0.35f,
-                        binding.family == 1 ? 0.12f : 0.34f, 1.f};
-    list->D3DSetGraphicsRoot32BitConstants(4, 4, color, 0);
+    list->D3DSetGraphicsRoot32BitConstants(4, 4, binding.color.data(), 0);
     list->D3DDrawIndexedInstanced(binding.count, 1, 0, 0, 0);
   }
   barrier.Transition.pResource = scene_color;

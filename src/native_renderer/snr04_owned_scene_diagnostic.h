@@ -106,6 +106,7 @@ struct Snr04RemainderDraw {
     Snr04RemainderRange range{};
   };
   uint32_t family = 0, title_key = 0, packet = 0, count = 0;
+  uint32_t texture_count = 0;
   uint64_t sequence = 0, shader = 0, pixel_shader = 0,
            specialization = 0;
   uint32_t primitive = 0, index_type = 0, format = 0, endian = 0;
