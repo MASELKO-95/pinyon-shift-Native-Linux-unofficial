@@ -314,13 +314,13 @@ Effort is relative scope, not a time estimate.
    complete compatibility frames outside the race, and no stale or blank
    output. Keep native default-off and document any unsupported resolution.
 2. Make live capture responsive before broadening materials. On a route with
-   no per-frame screenshots, captured race frames still take about 185 ms
-   median versus 22 ms before capture starts. Measure the title hooks and
-   command-processing phases outside `IssueDraw`; do not assume fixture
-   serialization is the main cost. Remove a measured bottleneck, preserving
-   immutable current-frame ownership and whole-frame fallback. Repeat the
-   drive test until it is responsive. This is a usability requirement, not
-   the later 15% speedup qualification.
+   no per-frame screenshots, recent captured-race medians vary from 174 to
+   196 ms versus about 22 ms before capture starts. Profile the capture work
+   across the title hooks and command processor, then remove a measured
+   bottleneck. Broad filtering of prepared-draw observation has already
+   regressed this route. Preserve immutable current-frame ownership and
+   whole-frame fallback. Repeat the drive test until it is responsive.
+   This is a usability requirement, not the later 15% speedup qualification.
 3. Make the existing L2 scene legible before expanding shader coverage:
    prioritize player-car paint/glass and broad terrain/trackside color or
    texture families. Keep road texture, foliage cutouts and the bounded HUD
@@ -342,13 +342,24 @@ prepared-draw snapshot setup, 29–58 ms in the FH1 prepared-draw observer and
 the measurement. The unaccounted frame cost is outside those measured scopes.
 The title's procedural-item hook also formatted two long hex strings on
 every native-race item solely for an optional diagnostic log. Gating that
-formatting on the explicit item-probe flag reduced the same 27-frame
-no-screenshot median from 204 to 185 ms (normal route exit). This is useful
-but still only about five frames per second. Evidence is in the AppData
+formatting on the explicit item-probe flag changed one paired 27-frame
+no-screenshot median from 204 to 185 ms (normal route exit). Later unfiltered
+runs varied from 174 to 196 ms, so the isolated gain is not established;
+live capture remains around five frames per second. Evidence is in the AppData
 preview perf CSVs `20260925T070907Z-p37944.perf.csv` and
 `20260925T071309Z-p44652.perf.csv`. To repeat the no-screenshot comparison,
 copy `fh1-native-scene-continuous.fh1test`, remove only captures 5000–5020,
 and keep its input timeline and `stop 5030` unchanged.
+
+Further temporary measurements on that route found the title view-8 hook
+usually costs 29–34 ms, with periodic 50–52 ms frames. Lowering the log level
+to warning did not improve the captured interval (196 ms median). A SDK
+prepared-draw prefilter retained track, item, vegetation and remainder draws
+and passed 20 moving-frame output checks, but worsened the matched
+no-screenshot median to 223 ms. The remainder selector still admits most
+draws, so do not carry this filter forward. The temporary timers and filter
+were removed. Next profile ownership/capture work at a narrower boundary
+before changing the observation architecture.
 
 **Output-seam checkpoint (2026-09-24):** the D3D12 refresh now asks an
 opt-in native callback before compatibility gamma/FXAA and retains the final
