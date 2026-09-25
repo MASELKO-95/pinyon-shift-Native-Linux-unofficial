@@ -29,7 +29,7 @@ using Microsoft::WRL::ComPtr;
 using PipelineKey = std::tuple<uint64_t, uint64_t, uint32_t, uint32_t, uint32_t,
     uint32_t>;
 using RemainderPipelineKey = std::tuple<uint64_t, uint64_t, uint32_t,
-    uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>;
+    uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>;
 
 uint32_t TrackMaterialKind(const Snr04TrackDraw& draw) {
   if (draw.pixel_shader == 0x6F7CDE74CDACCB08ull &&
@@ -319,7 +319,7 @@ struct TrackGraphics {
     const RemainderPipelineKey key{
         draw.shader, draw.specialization, draw.raster, draw.clip,
         draw.depth, draw.primitive, draw.format, draw.restart,
-        RemainderMaterialKind(draw)};
+        RemainderMaterialKind(draw), uint32_t(draw.pixel_shader == 0)};
     if (remainder_pipelines.contains(key)) return true;
     const uint8_t* vertex = nullptr;
     size_t size = 0;
@@ -335,7 +335,7 @@ struct TrackGraphics {
         ? pixel_car.Get() : pixel.Get();
     desc.PS = {fragment->GetBufferPointer(), fragment->GetBufferSize()};
     desc.BlendState.RenderTarget[0].RenderTargetWriteMask =
-        D3D12_COLOR_WRITE_ENABLE_ALL;
+        draw.pixel_shader ? D3D12_COLOR_WRITE_ENABLE_ALL : 0;
     desc.SampleMask = UINT_MAX;
     desc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
     desc.RasterizerState.CullMode = (draw.raster & 2)
@@ -568,7 +568,8 @@ bool PrepareRemainder(
     RemainderDrawBinding binding;
     binding.pipeline = {draw.shader, draw.specialization, draw.raster,
                         draw.clip, draw.depth, draw.primitive, draw.format,
-                        draw.restart, RemainderMaterialKind(draw)};
+                        draw.restart, RemainderMaterialKind(draw),
+                        uint32_t(draw.pixel_shader == 0)};
     binding.index = indices.at(index_key);
     binding.index_bytes = uint32_t(bytes.size());
     binding.count = draw.count;

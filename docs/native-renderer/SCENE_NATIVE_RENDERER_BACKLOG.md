@@ -898,6 +898,21 @@ Evidence: `.local/native-renderer/car-parser-diagnostic-20260925` and
 `.local/native-renderer/car-pinned-full-confirmed-20260925`. This closes one
 visible material family only; L2 remains open.
 
+**Depth-only car occlusion fix (2026-09-25):** the live remainder fixture
+contains null-pixel-shader depth draws. The native path had painted these
+draws gray, hiding later car color. Its pipeline now preserves their depth
+test/write behavior while disabling color writes, with a distinct pipeline
+key so it cannot reuse a color-writing state. Visual review shows the red
+player-car body instead of the gray overlay; the center-lower car region has
+30–35k exact red-fill pixels in all twenty saved-race frames, versus roughly
+16–18k in the archived pre-fix short route. The new
+`verify-native-track-output.py --car-body` check passes frames 5001–5020
+and rejects the archived pre-fix run at 5001. The replay exited normally
+and the ordinary moving-frame verifier also passed. Evidence:
+`.local/native-renderer/remainder-depth-only-full-20260925`. Body shading
+and glass remain placeholders; this corrects depth-only visibility, not the
+full car material.
+
 **Final-pass boundary check (2026-09-24):** the existing race RenderDoc
 capture `renderdoc-gatea-full-b_frame5001.rdc` (SHA-256
 `277c2a371a86038901d845332704574b708f632eab6f427175827bf93660e955`)
