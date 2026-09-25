@@ -3377,7 +3377,7 @@ pinyon_shift::native_renderer::ParseSnr04RemainderScene(
     draw.sequence = reader.take<uint64_t>();
     draw.packet = reader.take<uint32_t>();
     draw.shader = reader.take<uint64_t>();
-    reader.take<uint64_t>();  // Pixel shader; identity target uses its own.
+    draw.pixel_shader = reader.take<uint64_t>();
     draw.specialization = reader.take<uint64_t>();
     reader.take<uint64_t>();  // Dynamic state identity.
     draw.count = reader.take<uint32_t>();
@@ -3478,10 +3478,11 @@ pinyon_shift::native_renderer::ParseSnr04RemainderScene(
     }
     draws.push_back(std::move(draw));
   }
-  require(reader.position == source.size() && used_vertices.size() == vertices.size() &&
-              used_indices.size() == indices.size() && !used_car.empty() &&
-              used_scalar == scalar_keys,
-          "incomplete remainder fixture");
+  require(reader.position == source.size(), "trailing remainder fixture bytes");
+  require(used_vertices.size() == vertices.size(), "unused remainder vertices");
+  require(used_indices.size() == indices.size(), "unused remainder indices");
+  require(!used_car.empty(), "missing remainder car draw");
+  require(used_scalar == scalar_keys, "unused remainder scalar record");
 
   std::map<Range, uint32_t> vertex_offsets;
   std::vector<char> vertex_bytes;

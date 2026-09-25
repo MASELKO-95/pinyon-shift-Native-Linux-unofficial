@@ -935,6 +935,8 @@ struct Snr03RemainderDraw {
   std::vector<Snr03RemainderFetch> fetches;
   Snr03RemainderRange indices{};
   std::vector<rex::system::GraphicsPreparedDrawTextureFetch> textures;
+  std::vector<pinyon_shift::native_renderer::Snr04TrackTextureIdentity>
+      texture_identities;
   std::array<uint64_t, 4> bitmap{};
   std::vector<uint32_t> packed;
   std::array<uint32_t, 64> system{};
@@ -2282,6 +2284,17 @@ void ObserveSnr03FinalDrawState(
       draw.depth_control = observation.normalized_depth_control;
       std::copy_n(observation.viewport, 6, draw.viewport.begin());
       std::copy_n(observation.scissor, 4, draw.scissor.begin());
+      for (uint32_t i = 0; i < observation.texture_count; ++i) {
+        const auto& source = observation.textures[i];
+        pinyon_shift::native_renderer::Snr04TrackTextureIdentity identity;
+        identity.sequence = draw.sequence;
+        identity.fetch_constant = source.fetch_constant;
+        std::copy_n(source.fetch_words, 6, identity.fetch_words.begin());
+        identity.allocation_id = source.allocation_id;
+        identity.payload_generation = source.payload_generation;
+        identity.outdated_mask = source.outdated_mask;
+        draw.texture_identities.push_back(identity);
+      }
       draw.final_seen = true;
       REXGPU_INFO("FH1 SNR03 remainder final {{\"frame\":{},"
                   "\"sequence\":{},\"packet\":{},\"family\":{},"
@@ -3660,8 +3673,15 @@ void ObserveSnr03RemainderOutputFrame(uint64_t output_frame) {
     std::vector<uint64_t> sequences;
     sequences.reserve(payload.draws.size());
     for (const auto& draw : payload.draws) sequences.push_back(draw.sequence);
+    auto texture_identities = std::make_shared<
+        std::vector<Snr04TrackTextureIdentity>>();
+    for (const auto& draw : payload.draws)
+      texture_identities->insert(texture_identities->end(),
+                                 draw.texture_identities.begin(),
+                                 draw.texture_identities.end());
     CollectSnr04LiveFixture(output_frame - 1, Snr04LiveFamily::remainder,
-                            std::move(encoded), std::move(sequences));
+                            std::move(encoded), std::move(sequences),
+                            std::move(texture_identities));
   }
 #endif
 }
@@ -3982,6 +4002,8 @@ std::shared_ptr<const Snr04LiveScene> SnapshotSnr04LiveScene(
     scene->characters = families[size_t(Snr04LiveFamily::characters)].bytes;
     scene->manager = families[size_t(Snr04LiveFamily::manager)].bytes;
     scene->remainder = families[size_t(Snr04LiveFamily::remainder)].bytes;
+    scene->remainder_textures =
+        families[size_t(Snr04LiveFamily::remainder)].textures;
     scene->core_draws = uint32_t(sequences.size());
     REXGPU_INFO("FH1 native scene admitted source_frame={} core_draws={} "
                 "characters={} manager={} remainder={}", source_frame,

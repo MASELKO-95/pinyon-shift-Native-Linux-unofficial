@@ -106,7 +106,8 @@ struct Snr04RemainderDraw {
     Snr04RemainderRange range{};
   };
   uint32_t family = 0, title_key = 0, packet = 0, count = 0;
-  uint64_t sequence = 0, shader = 0, specialization = 0;
+  uint64_t sequence = 0, shader = 0, pixel_shader = 0,
+           specialization = 0;
   uint32_t primitive = 0, index_type = 0, format = 0, endian = 0;
   uint32_t shader_endian = 0, restart = 0, reset_index = 0;
   std::vector<Fetch> fetches;
@@ -136,6 +137,7 @@ struct Snr04LiveScene {
   std::shared_ptr<const Snr04VegetationScene> vegetation;
   std::shared_ptr<const std::vector<Snr04TrackTextureIdentity>> track_textures;
   std::shared_ptr<const std::vector<Snr04TrackTextureIdentity>> vegetation_textures;
+  std::shared_ptr<const std::vector<Snr04TrackTextureIdentity>> remainder_textures;
   uint32_t core_draws = 0;
 };
 

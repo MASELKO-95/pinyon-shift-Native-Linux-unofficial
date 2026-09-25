@@ -845,6 +845,21 @@ review at frame 5010 showed textured tan/brown grass with the road, car and
 HUD still present. This covers one foliage family, not a general vegetation
 material translation. Evidence: `.local/native-renderer/foliage-rgb-trial-20260925`.
 
+**Player-car mask checkpoint (2026-09-25):** the sampled family-3 car draw
+(`0DF9CA19A93A75D9`/`E349204378CA1591`) now carries its final fetch-0
+allocation and generation into the live remainder scene. The SDK pins that
+exact source texture under its current observation frame; using the preceding
+frame caused a generation mismatch at output. The native shader samples the
+red mask as provisional gray shading on the lower rear of the player car.
+Unavailable or changed sources still select whole-frame compatibility output.
+The AppData saved-race short route and a separate 20-frame route exited
+normally; `verify-native-track-output.py` passed moving frames 5001–5020 in
+the latter, with no fixture or texture rejection. Visual review of frame 5007
+shows the shaded rear while body paint and glass remain flat placeholders.
+Evidence: `.local/native-renderer/car-parser-diagnostic-20260925` and
+`.local/native-renderer/car-pinned-full-confirmed-20260925`. This closes one
+visible material family only; L2 remains open.
+
 **Final-pass boundary check (2026-09-24):** the existing race RenderDoc
 capture `renderdoc-gatea-full-b_frame5001.rdc` (SHA-256
 `277c2a371a86038901d845332704574b708f632eab6f427175827bf93660e955`)

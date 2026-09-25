@@ -29,7 +29,7 @@ using Microsoft::WRL::ComPtr;
 using PipelineKey = std::tuple<uint64_t, uint64_t, uint32_t, uint32_t, uint32_t,
     uint32_t>;
 using RemainderPipelineKey = std::tuple<uint64_t, uint64_t, uint32_t,
-    uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>;
+    uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>;
 
 uint32_t TrackMaterialKind(const Snr04TrackDraw& draw) {
   if (draw.pixel_shader == 0x6F7CDE74CDACCB08ull &&
@@ -39,6 +39,11 @@ uint32_t TrackMaterialKind(const Snr04TrackDraw& draw) {
       draw.shader == 0x1193B16753866698ull &&
       draw.specialization == 0x3FFull) return 2;
   return 0;
+}
+
+uint32_t RemainderMaterialKind(const Snr04RemainderDraw& draw) {
+  return draw.family == 3 && draw.shader == 0x0DF9CA19A93A75D9ull &&
+         draw.pixel_shader == 0xE349204378CA1591ull;
 }
 
 struct UploadArena {
@@ -82,6 +87,7 @@ struct RemainderDrawBinding {
   uint64_t index = 0, b0 = 0, b1 = 0, b3 = 0;
   uint32_t count = 0, index_bytes = 0, format = 0, primitive = 0;
   uint32_t family = 0;
+  uint32_t material_index = UINT32_MAX;
   D3D12_VIEWPORT viewport{};
   D3D12_RECT scissor{};
 };
@@ -89,7 +95,8 @@ struct RemainderDrawBinding {
 struct TrackGraphics {
   ComPtr<ID3D12Device> device;
   ComPtr<ID3D12RootSignature> root;
-  ComPtr<ID3DBlob> pixel, pixel_textured, pixel_road, pixel_foliage;
+  ComPtr<ID3DBlob> pixel, pixel_textured, pixel_road, pixel_foliage,
+      pixel_car;
   ComPtr<ID3D12RootSignature> blit_root;
   ComPtr<ID3D12PipelineState> blit_pipeline;
   std::map<PipelineKey, ComPtr<ID3D12PipelineState>> pipelines;
@@ -109,11 +116,13 @@ struct TrackGraphics {
       pixel_textured.Reset();
       pixel_road.Reset();
       pixel_foliage.Reset();
+      pixel_car.Reset();
       blit_root.Reset();
       blit_pipeline.Reset();
       device = current;
     }
-    if (root && pixel && pixel_textured && pixel_road && pixel_foliage)
+    if (root && pixel && pixel_textured && pixel_road && pixel_foliage &&
+        pixel_car)
       return true;
     constexpr char shader[] =
         "cbuffer Color : register(b2) { float4 flat; };"
@@ -151,6 +160,17 @@ struct TrackGraphics {
     if (FAILED(D3DCompile(foliage_shader, sizeof(foliage_shader) - 1,
                           nullptr, nullptr, nullptr, "main", "ps_5_1", 0, 0,
                           &pixel_foliage, &errors)))
+      return false;
+    constexpr char car_shader[] =
+        "Texture2D<float4> mask_tex : register(t1);"
+        "SamplerState clamp_sampler : register(s1);"
+        "float4 main(float4 varying[2] : TEXCOORD0) : SV_Target0 {"
+        " float2 uv = varying[0].xy + 0.001465 / 64.0;"
+        " float shade = mask_tex.Sample(clamp_sampler, uv).r;"
+        " return float4(float3(shade, shade, shade) * 0.5 + 0.16, 1); }";
+    if (FAILED(D3DCompile(car_shader, sizeof(car_shader) - 1,
+                          nullptr, nullptr, nullptr, "main", "ps_5_1", 0, 0,
+                          &pixel_car, &errors)))
       return false;
     D3D12_ROOT_PARAMETER parameters[7]{};
     for (uint32_t i = 0; i < 4; ++i) {
@@ -298,7 +318,8 @@ struct TrackGraphics {
       const Snr04RemainderDraw& draw) {
     const RemainderPipelineKey key{
         draw.shader, draw.specialization, draw.raster, draw.clip,
-        draw.depth, draw.primitive, draw.format, draw.restart};
+        draw.depth, draw.primitive, draw.format, draw.restart,
+        RemainderMaterialKind(draw)};
     if (remainder_pipelines.contains(key)) return true;
     const uint8_t* vertex = nullptr;
     size_t size = 0;
@@ -310,7 +331,9 @@ struct TrackGraphics {
     D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
     desc.pRootSignature = root.Get();
     desc.VS = {vertex, size};
-    desc.PS = {pixel->GetBufferPointer(), pixel->GetBufferSize()};
+    ID3DBlob* fragment = RemainderMaterialKind(draw)
+        ? pixel_car.Get() : pixel.Get();
+    desc.PS = {fragment->GetBufferPointer(), fragment->GetBufferSize()};
     desc.BlendState.RenderTarget[0].RenderTargetWriteMask =
         D3D12_COLOR_WRITE_ENABLE_ALL;
     desc.SampleMask = UINT_MAX;
@@ -545,7 +568,7 @@ bool PrepareRemainder(
     RemainderDrawBinding binding;
     binding.pipeline = {draw.shader, draw.specialization, draw.raster,
                         draw.clip, draw.depth, draw.primitive, draw.format,
-                        draw.restart};
+                        draw.restart, RemainderMaterialKind(draw)};
     binding.index = indices.at(index_key);
     binding.index_bytes = uint32_t(bytes.size());
     binding.count = draw.count;
@@ -843,6 +866,22 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   if (!PrepareRemainder(context, remainder, graphics, arena,
                         remainder_bindings, remainder_vertex))
     return false;
+  std::map<std::pair<uint64_t, uint32_t>,
+           const Snr04TrackTextureIdentity*> remainder_textures;
+  if (live.remainder_textures)
+    for (const auto& identity : *live.remainder_textures)
+      if (!remainder_textures.emplace(
+              std::pair{identity.sequence, identity.fetch_constant},
+              &identity).second)
+        return false;
+  for (size_t i = 0; i < remainder.draws.size(); ++i) {
+    if (!RemainderMaterialKind(remainder.draws[i])) continue;
+    const auto found = remainder_textures.find({remainder.draws[i].sequence, 0});
+    if (found == remainder_textures.end() ||
+        !resolve_material(*found->second,
+                          remainder_bindings[i].material_index))
+      return false;
+  }
   TrackFrame frame;
   if (!CreateFrame(device, output, arena, frame)) return false;
   if (!materials.empty()) {
@@ -1031,6 +1070,11 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     list->D3DSetGraphicsRootConstantBufferView(0, base + binding.b0);
     list->D3DSetGraphicsRootConstantBufferView(1, base + binding.b1);
     list->D3DSetGraphicsRootConstantBufferView(2, base + binding.b3);
+    if (binding.material_index != UINT32_MAX) {
+      auto handle = material_gpu_start;
+      handle.ptr += SIZE_T(binding.material_index) * material_stride;
+      list->D3DSetGraphicsRootDescriptorTable(6, handle);
+    }
     const float color[]{binding.family == 1 ? 0.65f : 0.36f,
                         binding.family == 1 ? 0.16f : 0.35f,
                         binding.family == 1 ? 0.12f : 0.34f, 1.f};
