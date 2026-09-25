@@ -3,8 +3,9 @@
 Status (2026-09-25): L1 is implemented as an opt-in race pilot and has passed
 scripted moving-frame, toggle and unsupported-mode fallback checks. A guarded
 pre-UI path draws the owned scene beneath the game's original HUD on admitted
-race frames, but a dense sustained capture found intermittent frames with no
-early UI admission or race HUD. The live settings-UI toggle works in both
+race frames, but dense sustained captures found intermittent frames where the
+guest emits no UI pass, including when native drawing is disabled. The live
+settings-UI toggle works in both
 directions; longer unscripted driving and the HUD gap remain open before L1
 signoff. L2 is open: the road and some foliage use current textures, while
 car/terrain/props remain crude and live capture is too slow for comfortable
@@ -311,15 +312,17 @@ Effort is relative scope, not a time estimate.
 
 **Next bounded work (2026-09-25):**
 
-1. Explain intermittent missing early UI admission before promoting the HUD
-   bridge. A dense race capture alternates admitted native/HUD frames with
-   whole compatibility frames lacking the race HUD; the compatibility control
-   at the same script ticks has its HUD, though it reaches a different game
-   time. Instrument the first format-10 draw, current target and UI draw
-   count on admitted and missed output frames. Compare the same gameplay
-   state without the native probe, then repair the true boundary or guest
-   state-restoration cause. Keep missed frames entirely compatible and count
-   admission/fallback; do not call this continuous HUD support yet.
+1. Attribute and reduce live capture cost before promoting the HUD bridge.
+   Dense race traces show 170 format-10 UI draws on admitted frames and zero
+   on some adjacent frames despite 2,100–2,400 other guest draws. Those
+   outputs use whole compatibility geometry without a HUD. The compatibility
+   control keeps its HUD at both the same script ticks and a later matching
+   race-clock time. A capture-only run still drops three of 11 sampled HUDs,
+   so native scene drawing and pre-UI state restoration are not required for
+   the omission. Profile the live capture and title/GPU scheduling, then
+   remove the largest measured cost and repeat this three-way A/B. Keep
+   missed frames entirely compatible and count admission/fallback; do not
+   call this continuous HUD support yet.
 2. Close L1 with a longer unscripted player-facing drive at the intended
    resolution, then pause, return to free roam/title and reload. Verify
    changing current-frame geometry and HUD, complete compatibility frames
@@ -1387,6 +1390,47 @@ compatibility control. After the first-target guard, the same route exited
 normally with seven native/HUD and four complete compatibility/no-HUD images;
 there was no flat placeholder fallback. Its captures are in
 `.local/native-renderer/ui-scene-fallback-final-20260925/`.
+
+**Missing-pass isolation (2026-09-25):** a temporary bounded draw counter on
+the same route found 170 format-10 draws on every recognized UI frame and
+zero on several missed frames. For example, swap sequences 6803, 6807, 6809
+and 6811 had 2,164, 2,163, 2,359 and 2,274 total guest draws, respectively,
+but no format-10 draw on any target. The corresponding captured outputs at
+6802, 6806, 6808 and 6810 show compatibility world without the HUD. Nearby
+swaps with 170 UI draws show the original HUD over the native scene. The
+ offset is expected: a swap observes the preceding output frame. The bounded
+ logger was removed after the normal-exit run; local trace and images are at
+ `.local/native-renderer/ui-debug-counts-20260925/`. This rules out a too
+ strict first-format-10 predicate on those frames. It does not yet prove why
+ the title emitted no UI pass, nor whether a same-game-time compatibility run
+ would also skip it.
+
+**Native-capture isolation (2026-09-25):** a normal-exit compatibility run
+continued the same scripted car-at-barrier state to race clock 01:44 and kept
+the original HUD in all seven adjacent late captures. It is local at
+`.local/native-renderer/ui-control-same-clock-20260925/`. With native race
+capture enabled but the early boundary probe disabled, the scene-probe flag
+forces the late output path to retain compatibility, so no native scene is
+drawn and no pre-UI restore runs. That normal-exit capture-only route still
+had no HUD at output ticks 6790, 6798 and 6808, while the other eight of 11
+ticks had it. Evidence is local at
+`.local/native-renderer/ui-capture-only-20260925/`. Native scene drawing is
+therefore not necessary for the omission; capture and its timing or another
+native-requested path remain candidates. These runs do not identify the
+title-side reason for skipping 170 UI draws. Over source-row indices 6785–6810,
+the performance CSVs report 38.17 ms median frame time in the same-tick
+compatibility control, 170.84 ms with capture-only compatibility output, and
+212.06 ms with native scene injection. The capture-only run spent 82.96 ms
+median in `IssueDraw`, including 24.60 ms in the prepared observer; the scene
+run spent 114.87/31.01 ms in those nested spans. These overlapping counters
+do not isolate the missing time or prove that slow frames cause UI omission,
+but they show the gap exists before native drawing and that capture remains
+the dominant new workload. The matching-clock compatibility window at
+source rows 11470–11500 had a 16.29 ms median. CSVs:
+`20260925T192241Z-p50156.perf.csv`,
+`20260925T194643Z-p47024.perf.csv`,
+`20260925T192633Z-p27568.perf.csv`, and
+`20260925T194253Z-p51000.perf.csv` in the installed preview `logs` folder.
 
 1. Add the narrow D3D12 output-takeover seam first. The current FH1 output
    callback is an observer after compatibility output processing; it cannot
