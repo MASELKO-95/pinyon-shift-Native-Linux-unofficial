@@ -141,13 +141,13 @@ struct TrackGraphics {
                           &pixel_road, &errors)))
       return false;
     constexpr char foliage_shader[] =
-        "cbuffer Color : register(b2) { float4 flat; };"
-        "Texture2D<float4> alpha_tex : register(t1);"
+        "Texture2D<float4> foliage_tex : register(t1);"
         "SamplerState clamp_sampler : register(s1);"
         "float4 main(float4 varying[5] : TEXCOORD0) : SV_Target0 {"
         " float2 uv = varying[0].xy + 0.001465 / 256.0;"
-        " clip(alpha_tex.Sample(clamp_sampler, uv).a * varying[4].w - 0.5);"
-        " return flat; }";
+        " float4 texel = foliage_tex.Sample(clamp_sampler, uv);"
+        " clip(texel.a * varying[4].w - 0.5);"
+        " return float4(texel.rgb, 1); }";
     if (FAILED(D3DCompile(foliage_shader, sizeof(foliage_shader) - 1,
                           nullptr, nullptr, nullptr, "main", "ps_5_1", 0, 0,
                           &pixel_foliage, &errors)))

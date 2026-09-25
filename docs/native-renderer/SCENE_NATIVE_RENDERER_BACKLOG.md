@@ -838,6 +838,13 @@ one-sample alpha threshold; the guest's four-sample coverage, remaining
 foliage variants, vehicle paint/glass, terrain and props still need material
 work. L2 remains open.
 
+The same pinned foliage fetch now supplies RGB as well as alpha instead of
+painting surviving fragments flat green. A saved-race run exited normally;
+`verify-native-track-output.py` passed native frames 5001–5020, and visual
+review at frame 5010 showed textured tan/brown grass with the road, car and
+HUD still present. This covers one foliage family, not a general vegetation
+material translation. Evidence: `.local/native-renderer/foliage-rgb-trial-20260925`.
+
 **Final-pass boundary check (2026-09-24):** the existing race RenderDoc
 capture `renderdoc-gatea-full-b_frame5001.rdc` (SHA-256
 `277c2a371a86038901d845332704574b708f632eab6f427175827bf93660e955`)
