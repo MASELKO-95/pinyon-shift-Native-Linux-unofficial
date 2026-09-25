@@ -1,10 +1,11 @@
 # Scene-native renderer backlog
 
 Status (2026-09-25): L1 is implemented as an opt-in race pilot and has passed
-scripted moving-frame, toggle and unsupported-mode fallback checks. Direct
-settings-UI input and longer unscripted driving still need validation before
-closing L1. L2 is open: the road and some foliage use current textures, the
-race HUD is readable, and the car/terrain/props remain crude; live capture is
+scripted moving-frame, toggle and unsupported-mode fallback checks. The live
+settings-UI toggle has been exercised in both directions; longer unscripted
+driving still needs validation before closing L1. L2 is open: the road and
+some foliage use current textures, the race HUD is readable, and the
+car/terrain/props remain crude; live capture is
 still too slow for comfortable driving. No net renderer speedup is claimed.
 **Delivery priority changed on 2026-09-24:** get an opt-in live native frame,
 then a usable race renderer. Performance and the approximately 90% visual
@@ -308,11 +309,11 @@ Effort is relative scope, not a time estimate.
 
 **Next bounded work (2026-09-25):**
 
-1. Close L1 with a player-facing run: switch native output on and off in the
-   settings UI, drive through the sustained race, then pause, return to free
-   roam/title and reload. Verify changing current-frame geometry and HUD,
-   complete compatibility frames outside the race, and no stale or blank
-   output. Keep native default-off and document any unsupported resolution.
+1. Close L1 with a longer unscripted player-facing drive at the intended
+   resolution, then pause, return to free roam/title and reload. Verify
+   changing current-frame geometry and HUD, complete compatibility frames
+   outside the race, and no stale or blank output. Keep native default-off
+   and document any unsupported resolution.
 2. Attribute live-race cost before another capture optimization. The committed
    `fh1-native-race-profile.fh1test` route captures no screenshots; its most
    recent pre-capture/captured medians were 25.35/219.05 ms. Capture a sampled
@@ -367,9 +368,9 @@ draws are admitted. The cold on/off/on route passed after a short scene
 warmup; the original prewarmed immediate-switch route passed. A startup-on
 route reached normal exit with 21 consecutive changing native frames and
 the moving-car image check passed. The first cold-on frame may fall back
-while capture warms; this is safe. Manual settings-UI switching and the
-race/pause/free-roam/title transition remain L1 checks. The startup-on
-continuous route needs a 480-second timeout at the current race pace.
+while capture warms; this is safe. Longer unscripted driving remains an L1
+check. The startup-on continuous route needs a 480-second timeout at the
+current race pace.
 
 The current car-material build repeated the cold on/off/on route and passed
 `verify-native-race-toggle.py --cold-start`: its off capture was nonblank and
@@ -378,9 +379,14 @@ The race/pause/free-roam/title route also exited normally and passed
 `verify-native-race-mode-boundary.py`; race remained native and the three
 unsupported modes used nonblank compatibility frames. Evidence:
 `.local/native-renderer/car-material-hot-toggle-20260925` and
-`.local/native-renderer/car-material-mode-boundary-20260925`. These scripted
-checks do not replace direct settings-overlay interaction or a longer
-unscripted driving check, so L1's player-facing signoff remains open.
+`.local/native-renderer/car-material-mode-boundary-20260925`. A visible
+settings-overlay run then switched `pinyon_shift_native_race` on before the
+sustained race capture and off afterward; screenshots show both checkbox
+states. The race capture had 27,367 native-sky pixels, and the route passed
+`verify-native-race-mode-boundary.py` for race, pause, free roam and title.
+Evidence: `.local/native-renderer/ui-settings-extended-20260925`. This
+confirms direct UI switching but not a longer unscripted driving check, so
+L1's player-facing signoff remains open.
 
 **Output-time texture version isolation (2026-09-25):** retaining a cached D3D12
 texture pointer did not freeze its content: later cache loads can write a new
