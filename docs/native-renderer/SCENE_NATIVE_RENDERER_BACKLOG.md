@@ -319,10 +319,10 @@ Effort is relative scope, not a time estimate.
    across the title hooks and command processor, then remove a measured
    bottleneck. Broad and late exact filtering of prepared-draw observation
    have not helped this route, and measured track range ownership and
-   constant packing are only a few milliseconds. Split the remaining SDK
-   `IssueDraw` compatibility work from snapshot construction and title view-8
-   work, then remove the largest proven cost. Establish the HUD dependency
-   cut before any bounded early suppression. Preserve immutable current-frame
+   constant packing are only a few milliseconds. Target the measured
+   prepared-draw observer and descriptor-binding paths; the title view-end
+   hook is under 1 ms. Establish the HUD dependency cut before a bounded
+   early suppression trial. Preserve immutable current-frame
    ownership and whole-frame fallback. Repeat the drive test until it is
    responsive.
    This is a usability requirement, not the later 15% speedup qualification.
@@ -396,6 +396,19 @@ pixel-constant reservation trial changed a matched median from 195.1 to
 These operations cannot explain the remaining capture slowdown; measure
 the larger compatibility draw and title-view paths before further micro-
 optimizing ownership.
+
+**Draw-path split (2026-09-25):** temporary per-frame SDK timers on two
+normal-exit no-screenshot race runs measured roughly 3,000 observed draws
+per captured frame. Medians were 4.9 ms before snapshot construction,
+11 ms for snapshots, 31 ms in the prepared-draw observer and 38–39 ms
+after the observer. Within that last span, texture requests took 1.5 ms
+and `UpdateBindings` took 10.4 ms. The rest of `IssueDraw` and work outside
+it remain substantial. A separate 26-view timer measured the title's
+view-8 end hook at 0.77 ms median; the earlier 29–52 ms view interval was
+mostly game work, not that hook. All timers were removed. Next isolate the
+observer's track/remainder selection and the binding work before changing
+either path; verify a whole-frame gain and native output before keeping a
+change.
 
 A native-output timing run on the no-screenshot route found about 6–8 ms
 for the complete output-frame scene handoff, 1.6–3 ms to parse track and
