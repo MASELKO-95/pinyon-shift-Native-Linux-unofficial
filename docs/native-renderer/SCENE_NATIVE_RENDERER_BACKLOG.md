@@ -844,11 +844,12 @@ produced 1280×720 guest captures, so resize fallback remains unvalidated.
 
 **Live-capture cost triage (2026-09-25):** the toggle route took 6.69 seconds
 from output frame 5000 to 5005 at `INFO` logging and 6.61 seconds with
-`--log-level=warn`. Temporary timers placed around the three output-stage
-scene consumers measured roughly 6–9 ms total per frame. Neither logging nor
-those consumers explain the approximately 1.3-second live frame. The costly
-work is earlier in per-draw/title snapshot preparation or its SDK handoff;
-instrument that path before changing serialization or GPU rendering. The
+`--log-level=warn`. That spelling did not change the game log level, so this
+pair is **not** a logging sensitivity test. Temporary timers placed around
+the three output-stage scene consumers measured roughly 6–9 ms total per
+frame. The unmeasured cost is earlier in per-draw/title snapshot preparation
+or its SDK handoff; instrument that path before changing serialization or GPU
+rendering. The
 timers were removed after the measurement. This capture pace still prevents
 L2 from being a usable driving mode.
 An isolated A/B then disabled the prepared-draw observer while leaving the
@@ -1457,6 +1458,38 @@ owned vertex/index/draw state and is not a usable renderer fix. The remaining
 hook was restored and rebuilt. Local images and CSV:
 `.local/native-renderer/ui-no-prepared-observer-20260925/` and
 `20260925T200337Z-p49920.perf.csv`.
+
+**CPU trace and logging correction (2026-09-25):** the valid, zero-drop ETW
+capture at `.local/cpu-profile/20260925-140902/` includes 329,185 CPU
+samples and 861,085 waits. In its source-frame 5000–5028 window, the
+29 source intervals have a 187.57 ms median. The GPU and logging threads
+sample heavily in `spdlog` flush, `fwrite` and log rotation; a rotating
+5 MB log segment contains over 17,000 FH1 diagnostic records. These sampled
+thread times overlap and are not additive frame costs. Earlier attempts to
+disable logging with `--log-level=warn` were invalid: the game cvar is
+`--log_level=warn`, and the dashed spelling was silently ignored. With the
+correct flag, the same dense capture-only route and native request off had
+HUD in all 11 sampled frames and a 64.60 ms median over source rows
+6785–6810, versus four HUD gaps and 164.52 ms with default INFO. This is a
+strong logging sensitivity result, not proof that logging alone causes the
+omission. A full native-requested run with `--log_level=warn` still had three
+HUD gaps (ticks 6792, 6794 and 6810), and its sampled 6785–6810 median was
+96.36 ms. Its images show compatibility world, so it does not establish
+native-scene/HUD continuity. Evidence is at
+`.local/native-renderer/ui-capture-warn-20260925/` and
+`.local/native-renderer/ui-native-warn-20260925/`; the latter CSV is
+`20260925T202443Z-p20784.perf.csv`. A temporary build that quieted only GPU
+INFO during native mode exited normally at a 75.41 ms median, but five of 11
+sampled frames lacked the HUD and all 11 showed compatibility geometry.
+Its evidence is at `.local/native-renderer/ui-native-autoquiet-20260925/` and
+`20260925T203127Z-p38424.perf.csv`. That runtime logging change was reverted:
+it reduced cost but failed native admission and HUD continuity. One likely
+race is that the title publishes admission in `PinyonShiftTraceFrameTelemetry`
+after the GPU output has checked the exact source frame; removing GPU log
+stalls may expose it. This is a hypothesis, not yet a proved happens-before
+trace. Next: instrument the admission publish/check ordering without adding
+per-draw logs, then fix the ordering and isolate the title-side missing UI
+pass before claiming sustained L1 usability.
 
 1. Add the narrow D3D12 output-takeover seam first. The current FH1 output
    callback is an observer after compatibility output processing; it cannot
