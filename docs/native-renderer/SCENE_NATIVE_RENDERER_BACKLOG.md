@@ -315,13 +315,15 @@ Effort is relative scope, not a time estimate.
    outside the race, and no stale or blank output. Keep native default-off
    and document any unsupported resolution.
 2. Prove a retained-HUD boundary before trying to skip compatibility draws.
-   A same-frame race capture now identifies the first HUD packet and confirms
-   the world-only image immediately before it. Trace this packet boundary
-   through the title UI emitter, then check pause, free-roam and title output
-   before using it as a mode-gated rule. Inject the native world before the
-   first retained draw in a bounded race probe and verify the complete HUD.
-   Reject the entire native frame when the boundary or race mode is uncertain;
-   verify pause, free-roam and title keep complete compatibility output.
+   Same-frame race, pause and title captures now identify the first UI packet
+   after the world-only output and match every UI draw to RenderDoc. Next,
+   move the owned native scene to the first race UI draw, inject it there in a
+   bounded opt-in probe, and verify that subsequent guest draws retain the
+   complete HUD. Admit this path only on an independently validated race
+   frame with the proved target and draw sequence. Reject the entire native
+   frame when scene, boundary or race admission is uncertain; check pause,
+   free roam and title still use complete compatibility output. Keep the
+   existing late takeover as the fallback while proving this early path.
 3. Attribute live-race cost before another capture optimization. The committed
    `fh1-native-race-profile.fh1test` route captures no screenshots; its most
    recent pre-capture/captured medians were 25.35/219.05 ms. Capture a sampled
@@ -1259,6 +1261,33 @@ without HUD after event 24390 and a minimap after event 24414; by event
 frame, not for other modes or adjacent frames. Trace title UI packet ownership
 and validate pause/free-roam/title before permitting injection or suppression.
 The temporary draw logger was removed after capture.
+
+**Same-frame title and paused-race boundaries (2026-09-25):** the same
+one-frame guest-draw/RenderDoc method captured a title-return output frame
+and a paused-race output frame with compatibility rendering. The local
+evidence is under `.local/native-renderer/ui-title-sameframe-20260925/` and
+`.local/native-renderer/ui-pause-sameframe-20260925/`; their RDC SHA-256
+values are `90C5C46C80BFF49FCDA1379A3C12F81AE78F15093574C35AA2F84E8F0CA2620F`
+and `2FC83DA93CE305910F89A35298C9D1B1D86CAD178DB1331CC3514F18F7BE0BA3`.
+In title output frame 7123, guest packet `0x1325E458` is the first draw
+after the last `RB_COLOR_INFO=0x00020000` postprocess packet; its state
+changes to `0x000A0000`. All 47 title UI draws match 47 host draws in order
+by shader pair and index count, starting at event 1592. The first title UI
+shader differs from the race's first UI shader, so the boundary must use
+target and pass semantics, not one fixed shader hash. In paused-race output
+frame 5143, packet `0x12F37C88` makes the same format transition. All 142
+UI draws match 142 host draws, from event 28520 through 29420. The target
+image at event 28507 contains the unobscured race world; event 29420
+contains the original pause menu and prompts. These captures prove the
+postprocess/UI split for three individual frames, but do not yet validate
+a general boundary predicate or a game-mode admission signal. The
+title-return capture and one earlier compatibility run showed saturated
+background noise with readable menu text, so title image quality and route
+checkpoint semantics need a separate compatibility control before title
+transition signoff. A prior clean `title-settled` screenshot still showed a
+free-roam pause/options overlay, demonstrating that the checkpoint name is
+not proof of the active game mode. The temporary guest-draw logger was
+removed after these captures.
 
 1. Add the narrow D3D12 output-takeover seam first. The current FH1 output
    callback is an observer after compatibility output processing; it cannot
