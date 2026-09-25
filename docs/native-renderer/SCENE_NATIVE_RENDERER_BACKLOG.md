@@ -1537,9 +1537,15 @@ and drew natively, with zero missing-family or draw-rejection warnings. Four
 of eleven sampled screenshots lacked HUD and used compatibility geometry.
 The compatibility-only replay at `.local/native-renderer/compat-ui-stress-20260925/`
 had HUD in all eleven corresponding captures, so the HUD gap is specific to
-native mode rather than an ordinary baseline cadence. Next: trace why the
-native UI boundary is absent on those frames and confirm whether the guest
-UI pass is present in their command stream. Preserve whole-frame fallback until
+native mode rather than an ordinary baseline cadence. A temporary D3D12
+candidate trace on a short replay found seven of 51 source frames
+(6500–6550) with no UI-target candidate before output; those frames ended
+on the world target
+`0x00020000`, while ordinary injected frames reached `0x000A0000`. The
+trace was removed after collection because per-draw warning logs distort
+timing. Next: resolve the world-to-UI/output sequencing for these frames,
+then verify HUD continuity with the same screenshot route. Preserve
+whole-frame fallback until
 every required current-frame family is present and the native draw succeeds.
 
 1. Add the narrow D3D12 output-takeover seam first. The current FH1 output
