@@ -3301,8 +3301,10 @@ pinyon_shift::native_renderer::ParseSnr04RemainderScene(
   const auto source = fixture;
   Reader reader{source};
   const auto magic = reader.take<std::array<char, 8>>();
+  const bool pixel_constants = magic ==
+      (std::array<char, 8>{'S','N','R','0','3','R','5','\0'});
   const bool fast_hash = magic ==
-      (std::array<char, 8>{'S','N','R','0','3','R','4','\0'});
+      (std::array<char, 8>{'S','N','R','0','3','R','4','\0'}) || pixel_constants;
   const bool versioned = fast_hash || magic ==
       (std::array<char, 8>{'S','N','R','0','3','R','3','\0'});
   require(versioned || magic ==
@@ -3425,6 +3427,20 @@ pinyon_shift::native_renderer::ParseSnr04RemainderScene(
     draw.depth = reader.take<uint32_t>();
     draw.viewport = reader.take<std::array<float, 6>>();
     draw.scissor = reader.take<std::array<int32_t, 4>>();
+    if (pixel_constants) {
+      draw.pixel_specialization = reader.take<uint64_t>();
+      draw.pixel_bitmap = reader.take<std::array<uint64_t, 4>>();
+      const auto pixel_words = reader.take<uint32_t>();
+      require(pixel_words <= 1024 && pixel_words % 4 == 0 &&
+                  pixel_words == 4 * (std::popcount(draw.pixel_bitmap[0]) +
+                      std::popcount(draw.pixel_bitmap[1]) +
+                      std::popcount(draw.pixel_bitmap[2]) +
+                      std::popcount(draw.pixel_bitmap[3])),
+              "invalid remainder pixel constants");
+      draw.pixel_packed.reserve(pixel_words);
+      for (uint32_t word = 0; word < pixel_words; ++word)
+        draw.pixel_packed.push_back(reader.take<uint32_t>());
+    }
     require(draw.sequence && (!i || draw.sequence > draws.back().sequence) &&
                 draw.packet && draw.shader && draw.count && draw.count <= 32768 &&
                 guest_primitive == draw.primitive &&
@@ -4077,7 +4093,8 @@ pinyon_shift::native_renderer::RunSnr04BatchDiagnosticFromBytes(
     else if (kind == "SNR03M1")
       covered = RunSnr04ManagerDiagnosticFromBytes(fixture, shader, output,
                                           borrowed_device, samples, &segment);
-    else if (kind == "SNR03R2" || kind == "SNR03R3")
+    else if (kind == "SNR03R2" || kind == "SNR03R3" ||
+             kind == "SNR03R4" || kind == "SNR03R5")
       covered = RunSnr04RemainderDiagnosticFromBytes(fixture, shader, output,
                                             borrowed_device, samples, &segment);
     else if (entry.vegetation)

@@ -113,6 +113,9 @@ struct Snr04RemainderDraw {
   std::vector<Fetch> fetches;
   Snr04RemainderRange index{};
   std::vector<uint32_t> packed;
+  uint64_t pixel_specialization = 0;
+  std::array<uint64_t, 4> pixel_bitmap{};
+  std::vector<uint32_t> pixel_packed;
   std::array<uint32_t, 64> system{};
   std::array<uint32_t, 192> bound_fetch{};
   uint32_t raster = 0, clip = 0, depth = 0;

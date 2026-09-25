@@ -926,7 +926,7 @@ struct Snr03RemainderFetch {
 };
 struct Snr03RemainderDraw {
   uint64_t sequence = 0, shader = 0, pixel_shader = 0;
-  uint64_t specialization = 0, dynamic = 0;
+  uint64_t specialization = 0, pixel_specialization = 0, dynamic = 0;
   uint32_t family = 0, title_key = 0, target = 0, packet = 0, count = 0;
   uint32_t guest_primitive = 0, host_primitive = 0, index_type = 0;
   uint32_t host_index_format = 0, index_endianness = 0;
@@ -939,6 +939,8 @@ struct Snr03RemainderDraw {
       texture_identities;
   std::array<uint64_t, 4> bitmap{};
   std::vector<uint32_t> packed;
+  std::array<uint64_t, 4> pixel_bitmap{};
+  std::vector<uint32_t> pixel_packed;
   std::array<uint32_t, 64> system{};
   std::array<uint32_t, 192> bound_fetch{};
   uint32_t raster_mode = 0, clip_control = 0, depth_control = 0;
@@ -1918,6 +1920,9 @@ void ObserveSnr03RemainderPayloadLocked(
       observation.texture_fetch_count > 16 ||
       (observation.texture_fetch_count && !observation.texture_fetches) ||
       observation.vertex_float_constant_count > 256 ||
+      observation.pixel_float_constant_count > 256 ||
+      (observation.pixel_float_constant_count &&
+       !observation.pixel_float_constant_bitmap) ||
       observation.index_buffer_type < 1 || observation.index_buffer_type > 2 ||
       !observation.index_count || observation.index_count > 32768 ||
       !observation.index_buffer_length ||
@@ -1935,6 +1940,7 @@ void ObserveSnr03RemainderPayloadLocked(
   draw.shader = observation.vertex_shader_hash;
   draw.pixel_shader = observation.pixel_shader_hash;
   draw.specialization = observation.vertex_specialization_mask;
+  draw.pixel_specialization = observation.pixel_specialization_mask;
   draw.family = family;
   draw.title_key = title_key;
   draw.target = observation.command_buffer_physical_address;
@@ -1987,16 +1993,26 @@ void ObserveSnr03RemainderPayloadLocked(
                              observation.texture_fetch_count);
   std::copy_n(observation.vertex_float_constant_bitmap, 4,
               draw.bitmap.begin());
+  if (observation.pixel_float_constant_bitmap)
+    std::copy_n(observation.pixel_float_constant_bitmap, 4,
+                draw.pixel_bitmap.begin());
   for (uint32_t reg = 0; reg < 256; ++reg) {
     if (draw.bitmap[reg / 64] & (uint64_t(1) << (reg % 64))) {
       const auto* words = observation.vertex_float_constant_words + reg * 4;
       draw.packed.insert(draw.packed.end(), words, words + 4);
     }
+    if (draw.pixel_bitmap[reg / 64] & (uint64_t(1) << (reg % 64))) {
+      const auto* words = observation.vertex_float_constant_words +
+                          (256 + reg) * 4;
+      draw.pixel_packed.insert(draw.pixel_packed.end(), words, words + 4);
+    }
   }
-  if (draw.packed.size() != observation.vertex_float_constant_count * 4) {
-    REXGPU_INFO("FH1 SNR03 remainder reject frame={} sequence={} reason=packed_constants actual={} expected={}",
+  if (draw.packed.size() != observation.vertex_float_constant_count * 4 ||
+      draw.pixel_packed.size() != observation.pixel_float_constant_count * 4) {
+    REXGPU_INFO("FH1 SNR03 remainder reject frame={} sequence={} reason=packed_constants vertex_actual={} vertex_expected={} pixel_actual={} pixel_expected={}",
                 observation.frame_sequence, observation.draw_sequence,
-                draw.packed.size(), observation.vertex_float_constant_count * 4);
+                draw.packed.size(), observation.vertex_float_constant_count * 4,
+                draw.pixel_packed.size(), observation.pixel_float_constant_count * 4);
     payload.rejected = true;
     return;
   }
@@ -2260,11 +2276,25 @@ void ObserveSnr03FinalDrawState(
           (!found->packed.empty() &&
            (!observation.bound_vertex_float_constant_words ||
             !std::equal(found->packed.begin(), found->packed.end(),
-                        observation.bound_vertex_float_constant_words)))) {
+                        observation.bound_vertex_float_constant_words))) ||
+          !observation.vertex_float_constant_words) {
         payload.rejected = true;
         return;
       }
       auto& draw = *found;
+      uint32_t pixel_word = 0;
+      for (uint32_t reg = 0; reg < 256; ++reg) {
+        if (draw.pixel_bitmap[reg / 64] & (uint64_t(1) << (reg % 64))) {
+          if (!std::equal(draw.pixel_packed.begin() + pixel_word,
+                          draw.pixel_packed.begin() + pixel_word + 4,
+                          observation.vertex_float_constant_words +
+                              (256 + reg) * 4)) {
+            payload.rejected = true;
+            return;
+          }
+          pixel_word += 4;
+        }
+      }
       for (const auto& fetch : draw.fetches) {
         if (fetch.constant >= 96 ||
             (observation.fetch_constant_words[fetch.constant * 2] &
@@ -3585,14 +3615,15 @@ void ObserveSnr03RemainderOutputFrame(uint64_t output_frame) {
       valid = false;
     }
   }
+  const bool native_capture = NativeRaceCaptureEnabled();
   std::vector<char> encoded;
   if (valid) {
     auto write = [&](const auto& value) {
       const auto* bytes = reinterpret_cast<const char*>(&value);
       encoded.insert(encoded.end(), bytes, bytes + sizeof(value));
     };
-    const std::array<char, 8> magic = NativeRaceCaptureEnabled()
-        ? std::array<char, 8>{'S','N','R','0','3','R','4','\0'}
+    const std::array<char, 8> magic = native_capture
+        ? std::array<char, 8>{'S','N','R','0','3','R','5','\0'}
         : std::array<char, 8>{'S','N','R','0','3','R','3','\0'};
     write(magic);
     write(car->source_frame);
@@ -3652,6 +3683,11 @@ void ObserveSnr03RemainderOutputFrame(uint64_t output_frame) {
       write(draw.system); write(draw.bound_fetch);
       write(draw.raster_mode); write(draw.clip_control);
       write(draw.depth_control); write(draw.viewport); write(draw.scissor);
+      if (native_capture) {
+        write(draw.pixel_specialization); write(draw.pixel_bitmap);
+        write(uint32_t(draw.pixel_packed.size()));
+        for (uint32_t word : draw.pixel_packed) write(word);
+      }
     }
   }
   const auto directory = fh1_render_test::OutputDirectory();

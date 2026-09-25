@@ -328,10 +328,10 @@ Effort is relative scope, not a time estimate.
    early-suppression trial.
 3. Make the existing L2 scene legible with owned inputs. Depth-only car draws
    now leave color intact, exposing the red body, but the sampled rear mask
-   still uses provisional gray and paint/glass remain placeholders. Capture
-   the car's actual per-draw pixel constants before deriving its color, then
-   address broad terrain/trackside material families using their observed
-   multi-fetch bindings. Keep road texture, foliage cutouts and the bounded
+   still uses provisional gray and paint/glass remain placeholders. Use the
+   now-owned per-draw pixel constants to derive car color, then address broad
+   terrain/trackside material families using their observed multi-fetch
+   bindings. Keep road texture, foliage cutouts and the bounded
    HUD bridge. Missing or stale resources must reject the entire native frame
    before submission; do not invent a fixed tint or single-fetch material for
    a shader that uses more inputs.
@@ -923,6 +923,22 @@ single run, so this is no evidence of a speed gain or regression. The
 sampled car shader also uses material constants absent from the current
 remainder payload; tinting its gray mask to a fixed car color would hide
 that missing input rather than supply a transferable paint/glass path.
+
+**Remainder pixel-input checkpoint (2026-09-25):** the live remainder payload
+now records each draw's pixel specialization, sparse constant bitmap and
+packed values in `SNR03R5`. The final-draw observer rejects a changed value;
+the parser validates the count/bitmap and still accepts older R2–R4 fixtures.
+Null-pixel-shader depth draws correctly carry no pixel constants. The
+saved-race on/off/on route passed `verify-native-race-toggle.py`, and a
+startup-on run exited normally and passed 20 consecutive moving frames with
+`verify-native-track-output.py --native-first --car-body`. Frame 5020's
+remainder scene was admitted with 324 draws. A separate run that enabled
+native output from launch but delayed capture to frame 5000 lacked car draws
+and correctly fell back; do not use that mixed configuration for continuous
+qualification. These owned constants are inputs for car paint/glass work,
+not a material rendering improvement by themselves. Evidence:
+`.local/native-renderer/remainder-pixel-toggle-20260925` and
+`.local/native-renderer/remainder-pixel-startup-on-20260925`.
 
 **Final-pass boundary check (2026-09-24):** the existing race RenderDoc
 capture `renderdoc-gatea-full-b_frame5001.rdc` (SHA-256
