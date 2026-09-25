@@ -1491,15 +1491,56 @@ trace. Next: instrument the admission publish/check ordering without adding
 per-draw logs, then fix the ordering and isolate the title-side missing UI
 pass before claiming sustained L1 usability.
 
-**Admission-order trace prepared (2026-09-25):** the title publication and
-the GPU pre-UI/output checks now emit `native_admission_publish`,
-`native_admission_pre_ui` and `native_admission_output` critical-path events
-only when critical-path tracing is enabled. These are per-frame events, not
-per-draw logging. The RelWithDebInfo build and idle smoke route passed. WPR
-denied access in the current non-elevated shell, so event order remains
-unmeasured. An elevated marker-only replay of
-`fh1-native-ui-admission-stress.fh1test` with native race, capture start
-6500, boundary/scene probes and `--log_level=warn` is the next check.
+**Admission and scene outcome (2026-09-25):** the title publication and GPU
+pre-UI/output checks emit per-frame critical-path events. An elevated
+marker-only replay with `--log_level=warn` exited normally with zero dropped
+events; the exporter now supports captures without CPU stacks. All 264
+recorded pre-UI checks over source frames 6500–6830 saw admission published
+before the check. The three HUD-free sampled images map through the
+render-test capture events to source frames 6793, 6801 and 6807, which have
+no pre-UI boundary. Admission ordering is therefore not the observed cause
+of either the HUD gap or missing native scene. Evidence is at
+`C:/Windows/System32/.local/cpu-profile/native-admission-elevated/` and the
+workspace export `.local/cpu-profile/native-admission-elevated-export/`.
+
+The dense INFO replay at `.local/native-renderer/scene-status-trace-20260925/`
+shows admitted, drawn native scenes on sampled frames and compatibility
+fallback on HUD-free frames. Two warning-level replays diverged. The first,
+`.local/native-renderer/scene-status-warn-20260925/`, retained compatibility
+geometry throughout the sampled tail: some scene snapshots had only track,
+and assembled scenes returned `drawn=false`. This run preceded the optional
+family bitmask, so the exact missing family or draw rejection is unproved.
+A short warning-level replay at
+`.local/native-renderer/scene-status-short-warn-20260925/` drew the native
+scene successfully from source frame 6500 through 6550, despite alternating
+track-only snapshots. A second dense warning-level replay at
+`.local/native-renderer/draw-reject-warn-20260925/` also drew admitted native
+frames late in the race; its assembled scenes included the remainder. This
+is run-dependent scene/draw outcome. A focused warning-level replay at
+`.local/native-renderer/family-missing-short-20260925/` showed that the GPU
+still captured hundreds of remainder draws on track-only frames, while all
+title-side car, scalar, item and vegetation scenes were missing together.
+A title view-end trace at
+`.local/native-renderer/title-view8-short-20260925/` then showed complete
+title records on those frames: frame 6522 was published before the GPU
+consumed frame 6520. The five title-scene maps retained only two frames, so
+publishing 6522 evicted 6520. Their window is now four frames, with one
+frame of margin beyond that observed lead. The short replay at
+`.local/native-renderer/title-window-four-20260925/` exited normally: all
+38 source frames that reached scene snapshot over 6500–6550 assembled and
+drew natively, with no missing-family or draw-rejection warning. Thirteen
+source frames had no scene callback, consistent with the independent missing
+pre-UI boundary seen in the ETW capture. A dense replay at
+`.local/native-renderer/title-window-four-stress-20260925/` also exited
+normally: all 287 scene callbacks over source frames 6500–6830 assembled
+and drew natively, with zero missing-family or draw-rejection warnings. Four
+of eleven sampled screenshots lacked HUD and used compatibility geometry.
+The compatibility-only replay at `.local/native-renderer/compat-ui-stress-20260925/`
+had HUD in all eleven corresponding captures, so the HUD gap is specific to
+native mode rather than an ordinary baseline cadence. Next: trace why the
+native UI boundary is absent on those frames and confirm whether the guest
+UI pass is present in their command stream. Preserve whole-frame fallback until
+every required current-frame family is present and the native draw succeeds.
 
 1. Add the narrow D3D12 output-takeover seam first. The current FH1 output
    callback is an observer after compatibility output processing; it cannot

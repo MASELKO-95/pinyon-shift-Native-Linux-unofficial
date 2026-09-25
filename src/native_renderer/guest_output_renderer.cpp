@@ -88,9 +88,18 @@ bool ObserveRenderTestOutput(
         const float sky[4]{0.11f, 0.22f, 0.43f, 1.f};
         return context.clear_color(context, sky);
       }
-      if (scene && REXCVAR_GET(pinyon_shift_native_ui_scene_probe))
-        return pinyon_shift::native_renderer::DrawNativeOutputTrack(
+      if (scene && REXCVAR_GET(pinyon_shift_native_ui_scene_probe)) {
+        const bool drawn = pinyon_shift::native_renderer::DrawNativeOutputTrack(
             context, *scene);
+        rex::perf::TraceCriticalPath("native_scene_draw",
+                                     int64_t(scene->source_frame), drawn);
+        static const bool log_draw =
+            rex::cvar::GetFlagByName("perf_critical_path_trace") == "true";
+        if (log_draw)
+          REXGPU_WARN("FH1 native scene draw source_frame={} drawn={}",
+                      scene->source_frame, drawn);
+        return drawn;
+      }
     }
 #endif
     return false;

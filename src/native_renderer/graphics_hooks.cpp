@@ -747,6 +747,8 @@ bool WriteSceneFixture(std::span<const char> bytes, uint64_t source_frame,
 thread_local std::vector<Snr03VegetationItem> snr03_vegetation_items;
 thread_local std::vector<Snr03VegetationItem> snr03_character_items;
 thread_local bool snr03_scene_overflow = false;
+// The title can publish frame N+2 before the GPU consumes frame N.
+constexpr size_t kNativeTitleSceneFrames = 4;
 std::mutex snr03_scene_mutex;
 std::map<uint64_t, std::shared_ptr<const Snr03SceneSnapshot>> snr03_scenes;
 std::map<uint64_t, Snr03PayloadState> snr03_payloads;
@@ -3351,6 +3353,13 @@ void ObserveSnr02ItemOutputFrame(uint64_t output_frame, void* device) {
   }
   if (!scene || payload.rejected ||
       payload.by_packet.size() != scene->items.size()) {
+    static const bool trace =
+        rex::cvar::GetFlagByName("perf_critical_path_trace") == "true";
+    if (trace)
+      REXGPU_WARN("FH1 native item missing source_frame={} title={} items={} "
+                  "payloads={} rejected={}", output_frame - 1, bool(scene),
+                  scene ? scene->items.size() : 0, payload.by_packet.size(),
+                  payload.rejected);
     REXGPU_INFO("FH1 SNR02 item owned scene rejected output_frame={} "
                 "items={} payloads={} unstable={}", output_frame,
                 scene ? scene->items.size() : 0, payload.by_packet.size(),
@@ -3640,6 +3649,12 @@ void ObserveSnr03RemainderOutputFrame(uint64_t output_frame) {
     }
   }
   const bool native_capture = NativeRaceCaptureEnabled();
+  static const bool trace_remainder =
+      rex::cvar::GetFlagByName("perf_critical_path_trace") == "true";
+  if (trace_remainder && !valid)
+    REXGPU_WARN("FH1 native remainder missing source_frame={} car={} scalar={} "
+                "draws={} rejected={}", output_frame - 1, bool(car),
+                bool(scalar), payload.draws.size(), payload.rejected);
   std::vector<char> encoded;
   if (valid) {
     auto write = [&](const auto& value) {
@@ -3772,6 +3787,12 @@ void ObserveSnr03OutputFrame(uint64_t output_frame, void* device) {
     }
   }
   if (!scene) {
+    static const bool trace =
+        rex::cvar::GetFlagByName("perf_critical_path_trace") == "true";
+    if (trace)
+      REXGPU_WARN("FH1 native vegetation missing source_frame={} payloads={} "
+                  "rejected={}", output_frame - 1, payload.by_packet.size(),
+                  payload.rejected);
     REXGPU_INFO("FH1 SNR03 scene missing output_frame={} source_frame={}",
                 output_frame, output_frame - 1);
     return;
@@ -3864,6 +3885,13 @@ void ObserveSnr03OutputFrame(uint64_t output_frame, void* device) {
 #endif
   }
   if (payload.rejected || payload.by_packet.size() != scene->items.size()) {
+    static const bool trace =
+        rex::cvar::GetFlagByName("perf_critical_path_trace") == "true";
+    if (trace)
+      REXGPU_WARN("FH1 native vegetation incomplete source_frame={} items={} "
+                  "payloads={} rejected={}", output_frame - 1,
+                  scene->items.size(), payload.by_packet.size(),
+                  payload.rejected);
     REXGPU_INFO("FH1 SNR03 geometry rejected output_frame={} items={} "
                 "payloads={} bytes={} unstable={}", output_frame,
                 scene->items.size(), payload.by_packet.size(), payload.bytes,
@@ -3998,11 +4026,24 @@ std::shared_ptr<const Snr04LiveScene> SnapshotSnr04LiveScene(
   if (!output_frame || !Snr04LiveCaptureEnabled())
     return {};
   const uint64_t source_frame = output_frame - 1;
+  const auto trace_status = [source_frame](int64_t status, int64_t value = 0,
+                                           int64_t detail = 0) {
+    rex::perf::TraceCriticalPath("native_scene_status", int64_t(source_frame),
+                                 status, value, detail);
+    static const bool log_status =
+        rex::cvar::GetFlagByName("perf_critical_path_trace") == "true";
+    if (log_status)
+      REXGPU_WARN("FH1 native scene status source_frame={} status={} value={} "
+                  "detail={}", source_frame, status, value, detail);
+  };
   std::array<Snr04LiveFixture, 6> families;
   {
     std::lock_guard lock(snr04_live_mutex);
     const auto found = snr04_live_frames.find(source_frame);
-    if (found == snr04_live_frames.end()) return {};
+    if (found == snr04_live_frames.end()) {
+      trace_status(0);
+      return {};
+    }
     families = found->second;
   }
   const auto& track = families[size_t(Snr04LiveFamily::track)];
@@ -4011,6 +4052,8 @@ std::shared_ptr<const Snr04LiveScene> SnapshotSnr04LiveScene(
   if (!track.bytes || !items.procedural || !vegetation.vegetation ||
       items.procedural->frame != source_frame ||
       vegetation.vegetation->title->source_frame != source_frame) {
+    trace_status(1, bool(track.bytes) | (bool(items.procedural) << 1) |
+                        (bool(vegetation.vegetation) << 2));
     REXGPU_INFO("FH1 native scene unavailable source_frame={} track={} items={} "
                 "vegetation={}", source_frame, bool(track.bytes),
                 bool(items.procedural), bool(vegetation.vegetation));
@@ -4029,6 +4072,7 @@ std::shared_ptr<const Snr04LiveScene> SnapshotSnr04LiveScene(
                         size_t(Snr04LiveFamily::manager),
                         size_t(Snr04LiveFamily::remainder)})
     if (!matches_frame(families[family].bytes)) {
+      trace_status(2, int64_t(family));
       REXGPU_INFO("FH1 native scene frame mismatch source_frame={} family={}",
                   source_frame, family);
       return {};
@@ -4039,6 +4083,7 @@ std::shared_ptr<const Snr04LiveScene> SnapshotSnr04LiveScene(
                         size_t(Snr04LiveFamily::vegetation)}) {
     const auto& owned = families[family].sequences;
     if (owned.empty() || owned.size() > 4096) {
+      trace_status(3, int64_t(family), int64_t(owned.size()));
       REXGPU_INFO("FH1 native scene sequence count rejected source_frame={} "
                   "family={} count={}", source_frame, family, owned.size());
       return {};
@@ -4046,6 +4091,7 @@ std::shared_ptr<const Snr04LiveScene> SnapshotSnr04LiveScene(
     for (uint64_t sequence : owned)
       if (!sequence || !sequences.insert(sequence).second ||
           sequences.size() > 4096) {
+        trace_status(4, int64_t(family), int64_t(sequence));
         REXGPU_INFO("FH1 native scene sequence rejected source_frame={} "
                     "family={} sequence={}", source_frame, family, sequence);
         return {};
@@ -4065,12 +4111,16 @@ std::shared_ptr<const Snr04LiveScene> SnapshotSnr04LiveScene(
     scene->remainder_textures =
         families[size_t(Snr04LiveFamily::remainder)].textures;
     scene->core_draws = uint32_t(sequences.size());
+    trace_status(5, int64_t(scene->core_draws),
+                 bool(scene->characters) | (bool(scene->manager) << 1) |
+                     (bool(scene->remainder) << 2));
     REXGPU_INFO("FH1 native scene admitted source_frame={} core_draws={} "
                 "characters={} manager={} remainder={}", source_frame,
                 scene->core_draws, bool(scene->characters),
                 bool(scene->manager), bool(scene->remainder));
     return scene;
   } catch (const std::exception& error) {
+    trace_status(6);
     REXGPU_INFO("FH1 native scene rejected source_frame={} reason={}",
                 source_frame, error.what());
   }
@@ -4689,6 +4739,14 @@ void PinyonShiftObservePresentationViewEnd() {
   snr01_view_scopes.pop_back();
   const uint64_t frame = uint64_t(rex::perf::GetTotalCounter(
       rex::perf::CounterId::kSourceFrameCount));
+  static const bool trace_view_end =
+      rex::cvar::GetFlagByName("perf_critical_path_trace") == "true";
+  if (trace_view_end && scope.ordinal == 8 && Snr03ProbeSourceFrame(frame))
+    REXGPU_WARN("FH1 native title view8 end source_frame={} items={} "
+                "vegetation={} car={} scalar={} camera={}", frame,
+                snr02_item_title_items.size(), snr03_vegetation_items.size(),
+                snr03_car_title_records.size(),
+                snr03_scalar_title_records.size(), bool(scope.camera));
   if (scope.ordinal == 8 && Snr02TrackProbeSourceFrame(frame)) {
     std::lock_guard lock(snr02_track_targets_mutex);
     auto& state = snr02_track_frames.at(frame);
@@ -4723,7 +4781,7 @@ void PinyonShiftObservePresentationViewEnd() {
       auto scene = std::make_shared<const Snr02ItemScene>(std::move(snapshot));
       {
         std::lock_guard lock(snr02_item_scene_mutex);
-        if (snr02_item_scenes.size() == 2) {
+        if (snr02_item_scenes.size() >= kNativeTitleSceneFrames) {
           const auto old = snr02_item_scenes.begin()->first;
           snr02_item_scenes.erase(snr02_item_scenes.begin());
           snr02_item_payloads.erase(old);
@@ -4757,7 +4815,7 @@ void PinyonShiftObservePresentationViewEnd() {
       uint64_t dropped_frame = 0;
       {
         std::lock_guard lock(snr03_scene_mutex);
-        if (snr03_scenes.size() == 2) {
+        if (snr03_scenes.size() >= kNativeTitleSceneFrames) {
           dropped_frame = snr03_scenes.begin()->first;
           snr03_scenes.erase(snr03_scenes.begin());
           snr03_payloads.erase(dropped_frame);
@@ -4826,7 +4884,7 @@ void PinyonShiftObservePresentationViewEnd() {
           std::move(snapshot));
       {
         std::lock_guard lock(snr03_scene_mutex);
-        if (snr03_manager_scenes.size() == 2) {
+        if (snr03_manager_scenes.size() >= kNativeTitleSceneFrames) {
           const auto old = snr03_manager_scenes.begin()->first;
           snr03_manager_scenes.erase(snr03_manager_scenes.begin());
           snr03_manager_payloads.erase(old);
@@ -4859,7 +4917,7 @@ void PinyonShiftObservePresentationViewEnd() {
           std::move(snapshot));
       {
         std::lock_guard lock(snr03_scene_mutex);
-        if (snr03_car_scenes.size() == 2)
+        if (snr03_car_scenes.size() >= kNativeTitleSceneFrames)
           snr03_car_scenes.erase(snr03_car_scenes.begin());
         snr03_car_scenes[frame] = scene;
       }
@@ -4885,7 +4943,7 @@ void PinyonShiftObservePresentationViewEnd() {
           std::move(snapshot));
       {
         std::lock_guard lock(snr03_scene_mutex);
-        if (snr03_scalar_scenes.size() == 2)
+        if (snr03_scalar_scenes.size() >= kNativeTitleSceneFrames)
           snr03_scalar_scenes.erase(snr03_scalar_scenes.begin());
         snr03_scalar_scenes[frame] = scene;
       }

@@ -17,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include <rex/cvar.h>
 #include <rex/graphics/d3d12/deferred_command_list.h>
 #include <rex/logging.h>
 #include <rex/system/interfaces/graphics.h>
@@ -822,32 +823,41 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
 
 bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
                const Snr04LiveScene& live, TrackGraphics& graphics) {
+  const auto reject = [&](const char* stage) {
+    static const bool trace =
+        rex::cvar::GetFlagByName("perf_critical_path_trace") == "true";
+    if (trace)
+      REXGPU_WARN("FH1 native draw rejected source_frame={} stage={}",
+                  live.source_frame, stage);
+    return false;
+  };
   const bool pre_ui =
       context.phase == rex::system::NativeGuestOutputPhase::kBeforeUi;
   auto* device = static_cast<ID3D12Device*>(context.device);
   auto* output = static_cast<ID3D12Resource*>(context.guest_output);
   auto* list = static_cast<rex::graphics::d3d12::DeferredCommandList*>(
       context.deferred_command_list);
+  if (!live.remainder) return reject("missing_remainder");
   if (!device || !output || !list || !live.track || !live.items ||
-      !live.vegetation || !live.remainder ||
+      !live.vegetation ||
       output->GetDesc().Format != DXGI_FORMAT_R10G10B10A2_UNORM ||
       output->GetDesc().Width != 1280 ||
       output->GetDesc().Height < 720 ||
       (pre_ui && context.guest_output_state !=
                      D3D12_RESOURCE_STATE_RENDER_TARGET) ||
       !graphics.Ready(device) || !graphics.BlitReady())
-    return false;
+    return reject("input_or_pipeline");
   auto scene = ParseSnr04TrackScene(*live.track);
   auto remainder = ParseSnr04RemainderScene(*live.remainder);
   if (scene.source_frame != live.source_frame || !scene.raster_captured ||
       scene.draws.empty() || live.items->frame != live.source_frame ||
       live.vegetation->source_frame != live.source_frame ||
       remainder.source_frame != live.source_frame)
-    return false;
+    return reject("scene_parse");
   while (!graphics.submitted.empty() &&
          graphics.submitted.front().first <= context.completed_submission)
     graphics.submitted.pop_front();
-  if (graphics.submitted.size() >= 8) return false;
+  if (graphics.submitted.size() >= 8) return reject("in_flight_limit");
 
   UploadArena arena;
   struct Material {
@@ -912,7 +922,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       REXGPU_INFO("FH1 native track shader unavailable frame={} sequence={} "
                   "shader={:016X}", live.source_frame, draw.sequence,
                   draw.shader);
-      return false;
+      return reject("track_pipeline");
     }
     const float tile_offset = 720.f - draw.viewport[3];
     if (tile_offset < 0 || tile_offset != std::floor(tile_offset) ||
@@ -930,7 +940,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
           !resolve_material(*found->second, binding.material_index)) {
         REXGPU_INFO("FH1 native track texture unavailable frame={} sequence={}",
                     live.source_frame, draw.sequence);
-        return false;
+        return reject("track_texture");
       }
     }
     binding.pipeline = {draw.shader, draw.specialization, draw.raster_mode,
@@ -960,14 +970,14 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   uint32_t item_index_bytes = 0;
   if (!PrepareItems(context, *live.items, graphics, arena, item_bindings,
                     item_index, item_index_bytes))
-    return false;
+    return reject("prepare_items");
   std::vector<ItemDrawBinding> vegetation_bindings;
   uint64_t vegetation_index = 0;
   uint32_t vegetation_index_bytes = 0;
   if (!PrepareVegetation(context, *live.vegetation, graphics, arena,
                          vegetation_bindings, vegetation_index,
                          vegetation_index_bytes))
-    return false;
+    return reject("prepare_vegetation");
   std::map<std::pair<uint64_t, uint32_t>,
            const Snr04TrackTextureIdentity*> vegetation_textures;
   if (live.vegetation_textures)
@@ -986,14 +996,14 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         !resolve_material(*alpha->second, binding.material_index)) {
       REXGPU_INFO("FH1 native foliage alpha unavailable frame={} sequence={}",
                   live.source_frame, binding.sequence);
-      return false;
+      return reject("foliage_alpha");
     }
   }
   std::vector<RemainderDrawBinding> remainder_bindings;
   uint64_t remainder_vertex = 0;
   if (!PrepareRemainder(context, remainder, graphics, arena,
                         remainder_bindings, remainder_vertex))
-    return false;
+    return reject("prepare_remainder");
   std::map<std::pair<uint64_t, uint32_t>,
            const Snr04TrackTextureIdentity*> remainder_textures;
   if (live.remainder_textures)
@@ -1020,10 +1030,11 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     if (found == remainder_textures.end() ||
         !resolve_material(*found->second,
                           remainder_bindings[i].material_index))
-      return false;
+      return reject("remainder_texture");
   }
   TrackFrame frame;
-  if (!CreateFrame(device, output, arena, pre_ui, frame)) return false;
+  if (!CreateFrame(device, output, arena, pre_ui, frame))
+    return reject("create_frame");
   if (!materials.empty()) {
     D3D12_HEAP_PROPERTIES heap_properties{};
     heap_properties.Type = D3D12_HEAP_TYPE_DEFAULT;
