@@ -317,11 +317,11 @@ Effort is relative scope, not a time estimate.
    no per-frame screenshots, recent captured-race medians vary from 174 to
    196 ms versus about 22 ms before capture starts. Profile the capture work
    across the title hooks and command processor, then remove a measured
-   bottleneck. Broad filtering of prepared-draw observation has already
-   regressed this route. The next measurement must separate ordinary
-   compatibility draw work from the native capture callbacks and establish
-   the HUD dependency cut before any early suppression. Preserve immutable
-   current-frame ownership and whole-frame fallback. Repeat the drive test
+   bottleneck. Broad and late exact filtering of prepared-draw observation
+   have not helped this route. Target repeated ownership and constant-packing
+   in track and remainder capture, then repeat the whole-frame measurement.
+   Establish the HUD dependency cut before any early suppression. Preserve
+   immutable current-frame ownership and whole-frame fallback. Repeat the drive test
    until it is responsive.
    This is a usability requirement, not the later 15% speedup qualification.
 3. Make the existing L2 scene legible before expanding shader coverage:
@@ -368,6 +368,15 @@ no-screenshot median to 223 ms. The remainder selector still admits most
 draws, so do not carry this filter forward. The temporary timers and filter
 were removed. Next profile ownership/capture work at a narrower boundary
 before changing the observation architecture.
+
+An exact packet/dispatch/target selector was also tried at the SDK's
+prepared-draw boundary. The title's IDs became available only after roughly
+1,000–1,800 selector calls in each output frame, so earlier draws still had
+to be admitted. A no-screenshot saved-race run exited normally, but its
+27-frame median was 174.7 ms, inside the existing 174–196 ms range. The
+trial was removed. Do not add another late prepared-draw filter; publish
+the needed title IDs before GPU draw preparation, or first remove measured
+work from the selected ownership paths below.
 
 A second RelWithDebInfo split of the prepared-draw callback on the same
 no-screenshot route reached normal exit at source 5030. Across roughly
