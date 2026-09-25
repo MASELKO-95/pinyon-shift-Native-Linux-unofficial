@@ -326,6 +326,11 @@ Effort is relative scope, not a time estimate.
    texture families. Keep road texture, foliage cutouts and the bounded HUD
    bridge. Missing or stale borrowed resources must reject the entire native
    frame before submission.
+4. Own the sampled source texture version across the source/output handoff.
+   The texture cache can reload into the same D3D12 resource between those
+   frames, so retaining only its pointer is insufficient. Keep whole-frame
+   fallback until this is solved; then repeat the 20-frame native-output
+   continuity check under normal texture streaming.
 
 Do not start paired compatibility-work suppression, broad material parity or
 a second graphics backend to close L1/L2. The checkpoints below are evidence,
@@ -370,6 +375,20 @@ about 9–32 ms, including periodic spikes. The temporary timers were
 removed. The next capture change should target repeated ownership and
 constant-packing work in these two selected families, then repeat the
 whole-frame measurement; neither slice alone closes the responsiveness gap.
+
+**Texture-continuity check (2026-09-25):** two normal saved-race visual runs
+each exited successfully but `verify-native-track-output.py` failed on one
+or two of 20 consecutive frames. Each failed image was a complete
+compatibility frame, and the log showed a live texture allocation advancing
+one payload generation between capture and output (588:3→588:4 or
+587:4→587:5). The unmodified renderer reproduced the failure, so it was
+not caused by a trial removal of a duplicate track-target lookup; that
+trial had no measurable frame-time gain and was reverted. A third run with
+the existing texture-reload probe passed all 20 frames, so the reload type
+for the rejected allocation remains unproven. Cache reload code can write
+into the same resource; pointer retention or ignoring a generation mismatch
+would not preserve captured contents. Keep the fail-closed fallback and
+solve source texture version ownership before claiming continuous L2 output.
 
 **Output-seam checkpoint (2026-09-24):** the D3D12 refresh now asks an
 opt-in native callback before compatibility gamma/FXAA and retains the final
