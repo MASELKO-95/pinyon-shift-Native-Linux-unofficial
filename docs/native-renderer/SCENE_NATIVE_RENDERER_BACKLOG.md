@@ -319,7 +319,9 @@ Effort is relative scope, not a time estimate.
    control keeps its HUD at both the same script ticks and a later matching
    race-clock time. A capture-only run still drops three of 11 sampled HUDs,
    so native scene drawing and pre-UI state restoration are not required for
-   the omission. Profile the live capture and title/GPU scheduling, then
+   the omission. A second capture-only run with the native-race request off
+   also loses the HUD, isolating the shared scene-capture workload. Profile
+   its title/GPU scheduling, then
    remove the largest measured cost and repeat this three-way A/B. Keep
    missed frames entirely compatible and count admission/fallback; do not
    call this continuous HUD support yet.
@@ -1431,6 +1433,18 @@ source rows 11470–11500 had a 16.29 ms median. CSVs:
 `20260925T194643Z-p47024.perf.csv`,
 `20260925T192633Z-p27568.perf.csv`, and
 `20260925T194253Z-p51000.perf.csv` in the installed preview `logs` folder.
+
+**Request-independent capture check (2026-09-25):** keeping the configured
+capture start at source frame 6500 while setting `pinyon_shift_native_race`
+false still enables the same title/GPU live scene capture, but skips the
+native-requested material snapshot and output paths. The scene-probe flag
+keeps presentation wholly compatible. This normal-exit route had no HUD at
+four of 11 sampled ticks (6790, 6794, 6798 and 6802); its median frame time
+over source rows 6785–6810 was 164.52 ms. Local images are at
+`.local/native-renderer/ui-capture-no-request-20260925/` and its CSV is
+`20260925T195628Z-p43816.perf.csv`. The shared capture path, rather than a
+native-request-only path, suffices to reproduce the omission. This does not
+yet identify which capture stage or scheduling interaction skips the UI pass.
 
 1. Add the narrow D3D12 output-takeover seam first. The current FH1 output
    callback is an observer after compatibility output processing; it cannot
