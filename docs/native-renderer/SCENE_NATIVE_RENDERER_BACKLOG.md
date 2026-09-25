@@ -1548,6 +1548,41 @@ then verify HUD continuity with the same screenshot route. Preserve
 whole-frame fallback until
 every required current-frame family is present and the native draw succeeds.
 
+**Late output comparison (2026-09-25):** disabling the pre-UI scene probe
+does not disable native drawing: the already implemented late compositor
+still admits the current-frame scene and copies HUD regions from the guest
+output. In the dense route at
+`.local/native-renderer/native-capture-no-draw-20260925/` (directory name is
+misleading), all eleven sampled frames contained native-sky pixels and
+readable HUD. The race/pause/free-roam/title route at
+`.local/native-renderer/late-mode-boundary-20260925/` exited normally and
+passed `verify-native-race-mode-boundary.py`; the race frame was native,
+while pause, free roam and title remained compatible. The late shader's
+fixed HUD masks expose rectangular patches of the compatibility world.
+Crucially, a moving-race replay at
+`.local/native-renderer/late-moving-20260925/` showed native pixels and
+distinct image hashes in five successive captures, but two had empty HUD
+text/panels. Performance CSV rows 4600–5000 had a 78.32 ms median. The late
+path therefore improves HUD continuity in one segment but does not meet L2's
+readable-cues requirement. A pre-UI attempt to preserve the old HUD regions
+still missed three of eleven dense samples and was reverted. Next: capture
+one no-UI-pass output frame with render-target provenance and identify a
+current-frame UI layer or equivalent native cues. Reject any solution that
+mixes a previous scene with the current scene. Recheck the moving route,
+dense route and mode transitions before calling L2 usable.
+
+**Toggle precondition (2026-09-25):** the current on/off/on route at
+`.local/native-renderer/late-toggle-20260925/` began in the race and switched
+to native on the first request, then back to compatibility, but the first
+capture after re-enabling was compatible. A follow-up warmup route captured
+no native frames because the current AppData save began outside the race;
+its `race-ready` screenshot still showed the festival sign-up prompt. That
+run cannot test recovery. `verify-native-race-toggle.py` now checks the
+race-ready HUD before evaluating output modes, and passes the previously
+valid cold-toggle evidence while rejecting this invalid replay. Re-enter
+the race through gameplay before repeating a multi-frame warmup check; do
+not reset or copy the installed save to manufacture a test start.
+
 1. Add the narrow D3D12 output-takeover seam first. The current FH1 output
    callback is an observer after compatibility output processing; it cannot
    replace the presented image. Let an opt-in native callback draw to the
