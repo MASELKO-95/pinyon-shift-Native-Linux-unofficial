@@ -913,6 +913,14 @@ and the ordinary moving-frame verifier also passed. Evidence:
 and glass remain placeholders; this corrects depth-only visibility, not the
 full car material.
 
+The same no-screenshot profile route after this fix exited normally with a
+25.35 ms pre-capture median and 219.05 ms captured median (perf CSV
+`20260925T122834Z-p28296.perf.csv`). Its draw mix differed from the prior
+single run, so this is no evidence of a speed gain or regression. The
+sampled car shader also uses material constants absent from the current
+remainder payload; tinting its gray mask to a fixed car color would hide
+that missing input rather than supply a transferable paint/glass path.
+
 **Final-pass boundary check (2026-09-24):** the existing race RenderDoc
 capture `renderdoc-gatea-full-b_frame5001.rdc` (SHA-256
 `277c2a371a86038901d845332704574b708f632eab6f427175827bf93660e955`)
