@@ -12,22 +12,25 @@ using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory,
 if (!manifest.RootElement.GetProperty("valid").GetBoolean() ||
     manifest.RootElement.GetProperty("dropped_events").GetInt64() != 0)
     throw new InvalidDataException("Capture contains dropped events");
+var markersOnly = manifest.RootElement.GetProperty("markers_only").GetBoolean();
 using var launch = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "launch.json")));
 var processId = launch.RootElement.GetProperty("process_id").GetInt32();
 var etl = Path.Combine(directory, "pinyon-shift.etl");
 using var log = TraceLog.OpenOrConvert(etl);
-if (log.EventsLost != 0 || !log.HasCallStacks)
+if (log.EventsLost != 0 || (!markersOnly && !log.HasCallStacks))
     throw new InvalidDataException("ETL has lost events or no call stacks");
 
-using var symbolLog = new StreamWriter(Path.Combine(directory, "symbol-resolution.log"));
-using var symbols = new SymbolReader(symbolLog, Path.Combine(directory, "symbols"), null);
 var projectModules = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
     "pinyon_shift", "pinyon_shift_SpeechFacade_default",
     "pinyon_shift_XMediaFacade_default", "rexruntimerd", "rexgpu-fh1rd"
 };
-foreach (var module in log.ModuleFiles) {
-    if (projectModules.Contains(module.Name))
-        log.CodeAddresses.LookupSymbolsForModule(symbols, module);
+if (!markersOnly) {
+    using var symbolLog = new StreamWriter(Path.Combine(directory, "symbol-resolution.log"));
+    using var symbols = new SymbolReader(symbolLog, Path.Combine(directory, "symbols"), null);
+    foreach (var module in log.ModuleFiles) {
+        if (projectModules.Contains(module.Name))
+            log.CodeAddresses.LookupSymbolsForModule(symbols, module);
+    }
 }
 
 using var markers = new StreamWriter(Path.Combine(directory, "markers.csv"));
@@ -96,7 +99,8 @@ source.Kernel.DispatcherReadyThread += data => {
 };
 source.Process();
 Console.WriteLine($"markers={markerCount} samples={sampleCount} waits={waitCount} missing_stacks={missingStacks} lost={log.EventsLost}");
-if (markerCount == 0 || sampleCount == 0 || missingStacks > sampleCount / 100)
+if (markerCount == 0 || (!markersOnly &&
+    (sampleCount == 0 || missingStacks > sampleCount / 100)))
     throw new InvalidDataException("Markers or samples missing, or more than 1% of game samples lack stacks");
 
 static string Number(double value) => value.ToString("0.####", CultureInfo.InvariantCulture);
