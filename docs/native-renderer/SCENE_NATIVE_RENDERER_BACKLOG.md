@@ -513,6 +513,19 @@ that captured window the guest-frame GPU timer had 26 valid samples and a
 locate the CPU cost or measure all GPU work; it only rules out treating the
 timed guest-frame span as the entire 206.58 ms frame.
 
+A separate opt-in critical-path log run (`20260925T120544Z-p37812`) exited
+normally on the same no-screenshot route. Its retained source frames
+5005–5028 had a 210.29 ms median source interval, 88.20 ms from each
+source marker to its consumed-swap marker, 20.50 ms from consumed swap to
+submission start, and 2.62 ms of submission recording. The title draw
+emitter took 0.70 ms median. The marker run's performance CSV measured
+212.72 ms median frame time and 37.06 ms for the timed guest-frame GPU span;
+normal logging-free timing remains the cleaner baseline. These boundaries
+cross asynchronous threads and are not additive CPU costs. Fence completion
+can be reported on a later frame, so submit-to-completion wall time is not
+GPU execution time. Sampled title and GPU-command thread stacks are still
+needed before editing the slow path.
+
 **Texture-continuity check (2026-09-25):** two normal saved-race visual runs
 each exited successfully but `verify-native-track-output.py` failed on one
 or two of 20 consecutive frames. Each failed image was a complete
