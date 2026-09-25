@@ -31,6 +31,14 @@ Compare source frames 5000–5029 with the preceding race window in the same
 capture. The route retains the race-ready and race-moving checkpoints but
 does not take a full-resolution screenshot in the measured window.
 
+The RelWithDebInfo performance CSV also includes native-race-only draw CPU
+counters: `fh1_issue_draw_cpu_time_ns`,
+`fh1_prepared_snapshot_cpu_time_ns`,
+`fh1_prepared_observer_cpu_time_ns`, `fh1_binding_cpu_time_ns`, and
+`fh1_issue_draw_calls`. The three inner timers are subsets of the draw timer;
+compare medians over matched source-frame windows and use the sampled trace
+to attribute work outside that draw scope.
+
 The script verifies the AppData save, rejects an already-running game, builds
 `RelWithDebInfo`, checks the title, generated guest facades, and ShiftGlue
 binaries against their PDBs, records a focused kernel

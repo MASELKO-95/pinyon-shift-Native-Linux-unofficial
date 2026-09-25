@@ -533,6 +533,22 @@ can be reported on a later frame, so submit-to-completion wall time is not
 GPU execution time. Sampled title and GPU-command thread stacks are still
 needed before editing the slow path.
 
+**Persistent draw CPU split (2026-09-25):** five FH1 native-race counters now
+write per-frame `IssueDraw` count/time, prepared snapshot setup time, prepared
+observer time and `UpdateBindings` time to the normal performance CSV. They
+time actual draw calls and include early returns; the three inner times are
+subsets of `IssueDraw`, not extra frame costs. On a normal-exit, no-screenshot
+profile route (`20260925T141616Z-p46876.perf.csv`), medians for source frames
+4900–4929 versus 5002–5028 were 33.67/213.47 ms frame time and 23.51/93.90
+ms `IssueDraw` time. Snapshot setup was 0.60/10.77 ms, the prepared observer
+0.30/31.24 ms and binding updates 7.27/10.11 ms; measured draw calls were
+3873/3238. Every measured row's inner times fit within its draw total. The
+observer is the largest isolated captured-draw slice, but about 120 ms of
+captured frame wall time lies outside the measured draw total or overlaps
+other threads. Do not subtract asynchronous spans as exclusive CPU time.
+Sampled title/GPU-command stacks remain the next requirement before a broad
+responsiveness change.
+
 **Texture-continuity check (2026-09-25):** two normal saved-race visual runs
 each exited successfully but `verify-native-track-output.py` failed on one
 or two of 20 consecutive frames. Each failed image was a complete
