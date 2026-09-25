@@ -35,9 +35,12 @@ The RelWithDebInfo performance CSV also includes native-race-only draw CPU
 counters: `fh1_issue_draw_cpu_time_ns`,
 `fh1_prepared_snapshot_cpu_time_ns`,
 `fh1_prepared_observer_cpu_time_ns`, `fh1_binding_cpu_time_ns`, and
-`fh1_issue_draw_calls`. The three inner timers are subsets of the draw timer;
-compare medians over matched source-frame windows and use the sampled trace
-to attribute work outside that draw scope.
+`fh1_issue_draw_calls`. `fh1_material_snapshot_cpu_time_ns` and
+`fh1_material_snapshot_calls` isolate source-texture copies within the draw
+timer; `fh1_native_output_cpu_time_ns` covers the output callback separately.
+These spans can overlap across threads. Compare medians over matched
+source-frame windows and use the sampled trace to attribute the remaining
+work.
 
 The script verifies the AppData save, rejects an already-running game, builds
 `RelWithDebInfo`, checks the title, generated guest facades, and ShiftGlue

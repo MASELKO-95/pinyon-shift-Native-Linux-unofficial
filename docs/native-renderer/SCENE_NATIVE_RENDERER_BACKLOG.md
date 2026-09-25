@@ -549,6 +549,17 @@ other threads. Do not subtract asynchronous spans as exclusive CPU time.
 Sampled title/GPU-command stacks remain the next requirement before a broad
 responsiveness change.
 
+**Material/output CPU split (2026-09-25):** added native-race counters for
+source-texture snapshot calls/time and the native output callback. The same
+normal-exit profile route (`20260925T142907Z-p30396.perf.csv`) gave medians
+over steady source frames 5004–5028 of 214.04 ms frame, 94.06 ms `IssueDraw`,
+31.02 ms prepared observer, 10.80 ms snapshot setup, 10.00 ms binding updates,
+4.33 ms across 11 material snapshot calls, and 22.09 ms native output. The
+material timer is inside `IssueDraw`; output runs on the presentation path.
+Neither is the missing dominant cost. The spans are not an exclusive frame
+breakdown, so sampled title/GPU-command stacks remain necessary before
+changing resource ownership or capture scheduling.
+
 **Texture-continuity check (2026-09-25):** two normal saved-race visual runs
 each exited successfully but `verify-native-track-output.py` failed on one
 or two of 20 consecutive frames. Each failed image was a complete
