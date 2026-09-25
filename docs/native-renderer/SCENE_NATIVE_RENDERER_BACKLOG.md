@@ -314,7 +314,14 @@ Effort is relative scope, not a time estimate.
    changing current-frame geometry and HUD, complete compatibility frames
    outside the race, and no stale or blank output. Keep native default-off
    and document any unsupported resolution.
-2. Attribute live-race cost before another capture optimization. The committed
+2. Prove a retained-HUD boundary before trying to skip compatibility draws.
+   The race and title captures both place their UI after the world, but the
+   shared shader sequence is only an injection candidate. Identify the first
+   retained draw from guest draw/target semantics, inject the native world
+   before it in a bounded race probe, and verify the complete original HUD.
+   Reject the entire native frame when the boundary or race mode is uncertain;
+   verify pause, free-roam and title keep complete compatibility output.
+3. Attribute live-race cost before another capture optimization. The committed
    `fh1-native-race-profile.fh1test` route captures no screenshots; its most
    recent pre-capture/captured medians were 25.35/219.05 ms. Capture a sampled
    CPU trace with that route and the native race flags, then rank the title,
@@ -329,9 +336,9 @@ Effort is relative scope, not a time estimate.
    only after a matched whole-frame A/B, and repeat the drive check until it
    is responsive. This is an L2 usability requirement, not the later 15%
    speedup qualification. Preserve immutable current-frame ownership and
-   whole-frame fallback; establish the HUD dependency cut before any bounded
-   early-suppression trial.
-3. Make the existing L2 scene legible with owned inputs. Depth-only car draws
+   whole-frame fallback. The observer's own range copies and constant packing
+   are small; do not repeat those micro-optimizations.
+4. Make the existing L2 scene legible with owned inputs. Depth-only car draws
    leave color intact, and the sampled rear mask now uses its owned constants
    and texture alpha instead of opaque gray. First close the intermittent car
    title/GPU join: a race view with visible cars sometimes has 57 car title
@@ -347,7 +354,7 @@ Effort is relative scope, not a time estimate.
    before submission. A bounded single-fetch visual approximation may help
    legibility after all bound inputs have current-frame identity; it does not
    count as a port of the guest material or resolve-backed dependency.
-4. Stress the sampled texture version handoff. Selected road, roadside and
+5. Stress the sampled texture version handoff. Selected road, roadside and
    foliage materials now copy their bound version at the final source draw,
    keep it through output submission, and use it directly when the exact
    fetch/allocation/generation matches. The output-time copy still protects a
@@ -590,6 +597,23 @@ This identifies active guest polling while the command position catches up,
 not an independently removable 100 ms frame cost. Next attribute the GPU
 draw/observer stacks and evaluate whole-frame speed before considering a
 wait-scheduling change.
+
+**Observer-stage split (2026-09-25):** temporary timers on the no-screenshot
+saved-race route split the prepared observer over output frames 5006–5029.
+The INFO run (`20260925T162912Z-p46664.perf.csv`) measured medians of 5.89 ms
+in the item/vegetation/character/manager hooks, 9.87 ms in the car/remainder
+join, and 15.56 ms in track selection and capture. Its whole-frame median
+was 218.70 ms. The adjacent warning-level run
+(`20260925T163217Z-p15804.perf.csv`) measured 6.01/9.62/15.47 ms for those
+stages and 216.78 ms whole-frame, so suppressing INFO formatting did not
+materially reduce this cost. A separate normal-exit run
+(`20260925T162527Z-p43236.perf.csv`) timed roughly 321 remainder draws per
+frame: owned range checks took 1.23 ms median and constant packing 0.72 ms.
+Those operations explain only a small part of the 9–10 ms join section, and
+even removing the entire 31 ms observer would leave the current roughly
+200 ms frame far from responsive driving. The temporary timers were removed;
+prioritize sampled GPU-command stacks and the retained-HUD dependency cut
+over further byte-copy or logging edits.
 
 **Texture-continuity check (2026-09-25):** two normal saved-race visual runs
 each exited successfully but `verify-native-track-output.py` failed on one
