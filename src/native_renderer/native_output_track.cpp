@@ -704,6 +704,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     ComPtr<ID3D12Resource> snapshot;
     D3D12_SHADER_RESOURCE_VIEW_DESC view{};
     uint64_t allocation_id = 0, payload_generation = 0;
+    bool pinned = false;
   };
   std::vector<Material> materials;
   std::map<std::tuple<std::array<uint32_t, 6>, uint64_t, uint64_t>,
@@ -724,7 +725,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     Material material;
     if (!context.texture(context, identity.fetch_words.data(),
                          identity.allocation_id, identity.payload_generation,
-                         &resource, &material.view) || !resource)
+                         &resource, &material.view, &material.pinned) || !resource)
       return false;
     material.resource = static_cast<ID3D12Resource*>(resource);
     for (const auto& prior : materials)
@@ -849,6 +850,10 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     heap_properties.Type = D3D12_HEAP_TYPE_DEFAULT;
     uint64_t snapshot_bytes = 0;
     for (auto& material : materials) {
+      if (material.pinned) {
+        material.snapshot = material.resource;
+        continue;
+      }
       const auto desc = material.resource->GetDesc();
       if (desc.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
           desc.DepthOrArraySize != 1 || desc.SampleDesc.Count != 1)
@@ -907,6 +912,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   // resources until this submission completes.
   const auto& retained = graphics.submitted.back().second.material_resources;
   for (size_t i = 0; i < materials.size(); ++i) {
+    if (materials[i].pinned) continue;
     auto* source = retained[i * 2].Get();
     auto* snapshot = retained[i * 2 + 1].Get();
     D3D12_RESOURCE_BARRIER copy_barrier{};

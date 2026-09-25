@@ -56,28 +56,29 @@ capture 5310 after-quit
 input 5330 1000 0 0 0 0 0 0
 input 5336 0000 0 0 0 0 0 0
 capture 5600 after-retire
-capture 5810 free-roam-after-retire
-input 5840 0010 0 0 0 0 0 0
-input 5846 0000 0 0 0 0 0 0
-capture 5880 pause-after-retire
-input 5900 0002 0 0 0 0 0 0
-input 5906 0000 0 0 0 0 0 0
-input 5920 0002 0 0 0 0 0 0
-input 5926 0000 0 0 0 0 0 0
-input 5940 0002 0 0 0 0 0 0
-input 5946 0000 0 0 0 0 0 0
-input 5960 0002 0 0 0 0 0 0
+capture 5810 free-roam-transition
+capture 5940 free-roam-after-retire
+input 5960 0010 0 0 0 0 0 0
 input 5966 0000 0 0 0 0 0 0
-input 5980 0002 0 0 0 0 0 0
-input 5986 0000 0 0 0 0 0 0
-input 6000 0002 0 0 0 0 0 0
-input 6006 0000 0 0 0 0 0 0
-capture 6040 quit-highlighted
-input 6060 1000 0 0 0 0 0 0
+capture 6000 pause-after-retire
+input 6020 0002 0 0 0 0 0 0
+input 6026 0000 0 0 0 0 0 0
+input 6040 0002 0 0 0 0 0 0
+input 6046 0000 0 0 0 0 0 0
+input 6060 0002 0 0 0 0 0 0
 input 6066 0000 0 0 0 0 0 0
-capture 6100 quit-dialog
-input 6120 1000 0 0 0 0 0 0
+input 6080 0002 0 0 0 0 0 0
+input 6086 0000 0 0 0 0 0 0
+input 6100 0002 0 0 0 0 0 0
+input 6106 0000 0 0 0 0 0 0
+input 6120 0002 0 0 0 0 0 0
 input 6126 0000 0 0 0 0 0 0
-capture 6180 after-title-return
-capture 7000 title-settled
-stop 7040
+capture 6160 quit-highlighted
+input 6180 1000 0 0 0 0 0 0
+input 6186 0000 0 0 0 0 0 0
+capture 6220 quit-dialog
+input 6240 1000 0 0 0 0 0 0
+input 6246 0000 0 0 0 0 0 0
+capture 6300 after-title-return
+capture 7120 title-settled
+stop 7160

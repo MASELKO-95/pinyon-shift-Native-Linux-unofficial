@@ -18,6 +18,10 @@ def capture_stats(path: Path) -> tuple[int, int]:
 
 if __name__ == "__main__":
     captures = Path(sys.argv[1])
+    transition = captures / "free-roam-transition.ppm"
+    if transition.exists():
+        count, _ = capture_stats(transition)
+        assert count < 1000, f"native output leaked into loading transition ({count} pixels)"
     for name in ("race-sustained", "race-sustained-again"):
         path = captures / f"{name}.ppm"
         if name == "race-sustained" or path.exists():

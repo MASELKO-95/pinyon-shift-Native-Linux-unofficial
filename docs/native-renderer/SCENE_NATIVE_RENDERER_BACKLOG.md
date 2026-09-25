@@ -331,14 +331,14 @@ Effort is relative scope, not a time estimate.
    texture families. Keep road texture, foliage cutouts and the bounded HUD
    bridge. Missing or stale borrowed resources must reject the entire native
    frame before submission.
-4. Own sampled texture versions at the source draw, before the source/output
-   handoff. Output-time GPU copies now prevent later reuse from altering a
-   resolved material, but cannot recover a generation already replaced before
-   output. A cold toggle run observed exactly that case (allocation 574,
-   generation 2 expected, generation 3 current) and correctly fell back for
-   the whole frame. Capture or pin the sampled version at the final source
-   draw; keep whole-frame fallback for missing or stale resources, then repeat
-   the sustained check with a forced same-allocation reload.
+4. Stress the sampled texture version handoff. Selected road, roadside and
+   foliage materials now copy their bound version at the final source draw,
+   keep it through output submission, and use it directly when the exact
+   fetch/allocation/generation matches. The output-time copy still protects a
+   fresh unpinned material. Force a same-allocation reload between source and
+   output and verify that the pinned version renders; then check budget and
+   missing-pin fallback. A cold toggle previously saw allocation 574 advance
+   from generation 2 to 3 and correctly yielded the whole frame.
 
 Do not start broad compatibility-work suppression, broad material parity or
 a second graphics backend to close L1/L2. A bounded suppression trial needs
@@ -379,6 +379,23 @@ captures and both second-window captures contained native output; the off
 capture stayed fully compatible. Intermittent fallback in the first window
 shows that source-draw version ownership remains open. This safety fix does
 not make live capture responsive.
+
+**Source-draw material pin (2026-09-25):** the SDK now copies selected sampled
+road, roadside and foliage textures after their final guest bindings are
+prepared, before the source/output handoff. It owns both copy and source until
+the output submission completes. The output callback keys the copy by exact
+fetch words, allocation and payload generation; unmatched materials still
+require a fresh identity or yield the whole frame. A one-time runtime log
+confirmed the pinned path at output frame 5003 (allocation 875, generation 1),
+and that capture contained native output. The cold on/off/on route and the
+startup-on 21-frame continuous route exited normally and passed their image
+verifiers. The direct pinned path skips the redundant output-time GPU copy.
+The race/pause/free-roam/title route also exited normally and passed after
+moving its free-roam checkpoint later: the old frame 5810 was sometimes still
+a dark loading transition (mean pixel values 3 and 10 in two runs), while the
+new pre-pause frame 5940 showed loaded compatibility output (mean 75). Pause
+and title remained compatible. Forced same-allocation replacement is still
+unverified; live capture responsiveness and broad materials remain open.
 
 **Capture-cost check (2026-09-25):** a RelWithDebInfo saved-race run with
 scene capture starting at source 5000 and native output off passed normal
