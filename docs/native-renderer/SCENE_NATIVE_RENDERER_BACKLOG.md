@@ -313,25 +313,28 @@ Effort is relative scope, not a time estimate.
    roam/title and reload. Verify changing current-frame geometry and HUD,
    complete compatibility frames outside the race, and no stale or blank
    output. Keep native default-off and document any unsupported resolution.
-2. Make live capture responsive before broadening materials. On a route with
-   no per-frame screenshots, captured-race medians vary from about 174 to
-   204 ms versus roughly 22–29 ms before capture starts. Attribute the
-   remaining frame time across title work, GPU draw preparation and scene
-   ownership before changing another path. Broad and late exact filtering of
-   prepared-draw observation have not helped; track range ownership,
-   constant packing, the title view-end hook and source texture pinning are
-   each only a few milliseconds. The prepared-draw observer and descriptor
-   bindings are larger measured components, but still require a matched
-   whole-frame gain before keeping a change. Establish the HUD dependency
-   cut before a bounded early suppression trial. Preserve immutable current-frame
-   ownership and whole-frame fallback. Repeat the drive test until it is
-   responsive.
-   This is a usability requirement, not the later 15% speedup qualification.
-3. Make the existing L2 scene legible before expanding shader coverage:
-   prioritize player-car paint/glass and broad terrain/trackside color or
-   texture families. Keep road texture, foliage cutouts and the bounded HUD
-   bridge. Missing or stale borrowed resources must reject the entire native
-   frame before submission.
+2. Attribute live-race cost before another capture optimization. The committed
+   `fh1-native-race-profile.fh1test` route captures no screenshots; its most
+   recent pre-capture/captured medians were 25.35/219.05 ms. Capture a sampled
+   CPU trace with that route and the native race flags, then rank the title,
+   GPU-preparation and scene-ownership stacks by exclusive CPU and verify the
+   symbol and lost-event counts. Non-admin output markers bound submission
+   recording to a few milliseconds but do not explain the roughly 200 ms
+   source-frame interval. Optimize the largest proved stack, keep the change
+   only after a matched whole-frame A/B, and repeat the drive check until it
+   is responsive. This is an L2 usability requirement, not the later 15%
+   speedup qualification. Preserve immutable current-frame ownership and
+   whole-frame fallback; establish the HUD dependency cut before any bounded
+   early-suppression trial.
+3. Make the existing L2 scene legible with owned inputs. Depth-only car draws
+   now leave color intact, exposing the red body, but the sampled rear mask
+   still uses provisional gray and paint/glass remain placeholders. Capture
+   the car's actual per-draw pixel constants before deriving its color, then
+   address broad terrain/trackside material families using their observed
+   multi-fetch bindings. Keep road texture, foliage cutouts and the bounded
+   HUD bridge. Missing or stale resources must reject the entire native frame
+   before submission; do not invent a fixed tint or single-fetch material for
+   a shader that uses more inputs.
 4. Stress the sampled texture version handoff. Selected road, roadside and
    foliage materials now copy their bound version at the final source draw,
    keep it through output submission, and use it directly when the exact
