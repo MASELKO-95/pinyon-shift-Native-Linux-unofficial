@@ -38,6 +38,11 @@ counters: `fh1_issue_draw_cpu_time_ns`,
 `fh1_issue_draw_calls`. `fh1_material_snapshot_cpu_time_ns` and
 `fh1_material_snapshot_calls` isolate source-texture copies within the draw
 timer; `fh1_native_output_cpu_time_ns` covers the output callback separately.
+`fh1_title_thread_cpu_time_ns` and `fh1_gpu_thread_cpu_time_ns` report host
+thread CPU consumed between source-frame markers and between swaps. Their
+windows overlap; they are not additive frame costs. The bounded
+`pinyon_shift_snr_m02_trace_source_frame` probe also logs `cpu_ns` for each
+title command-position wait on its selected three frames.
 These spans can overlap across threads. Compare medians over matched
 source-frame windows and use the sampled trace to attribute the remaining
 work.

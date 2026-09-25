@@ -1041,6 +1041,7 @@ struct SnrM02WaitScope {
   uint32_t recoveries = 0;
   bool entered_loop = false;
   int64_t begin_ns;
+  int64_t cpu_begin_ns;
 };
 thread_local std::vector<SnrM02WaitScope> snr_m02_wait_scopes;
 thread_local uint64_t snr_m02_wait_count = 0;
@@ -4423,6 +4424,15 @@ void PinyonShiftObserveGraphicsFrame() {
                                  int64_t(title_packet_count), title_first_packet_ns,
                                  title_last_packet_ns);
   }
+  static thread_local int64_t previous_cpu_ns = 0;
+  if (NativeRaceCaptureEnabled()) {
+    const int64_t cpu_ns = rex::perf::CurrentThreadCpuTimeNs();
+    if (previous_cpu_ns && cpu_ns >= previous_cpu_ns)
+      PERF_counter_add(kFh1TitleThreadCpuTimeNs, cpu_ns - previous_cpu_ns);
+    previous_cpu_ns = cpu_ns;
+  } else {
+    previous_cpu_ns = 0;
+  }
   PROFILE_SOURCE_FRAME();
   title_emitter_frame = uint64_t(rex::perf::GetTotalCounter(
       rex::perf::CounterId::kSourceFrameCount));
@@ -4463,7 +4473,8 @@ void PinyonShiftObserveTitleCounterWaitBegin(PPCRegister& r12,
   const uint32_t published_ptr = SnrM02ReadU32(device + 11024);
   snr_m02_wait_scopes.push_back(
       {ordinal, device, r4.u32, r12.u32, SnrM02ReadU32(published_ptr),
-       SnrM02ReadU32(device + 11036), 0, 0, 0, 0, 0, false, SnrM02NowNs()});
+       SnrM02ReadU32(device + 11036), 0, 0, 0, 0, 0, false, SnrM02NowNs(),
+       rex::perf::CurrentThreadCpuTimeNs()});
   if (ordinal == kSnrM02WaitLimit + 1) {
     REXGPU_INFO("FH1 SNRM02 wait trace limit reached on this title thread");
   }
@@ -4508,7 +4519,7 @@ void PinyonShiftObserveTitleCounterWaitEnd() {
       "\"snapshot_published\":{},\"snapshot_counter\":{},"
       "\"snapshot_timebase\":{},\"recovery_counter\":{},"
       "\"recoveries\":{},"
-      "\"begin_ns\":{},\"end_ns\":{}}}",
+      "\"begin_ns\":{},\"end_ns\":{},\"cpu_ns\":{}}}",
       rex::perf::GetTotalCounter(rex::perf::CounterId::kSourceFrameCount),
       scope.ordinal, scope.caller, scope.device, scope.requested,
       published_ptr, SnrM02Physical(published_ptr), scope.published_before,
@@ -4516,7 +4527,8 @@ void PinyonShiftObserveTitleCounterWaitEnd() {
       scope.produced_before, SnrM02ReadU32(scope.device + 11036),
       scope.entered_loop, scope.snapshot_published, scope.snapshot_counter,
       scope.snapshot_timebase, scope.recovery_counter, scope.recoveries,
-      scope.begin_ns, end_ns);
+      scope.begin_ns, end_ns,
+      rex::perf::CurrentThreadCpuTimeNs() - scope.cpu_begin_ns);
 }
 
 void PinyonShiftObserveTitleCounterPublish(PPCRegister& r11,

@@ -321,7 +321,11 @@ Effort is relative scope, not a time estimate.
    GPU-preparation and scene-ownership stacks by exclusive CPU and verify the
    symbol and lost-event counts. Non-admin output markers bound submission
    recording to a few milliseconds but do not explain the roughly 200 ms
-   source-frame interval. Optimize the largest proved stack, keep the change
+   source-frame interval. Thread CPU counters now show substantial CPU use on
+   both the title and GPU command threads; a three-frame guest wait probe
+   found that the title actively spins for command-position publication.
+   Attribute the GPU draw path with sampled stacks before changing capture
+   or wait scheduling. Optimize the largest proved stack, keep the change
    only after a matched whole-frame A/B, and repeat the drive check until it
    is responsive. This is an L2 usability requirement, not the later 15%
    speedup qualification. Preserve immutable current-frame ownership and
@@ -568,6 +572,24 @@ material timer is inside `IssueDraw`; output runs on the presentation path.
 Neither is the missing dominant cost. The spans are not an exclusive frame
 breakdown, so sampled title/GPU-command stacks remain necessary before
 changing resource ownership or capture scheduling.
+
+**Thread CPU and command-wait check (2026-09-25):** two native-race counters
+measure accumulated host CPU time between source-frame markers on the title
+thread and between swaps on the GPU command thread. A normal-exit profile run
+(`20260925T155404Z-p46364.perf.csv`) measured pre-capture/native medians of
+25.4/208.5 ms frame time, 31.2/93.8 ms title-thread CPU, and 15.6/109.4 ms
+GPU-thread CPU over rows 4900–4929/5004–5028. The latter includes 93.8 ms
+of `IssueDraw`. A second normal-exit run with the existing three-frame title
+command-position wait probe (`20260925T155813Z-p51272.perf.csv`) measured
+27.9/210.3 ms frame time and similar thread CPU medians. Its source frames
+5009–5011 spent 124.5/98.2/101.6 ms in those waits and used
+125.0/93.8/109.4 ms of CPU within them; two loop-entering waits dominated
+each frame. Windows thread CPU time is quantized to roughly 15.6 ms in these
+captures, and the title/GPU windows overlap rather than add to frame time.
+This identifies active guest polling while the command position catches up,
+not an independently removable 100 ms frame cost. Next attribute the GPU
+draw/observer stacks and evaluate whole-frame speed before considering a
+wait-scheduling change.
 
 **Texture-continuity check (2026-09-25):** two normal saved-race visual runs
 each exited successfully but `verify-native-track-output.py` failed on one
