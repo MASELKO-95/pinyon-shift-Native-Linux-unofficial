@@ -1,10 +1,11 @@
 # Scene-native renderer backlog
 
-Status: in progress. The frame-wide boundary and complete selected-draw
-diagnostic are proved for sampled race frames, including adjacent moving
-frames. The file-backed path fails the visual bar and is no-go as a speed
-candidate; no net renderer performance gain is claimed. Material coverage,
-other-family lifetimes and retained-pass bridges remain open.
+Status (2026-09-25): L1 is implemented as an opt-in race pilot and has passed
+scripted moving-frame, toggle and unsupported-mode fallback checks. Direct
+settings-UI input and longer unscripted driving still need validation before
+closing L1. L2 is open: the road and some foliage use current textures, the
+race HUD is readable, and the car/terrain/props remain crude; live capture is
+still too slow for comfortable driving. No net renderer speedup is claimed.
 **Delivery priority changed on 2026-09-24:** get an opt-in live native frame,
 then a usable race renderer. Performance and the approximately 90% visual
 target are later optimization/qualification goals, not blockers to those
@@ -304,6 +305,29 @@ Effort is relative scope, not a time estimate.
 | SNR-12 | Remove a proven upstream preparation path | New post-L3 critical-path evidence | Large / title |
 
 ### Active delivery path — L1, then L2
+
+**Next bounded work (2026-09-25):**
+
+1. Close L1 with a player-facing run: switch native output on and off in the
+   settings UI, drive through the sustained race, then pause, return to free
+   roam/title and reload. Verify changing current-frame geometry and HUD,
+   complete compatibility frames outside the race, and no stale or blank
+   output. Keep native default-off and document any unsupported resolution.
+2. Make the existing L2 scene legible before expanding shader coverage:
+   prioritize player-car paint/glass and broad terrain/trackside color or
+   texture families. Keep road texture, foliage cutouts and the bounded HUD
+   bridge. Missing or stale borrowed resources must reject the entire native
+   frame before submission.
+3. Measure the remaining sustained-race frame cost before changing the live
+   handoff. Prepared-draw snapshots and original title preparation are the
+   known large costs; track/remainder fixture serialization may be smaller.
+   Remove only a measured bottleneck, using the existing fixture path as an
+   oracle for any typed handoff. Repeat the drive test until it is responsive.
+   This is a usability requirement, not the later 15% speedup qualification.
+
+Do not start paired compatibility-work suppression, broad material parity or
+a second graphics backend to close L1/L2. The checkpoints below are evidence,
+not a prerequisite chain to repeat.
 
 **Output-seam checkpoint (2026-09-24):** the D3D12 refresh now asks an
 opt-in native callback before compatibility gamma/FXAA and retains the final
