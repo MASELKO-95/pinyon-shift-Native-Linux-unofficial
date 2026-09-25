@@ -361,6 +361,16 @@ draws, so do not carry this filter forward. The temporary timers and filter
 were removed. Next profile ownership/capture work at a narrower boundary
 before changing the observation architecture.
 
+A second RelWithDebInfo split of the prepared-draw callback on the same
+no-screenshot route reached normal exit at source 5030. Across roughly
+2,700–3,500 prepared draws per captured frame, the four initial item,
+vegetation, character and manager observers totaled about 5–6 ms. Later
+remainder ownership took about 13–15 ms, and track geometry ownership
+about 9–32 ms, including periodic spikes. The temporary timers were
+removed. The next capture change should target repeated ownership and
+constant-packing work in these two selected families, then repeat the
+whole-frame measurement; neither slice alone closes the responsiveness gap.
+
 **Output-seam checkpoint (2026-09-24):** the D3D12 refresh now asks an
 opt-in native callback before compatibility gamma/FXAA and retains the final
 render-test observation after either choice. Returning false leaves the
