@@ -328,8 +328,10 @@ Effort is relative scope, not a time estimate.
    early-suppression trial.
 3. Make the existing L2 scene legible with owned inputs. Depth-only car draws
    leave color intact, and the sampled rear mask now uses its owned constants
-   and texture alpha instead of opaque gray. Paint/glass and much of the car
-   body remain placeholders. The source-5000 remainder capture has 650
+   and texture alpha instead of opaque gray. First close the intermittent car
+   title/GPU join: a race view with visible cars sometimes has 57 car title
+   records but no owned car draws and must fall back. Paint/glass and much of
+   the car body remain placeholders. The source-5000 remainder capture has 650
    family-1 draws with two to eight texture bindings; resolve each selected
    shader's actually sampled fetches from the existing current-frame identity
    ledger before adding paint/glass or broad terrain/trackside shading. For
@@ -1041,12 +1043,20 @@ output requires current-frame allocation and generation identities for all
 eight bound fetches, then shades the car's existing red base with fetch-1
 detail. This is a legibility approximation, not the guest's layered paint,
 glass or lighting shader. A normal-exit early-race route passed seven
-changing native frames (source 4108–4114) with a visible red car. In a later
-source-5000 trial the player car was culled, so strict scene admission
-correctly selected whole-frame compatibility output. Remaining L2 work is
+changing native frames (source 4108–4114) with a visible red car. A full
+race-to-title run then had 57 car title records but zero joined car draws
+while its compatibility image visibly showed cars. Strict scene admission
+correctly selected whole-frame compatibility output (zero native-sky pixels
+in `race-sustained.ppm`), but the join gap prevents continuous native driving.
+A shortened rerun of the same route joined car draws and reached native
+output (20,221 native-sky pixels), so this case is intermittent. Do not remove
+the car-draw requirement merely to admit a frame with missing vehicles.
+Remaining L2 work is
 ordered ownership for resolve-backed inputs and more complete vehicle and
 scene materials, alongside responsive sustained gameplay. Evidence:
-`.local/native-renderer/car-body-continuity-20260925` and the source-5000
+`.local/native-renderer/car-body-continuity-20260925`,
+`.local/native-renderer/car-body-mode-boundary-20260925`,
+`.local/native-renderer/car-join-diagnostic-20260925`, and the source-5000
 remainder fixture cited above.
 
 **Track material dependency checkpoint (2026-09-25):** the source-5000
