@@ -15,6 +15,17 @@ def sky_count(name: str) -> int:
     return image.count(sky)
 
 
+ready = (output / "race-ready.ppm").read_bytes()
+assert ready.startswith(header) and len(ready) == len(header) + 1280 * 720 * 3
+pixels = ready[len(header) :]
+race_hud = sum(
+    min(pixels[(y * 1280 + x) * 3 : (y * 1280 + x) * 3 + 3]) > 225
+    for y in range(20, 100)
+    for x in range(50, 300)
+)
+assert race_hud > 1000, "race-ready capture is not in the race"
+
+
 expected = {
     "before-on": False,
     "native-on": True,
