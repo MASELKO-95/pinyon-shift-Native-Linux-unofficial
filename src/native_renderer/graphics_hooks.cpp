@@ -2571,6 +2571,27 @@ void ObservePreparedDraw(
   ObserveSnr03VertexPayload(observation);
   ObserveSnr03CharacterPayload(observation);
   ObserveSnr03ManagerPayload(observation);
+  static const int32_t car_probe = REXCVAR_GET(pinyon_shift_snr03_probe_frame);
+  if (car_probe > 0 &&
+      observation.frame_sequence >= uint64_t(car_probe) &&
+      observation.frame_sequence <= uint64_t(car_probe) + 3 &&
+      (observation.vertex_shader_hash == 0xD34A83D9E6B3A399ull ||
+       observation.vertex_shader_hash == 0x0DF9CA19A93A75D9ull)) {
+    REXGPU_INFO("FH1 SNR03 car candidate {{\"frame\":{},\"sequence\":{},"
+                "\"vertex_shader\":{},\"pixel_shader\":{},"
+                "\"dispatch\":{},\"target\":{},\"packet\":{},"
+                "\"surface\":{},\"color\":{},\"depth\":{},"
+                "\"target_bits\":{}}}",
+                observation.frame_sequence, observation.draw_sequence,
+                observation.vertex_shader_hash,
+                observation.pixel_shader_hash,
+                observation.indirect_dispatch_packet_physical_address,
+                observation.command_buffer_physical_address,
+                observation.draw_packet_physical_address,
+                observation.surface_info, observation.color_info[0],
+                observation.depth_info,
+                observation.bound_render_target_bits);
+  }
   if (Snr03ProbeOutputFrame(observation.frame_sequence) &&
       observation.surface_info == 0x14020500 &&
       (observation.color_info[0] == 0x00030000 ||

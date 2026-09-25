@@ -1096,6 +1096,20 @@ and scene materials, and responsive sustained gameplay. Evidence:
 `.local/native-renderer/car-join-diagnostic-full-20260925`, and the source-5000
 remainder fixture cited above.
 
+An opt-in car-candidate probe now records the known body/presentation shader
+draws around `pinyon_shift_snr03_probe_frame`, including their dispatch,
+target and render-target state before the strict join filter. One full
+race-to-title run and three shorter repetitions all exited normally; the
+full route passed the mode-boundary verifier and every short race capture
+contained native output. In the retained short-run logs, frames 5019–5022
+each had 29 known body candidates with the expected surface/color/depth and
+target bits, plus 292 valid car title joins. The intermittent no-join state
+did not recur, so these passes do not justify relaxing the fallback. Evidence:
+`.local/native-renderer/car-join-wide-probe-20260925` and
+`.local/native-renderer/car-join-short-probe-20260925`,
+`.local/native-renderer/car-join-short-probe-b-20260925` and
+`.local/native-renderer/car-join-short-probe-c-20260925`.
+
 **Track material dependency checkpoint (2026-09-25):** the source-5000
 `SNR02T5` fixture has 666 track draws; 644 bind the same fetch-13 descriptor,
 a 1280×720 image at guest address `0x1CE2D000`. The GPU corpus records a
