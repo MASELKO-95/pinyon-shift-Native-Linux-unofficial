@@ -329,10 +329,11 @@ Effort is relative scope, not a time estimate.
 3. Make the existing L2 scene legible with owned inputs. Depth-only car draws
    leave color intact, and the sampled rear mask now uses its owned constants
    and texture alpha instead of opaque gray. Paint/glass and much of the car
-   body remain placeholders. Cover those visible material families, then
-   address broad terrain/trackside materials
-   using their observed multi-fetch
-   bindings. Keep road texture, foliage cutouts and the bounded
+   body remain placeholders. The source-5000 remainder capture has 650
+   family-1 draws with two to eight texture bindings; resolve each selected
+   shader's actually sampled fetches from the existing current-frame identity
+   ledger before adding paint/glass or broad terrain/trackside shading. Keep
+   road texture, foliage cutouts and the bounded
    HUD bridge. Missing or stale resources must reject the entire native frame
    before submission; do not invent a fixed tint or single-fetch material for
    a shader that uses more inputs.
@@ -977,6 +978,22 @@ title. Evidence:
 `.local/native-renderer/car-rear-alpha-trial-20260925` and
 `.local/native-renderer/car-rear-alpha-continuous-20260925` and
 `.local/native-renderer/car-rear-alpha-mode-boundary-20260925`.
+
+**Remainder material census (2026-09-25):** parsing the complete `SNR03R5`
+source-5000 fixture found 762 draws: 702 family-1, 15 family-2 and 45
+family-3. Only 52 family-1 draws have no texture binding; the other 650 bind
+two to eight textures (56 with two, 59 with three, 141 with four, 258 with
+five, 37 with six, 39 with seven and 60 with eight). The largest shader pair,
+`D34A83D9E6B3A399`/`E9CD565D9C61D037`, accounts for 57 eight-binding
+draws. The live scene already carries per-draw fetch/allocation/generation
+identities, but native output resolves only the selected one-fetch materials.
+The translated two-binding candidate `2A69134D6AB961F7` also uses array
+texture sampling, so binding count alone does not define its shader behavior.
+Next inspect the actual sampled fetches and constants for a visibly important
+material, then admit the frame only when all inputs for that material have
+current-frame versions. Evidence: fixture
+`.local/native-renderer/remainder-r5-material-capture-20260925/snr03-remainder-5000.bin`
+and local census `.local/native-renderer/analyze-r5-car.py`.
 
 **Final-pass boundary check (2026-09-24):** the existing race RenderDoc
 capture `renderdoc-gatea-full-b_frame5001.rdc` (SHA-256
