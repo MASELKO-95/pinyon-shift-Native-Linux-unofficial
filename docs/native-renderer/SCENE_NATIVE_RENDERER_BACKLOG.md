@@ -318,11 +318,13 @@ Effort is relative scope, not a time estimate.
    196 ms versus about 22 ms before capture starts. Profile the capture work
    across the title hooks and command processor, then remove a measured
    bottleneck. Broad and late exact filtering of prepared-draw observation
-   have not helped this route. Target repeated ownership and constant-packing
-   in track and remainder capture, then repeat the whole-frame measurement.
-   Establish the HUD dependency cut before any early suppression. Preserve
-   immutable current-frame ownership and whole-frame fallback. Repeat the drive test
-   until it is responsive.
+   have not helped this route, and measured track range ownership and
+   constant packing are only a few milliseconds. Split the remaining SDK
+   `IssueDraw` compatibility work from snapshot construction and title view-8
+   work, then remove the largest proven cost. Establish the HUD dependency
+   cut before any bounded early suppression. Preserve immutable current-frame
+   ownership and whole-frame fallback. Repeat the drive test until it is
+   responsive.
    This is a usability requirement, not the later 15% speedup qualification.
 3. Make the existing L2 scene legible before expanding shader coverage:
    prioritize player-car paint/glass and broad terrain/trackside color or
@@ -335,9 +337,10 @@ Effort is relative scope, not a time estimate.
    fallback until this is solved; then repeat the 20-frame native-output
    continuity check under normal texture streaming.
 
-Do not start paired compatibility-work suppression, broad material parity or
-a second graphics backend to close L1/L2. The checkpoints below are evidence,
-not a prerequisite chain to repeat.
+Do not start broad compatibility-work suppression, broad material parity or
+a second graphics backend to close L1/L2. A bounded suppression trial needs
+a proven retained-pass dependency cut and a full-frame fallback. The
+checkpoints below are evidence, not a prerequisite chain to repeat.
 
 **Capture-cost check (2026-09-25):** a RelWithDebInfo saved-race run with
 scene capture starting at source 5000 and native output off passed normal
@@ -375,8 +378,8 @@ prepared-draw boundary. The title's IDs became available only after roughly
 to be admitted. A no-screenshot saved-race run exited normally, but its
 27-frame median was 174.7 ms, inside the existing 174–196 ms range. The
 trial was removed. Do not add another late prepared-draw filter; publish
-the needed title IDs before GPU draw preparation, or first remove measured
-work from the selected ownership paths below.
+the needed title IDs before GPU draw preparation if a selective early cut
+is required.
 
 A second RelWithDebInfo split of the prepared-draw callback on the same
 no-screenshot route reached normal exit at source 5030. Across roughly
@@ -384,9 +387,15 @@ no-screenshot route reached normal exit at source 5030. Across roughly
 vegetation, character and manager observers totaled about 5–6 ms. Later
 remainder ownership took about 13–15 ms, and track geometry ownership
 about 9–32 ms, including periodic spikes. The temporary timers were
-removed. The next capture change should target repeated ownership and
-constant-packing work in these two selected families, then repeat the
-whole-frame measurement; neither slice alone closes the responsiveness gap.
+removed. A narrower 25-frame trial found that track range comparisons
+processed about 52 MB per frame but took only 1.3 ms median; owning new
+ranges took 0.5 ms and constant/texture packing 1.1 ms. About 4 MB of
+unique track ranges and 700 draws were captured per frame. A one-line
+pixel-constant reservation trial changed a matched median from 195.1 to
+186.3 ms, inside normal route variation, so it and the timers were removed.
+These operations cannot explain the remaining capture slowdown; measure
+the larger compatibility draw and title-view paths before further micro-
+optimizing ownership.
 
 A native-output timing run on the no-screenshot route found about 6–8 ms
 for the complete output-frame scene handoff, 1.6–3 ms to parse track and
