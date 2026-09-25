@@ -316,11 +316,11 @@ Effort is relative scope, not a time estimate.
    and document any unsupported resolution.
 2. Prove a retained-HUD boundary before trying to skip compatibility draws.
    Same-frame race, pause and title captures now identify the first UI packet
-   after the world-only output and match every UI draw to RenderDoc. Next,
-   expose the guest output target at the first race UI draw, inject the
-   already assembled native scene there in a bounded opt-in probe, and verify
-   that subsequent guest draws retain the complete HUD. Admit this path only
-   on an independently validated race
+   after the world-only output and match every UI draw to RenderDoc. A guarded
+   flat-color injection at that point now preserves the original race HUD.
+   Next render the owned native scene into that same target before the UI
+   draws and verify its geometry, materials and retained HUD together. Admit
+   this path only on an independently validated race
    frame with the proved target and draw sequence. Reject the entire native
    frame when scene, boundary or race admission is uncertain; check pause,
    free roam and title still use complete compatibility output. Keep the
@@ -1296,10 +1296,11 @@ transition, before issuing that guest UI draw. The notification is limited
 to the native-race request, configured capture window, target-0-only state
 and captured 1280-pitch surface, behind
 `fh1_native_ui_boundary_probe=false`. The callback admits only a published
-race frame and assembles its owned scene once; the swap callback assembles it
-normally if the early notification did not occur. This is scene handoff,
-**not native injection or HUD retention**: no render target is exposed to the
-early callback and the current final-output path remains in use. The
+race frame; the swap callback assembles normally if the early notification
+did not occur. The first version passed the raw observation-frame number,
+while the swap callback uses observation-frame minus one. It therefore
+assembled the next frame early and still recaptured at swap; the images below
+prove late native continuity, not a retained-UI bridge. The
 RelWithDebInfo short saved-race route exited normally with the probe enabled;
 its compatibility control had zero native-sky pixels, while two later race
 captures had 37,473 and 36,636 native-sky pixels and different image hashes.
@@ -1307,9 +1308,30 @@ The early callback appeared in the retained race logs. Evidence is local at
 `.local/native-renderer/early-ui-final-20260925/`. A full race/pause/free-roam/
 title route also exited normally and passed
 `verify-native-race-mode-boundary.py` with the probe enabled; evidence is at
-`.local/native-renderer/early-ui-mode-boundary-20260925/`. The next bounded
-step is to expose and validate the exact guest output target and preserve its
-state across native injection before allowing compatibility draw suppression.
+`.local/native-renderer/early-ui-mode-boundary-20260925/`.
+
+**First retained-UI injection (2026-09-25):** the pre-UI callback now uses
+the same output-frame number as swap. A second default-off
+`pinyon_shift_native_ui_clear_probe` validates the current R10 target is
+1280×2048, single-sampled and in render-target state, then clears only its
+visible 1280×720 region after a current-frame owned scene is available. The
+guest's later UI draws remain enabled; a successful early clear skips late
+native takeover, and missing scene/target/boundary keeps the existing output
+path. In the saved-race capture, two consecutive frames show the flat blue
+background with the original lap, place, minimap and speed HUD, including
+changing race/lap times. Evidence is local under
+`.local/native-renderer/ui-clear-aligned-20260925/`. This proves the guest
+HUD can be retained at the injection point; it does not yet render native
+scene geometry at that point. The full race/pause/free-roam/title route
+exited normally with the clear enabled. Its race screenshot has 849,917
+pixels of the probe's presented blue, with readable original HUD; pause,
+free roam and title have zero such pixels and remain nonblank.
+`verify-native-ui-clear-probe.py` passes on the local evidence in
+`.local/native-renderer/ui-clear-mode-boundary-20260925/`. The standard
+native-race mode verifier is specific to the native renderer's different
+sky pixel and therefore does not apply to this flat-color probe. Replace
+the clear with the owned native scene next, restoring guest D3D12 bindings
+before the first UI draw.
 
 1. Add the narrow D3D12 output-takeover seam first. The current FH1 output
    callback is an observer after compatibility output processing; it cannot
