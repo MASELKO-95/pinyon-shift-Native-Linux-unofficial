@@ -318,8 +318,11 @@ Effort is relative scope, not a time estimate.
    196 ms versus about 22 ms before capture starts. Profile the capture work
    across the title hooks and command processor, then remove a measured
    bottleneck. Broad filtering of prepared-draw observation has already
-   regressed this route. Preserve immutable current-frame ownership and
-   whole-frame fallback. Repeat the drive test until it is responsive.
+   regressed this route. The next measurement must separate ordinary
+   compatibility draw work from the native capture callbacks and establish
+   the HUD dependency cut before any early suppression. Preserve immutable
+   current-frame ownership and whole-frame fallback. Repeat the drive test
+   until it is responsive.
    This is a usability requirement, not the later 15% speedup qualification.
 3. Make the existing L2 scene legible before expanding shader coverage:
    prioritize player-car paint/glass and broad terrain/trackside color or
@@ -375,6 +378,17 @@ about 9–32 ms, including periodic spikes. The temporary timers were
 removed. The next capture change should target repeated ownership and
 constant-packing work in these two selected families, then repeat the
 whole-frame measurement; neither slice alone closes the responsiveness gap.
+
+A native-output timing run on the no-screenshot route found about 6–8 ms
+for the complete output-frame scene handoff, 1.6–3 ms to parse track and
+remainder fixtures, 9–13 ms to prepare native draw data and resources, and
+under 1 ms to record native commands. The temporary timers were removed.
+Direct typed handoff remains desirable later, but eliminating fixture parsing
+alone cannot make the current ~185 ms captured frame responsive. A separate
+trial skipped diagnostic-only title resource-generation hooks during native
+capture; its 27-frame median was 187 ms versus a recent 184 ms control, so
+the trial was reverted. The earlier 29–52 ms view-8 span includes the title's
+own work and is not itself a measurement of hook overhead.
 
 **Texture-continuity check (2026-09-25):** two normal saved-race visual runs
 each exited successfully but `verify-native-track-output.py` failed on one
