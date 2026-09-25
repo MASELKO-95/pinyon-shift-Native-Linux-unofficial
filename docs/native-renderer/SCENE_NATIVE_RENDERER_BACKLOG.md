@@ -327,10 +327,10 @@ Effort is relative scope, not a time estimate.
    whole-frame fallback; establish the HUD dependency cut before any bounded
    early-suppression trial.
 3. Make the existing L2 scene legible with owned inputs. Depth-only car draws
-   now leave color intact, exposing the red body, but the sampled rear mask
-   still uses provisional gray and paint/glass remain placeholders. Use the
-   now-owned per-draw pixel constants and texture bindings for the visible
-   paint/glass families, then address broad terrain/trackside materials
+   leave color intact, and the sampled rear mask now uses its owned constants
+   and texture alpha instead of opaque gray. Paint/glass and much of the car
+   body remain placeholders. Cover those visible material families, then
+   address broad terrain/trackside materials
    using their observed multi-fetch
    bindings. Keep road texture, foliage cutouts and the bounded
    HUD bridge. Missing or stale resources must reject the entire native frame
@@ -959,6 +959,24 @@ this is material-family coverage, not a claim that paint/glass or L2 visual
 legibility is solved. Evidence:
 `.local/native-renderer/remainder-r5-material-capture-20260925` and
 `.local/native-renderer/car-dark-material-final-20260925`.
+
+**Sampled car rear checkpoint (2026-09-25):** the source-5000 fixture also
+contains the car rear's one-texture pixel shader
+`E349204378CA1591` (specialization `0x400000000003`). Its translated guest
+shader uses the sampled red channel for alpha, not gray RGB. The native shader
+now shades RGB from owned pixel constants 0 and 2, computes mask alpha from
+the bound texture and constants 1, 3 and 255, and blends that draw. Unexpected
+specialization, output bias, missing constants or invalid edge widths reject
+the whole native frame. Visual review of moving source frame 5010 confirms
+the opaque gray rear is gone; the red body and dark rear detail are visible,
+but car paint/glass and scene materials remain incomplete. The saved-race
+on/off/on route passed, and the startup-on 20-frame moving route passed its
+image verifier with a normal exit. The race-mode boundary route also exited
+normally and verified compatibility output on pause, in free roam and at the
+title. Evidence:
+`.local/native-renderer/car-rear-alpha-trial-20260925` and
+`.local/native-renderer/car-rear-alpha-continuous-20260925` and
+`.local/native-renderer/car-rear-alpha-mode-boundary-20260925`.
 
 **Final-pass boundary check (2026-09-24):** the existing race RenderDoc
 capture `renderdoc-gatea-full-b_frame5001.rdc` (SHA-256

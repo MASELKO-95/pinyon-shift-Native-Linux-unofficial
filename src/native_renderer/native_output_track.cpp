@@ -100,7 +100,7 @@ struct ItemDrawBinding {
 
 struct RemainderDrawBinding {
   RemainderPipelineKey pipeline;
-  uint64_t index = 0, b0 = 0, b1 = 0, b3 = 0;
+  uint64_t index = 0, b0 = 0, b1 = 0, b3 = 0, b4 = 0;
   uint32_t count = 0, index_bytes = 0, format = 0, primitive = 0;
   uint32_t family = 0;
   uint32_t material_index = UINT32_MAX;
@@ -182,10 +182,18 @@ struct TrackGraphics {
     constexpr char car_shader[] =
         "Texture2D<float4> mask_tex : register(t1);"
         "SamplerState clamp_sampler : register(s1);"
+        "cbuffer Material : register(b4) {"
+        " float4 c0, c1, c2, c3, c255; };"
         "float4 main(float4 varying[2] : TEXCOORD0) : SV_Target0 {"
         " float2 uv = varying[0].xy + 0.001465 / 64.0;"
-        " float shade = mask_tex.Sample(clamp_sampler, uv).r;"
-        " return float4(float3(shade, shade, shade) * 0.5 + 0.16, 1); }";
+        " float mask = mask_tex.Sample(clamp_sampler, uv).r;"
+        " float2 edge = saturate((c255.x - varying[0].xy) / c1.xy) *"
+        "               saturate(varying[0].xy / c1.xy);"
+        " float factor = c255.x + (c3.z - c255.x) * saturate(varying[1].x);"
+        " float alpha = saturate(mask * factor) * varying[0].z *"
+        "               edge.x * edge.y;"
+        " return float4(sqrt(abs(c0.rgb + c2.rgb * varying[0].w)),"
+        "               alpha); }";
     if (FAILED(D3DCompile(car_shader, sizeof(car_shader) - 1,
                           nullptr, nullptr, nullptr, "main", "ps_5_1", 0, 0,
                           &pixel_car, &errors)))
@@ -198,7 +206,7 @@ struct TrackGraphics {
                           nullptr, nullptr, nullptr, "main", "ps_5_1", 0, 0,
                           &pixel_car_dark, &errors)))
       return false;
-    D3D12_ROOT_PARAMETER parameters[7]{};
+    D3D12_ROOT_PARAMETER parameters[8]{};
     for (uint32_t i = 0; i < 4; ++i) {
       parameters[i].ParameterType = i == 3 ? D3D12_ROOT_PARAMETER_TYPE_SRV
                                            : D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -219,6 +227,9 @@ struct TrackGraphics {
     parameters[6].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
     parameters[6].DescriptorTable = {1, &material_range};
     parameters[6].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    parameters[7].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    parameters[7].Descriptor.ShaderRegister = 4;
+    parameters[7].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
     D3D12_STATIC_SAMPLER_DESC samplers[2]{};
     for (uint32_t i = 0; i < 2; ++i) {
       auto& sampler = samplers[i];
@@ -234,7 +245,7 @@ struct TrackGraphics {
       sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
     }
     D3D12_ROOT_SIGNATURE_DESC description{
-        7, parameters, 2, samplers,
+        8, parameters, 2, samplers,
         D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT};
     if (FAILED(D3D12SerializeRootSignature(
             &description, D3D_ROOT_SIGNATURE_VERSION_1, &serialized,
@@ -361,6 +372,16 @@ struct TrackGraphics {
     ID3DBlob* fragment = material == 1 ? pixel_car.Get()
         : material == 2 ? pixel_car_dark.Get() : pixel.Get();
     desc.PS = {fragment->GetBufferPointer(), fragment->GetBufferSize()};
+    if (material == 1) {
+      auto& blend = desc.BlendState.RenderTarget[0];
+      blend.BlendEnable = TRUE;
+      blend.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+      blend.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+      blend.BlendOp = D3D12_BLEND_OP_ADD;
+      blend.SrcBlendAlpha = D3D12_BLEND_ONE;
+      blend.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+      blend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+    }
     desc.BlendState.RenderTarget[0].RenderTargetWriteMask =
         draw.pixel_shader ? D3D12_COLOR_WRITE_ENABLE_ALL : 0;
     desc.SampleMask = UINT_MAX;
@@ -624,6 +645,24 @@ bool PrepareRemainder(
                            draw.packed.size() * sizeof(uint32_t));
     binding.b3 = arena.Add(draw.bound_fetch.data(),
                            sizeof(draw.bound_fetch));
+    if (RemainderMaterialKind(draw) == 1) {
+      if (draw.pixel_specialization != 0x400000000003ull ||
+          draw.texture_count != 1 || draw.system[61] != 0x3F800000u)
+        return false;
+      std::array<uint32_t, 20> constants{};
+      for (uint32_t slot = 0; slot < 5; ++slot) {
+        const uint32_t reg = slot == 4 ? 255 : slot;
+        const auto* source = RemainderPixelConstant(draw, reg);
+        if (!source) return false;
+        std::copy_n(source, 4, constants.begin() + slot * 4);
+      }
+      const float width_x = std::bit_cast<float>(constants[4]);
+      const float width_y = std::bit_cast<float>(constants[5]);
+      if (!std::isfinite(width_x) || !std::isfinite(width_y) ||
+          width_x <= 0 || width_y <= 0)
+        return false;
+      binding.b4 = arena.Add(constants.data(), sizeof(constants));
+    }
     binding.viewport = {draw.viewport[0], tile_offset, draw.viewport[2],
                         draw.viewport[3], draw.viewport[4], draw.viewport[5]};
     binding.scissor = {draw.scissor[0], LONG(draw.scissor[1] + tile_offset),
@@ -1112,6 +1151,8 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     list->D3DSetGraphicsRootConstantBufferView(0, base + binding.b0);
     list->D3DSetGraphicsRootConstantBufferView(1, base + binding.b1);
     list->D3DSetGraphicsRootConstantBufferView(2, base + binding.b3);
+    if (binding.b4)
+      list->D3DSetGraphicsRootConstantBufferView(7, base + binding.b4);
     if (binding.material_index != UINT32_MAX) {
       auto handle = material_gpu_start;
       handle.ptr += SIZE_T(binding.material_index) * material_stride;
