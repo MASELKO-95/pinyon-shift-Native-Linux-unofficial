@@ -317,9 +317,10 @@ Effort is relative scope, not a time estimate.
 2. Prove a retained-HUD boundary before trying to skip compatibility draws.
    Same-frame race, pause and title captures now identify the first UI packet
    after the world-only output and match every UI draw to RenderDoc. Next,
-   move the owned native scene to the first race UI draw, inject it there in a
-   bounded opt-in probe, and verify that subsequent guest draws retain the
-   complete HUD. Admit this path only on an independently validated race
+   expose the guest output target at the first race UI draw, inject the
+   already assembled native scene there in a bounded opt-in probe, and verify
+   that subsequent guest draws retain the complete HUD. Admit this path only
+   on an independently validated race
    frame with the proved target and draw sequence. Reject the entire native
    frame when scene, boundary or race admission is uncertain; check pause,
    free roam and title still use complete compatibility output. Keep the
@@ -1288,6 +1289,27 @@ transition signoff. A prior clean `title-settled` screenshot still showed a
 free-roam pause/options overlay, demonstrating that the checkpoint name is
 not proof of the active game mode. The temporary guest-draw logger was
 removed after these captures.
+
+**Opt-in pre-UI scene handoff (2026-09-25):** the D3D12 draw processor now
+notifies the existing output callback on the observed format-2 to format-10
+transition, before issuing that guest UI draw. The notification is limited
+to the native-race request, configured capture window, target-0-only state
+and captured 1280-pitch surface, behind
+`fh1_native_ui_boundary_probe=false`. The callback admits only a published
+race frame and assembles its owned scene once; the swap callback assembles it
+normally if the early notification did not occur. This is scene handoff,
+**not native injection or HUD retention**: no render target is exposed to the
+early callback and the current final-output path remains in use. The
+RelWithDebInfo short saved-race route exited normally with the probe enabled;
+its compatibility control had zero native-sky pixels, while two later race
+captures had 37,473 and 36,636 native-sky pixels and different image hashes.
+The early callback appeared in the retained race logs. Evidence is local at
+`.local/native-renderer/early-ui-final-20260925/`. A full race/pause/free-roam/
+title route also exited normally and passed
+`verify-native-race-mode-boundary.py` with the probe enabled; evidence is at
+`.local/native-renderer/early-ui-mode-boundary-20260925/`. The next bounded
+step is to expose and validate the exact guest output target and preserve its
+state across native injection before allowing compatibility draw suppression.
 
 1. Add the narrow D3D12 output-takeover seam first. The current FH1 output
    callback is an observer after compatibility output processing; it cannot

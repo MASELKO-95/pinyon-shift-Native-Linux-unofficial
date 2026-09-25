@@ -47,7 +47,7 @@ bool ObserveRenderTestOutput(
     const rex::system::NativeGuestOutputRenderContext& context) {
   static thread_local uint64_t captured_frame = 0;
   static thread_local uint64_t capture_us = 0;
-  if (context.phase == rex::system::NativeGuestOutputPhase::kNativeAttempt) {
+  const auto capture_scene = [&] {
     const auto capture_begin = std::chrono::steady_clock::now();
     pinyon_shift::native_renderer::ObserveSnr03OutputFrame(
         context.frame_sequence, context.device);
@@ -58,6 +58,21 @@ bool ObserveRenderTestOutput(
     captured_frame = context.frame_sequence;
     capture_us = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - capture_begin).count();
+  };
+  if (context.phase == rex::system::NativeGuestOutputPhase::kBeforeUi) {
+#if defined(_WIN32)
+    if (!native_race_enabled.load(std::memory_order_acquire) ||
+        !pinyon_shift::native_renderer::NativeRaceAdmittedForOutput(
+            context.frame_sequence))
+      return false;
+    capture_scene();
+    REXGPU_INFO("FH1 native pre-UI scene output_frame={} capture_us={}",
+                captured_frame, capture_us);
+#endif
+    return false;
+  }
+  if (context.phase == rex::system::NativeGuestOutputPhase::kNativeAttempt) {
+    if (captured_frame != context.frame_sequence) capture_scene();
 #if defined(_WIN32)
     const bool native_race_requested =
         native_race_enabled.load(std::memory_order_acquire);
