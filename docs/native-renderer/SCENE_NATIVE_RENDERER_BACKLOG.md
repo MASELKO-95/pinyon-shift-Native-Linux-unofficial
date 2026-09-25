@@ -331,11 +331,14 @@ Effort is relative scope, not a time estimate.
    texture families. Keep road texture, foliage cutouts and the bounded HUD
    bridge. Missing or stale borrowed resources must reject the entire native
    frame before submission.
-4. Own the sampled source texture version across the source/output handoff.
-   The texture cache can reload into the same D3D12 resource between those
-   frames, so retaining only its pointer is insufficient. Keep whole-frame
-   fallback until this is solved; then repeat the 20-frame native-output
-   continuity check under normal texture streaming.
+4. Own sampled texture versions at the source draw, before the source/output
+   handoff. Output-time GPU copies now prevent later reuse from altering a
+   resolved material, but cannot recover a generation already replaced before
+   output. A cold toggle run observed exactly that case (allocation 574,
+   generation 2 expected, generation 3 current) and correctly fell back for
+   the whole frame. Capture or pin the sampled version at the final source
+   draw; keep whole-frame fallback for missing or stale resources, then repeat
+   the sustained check with a forced same-allocation reload.
 
 Do not start broad compatibility-work suppression, broad material parity or
 a second graphics backend to close L1/L2. A bounded suppression trial needs
@@ -356,6 +359,26 @@ the moving-car image check passed. The first cold-on frame may fall back
 while capture warms; this is safe. Manual settings-UI switching and the
 race/pause/free-roam/title transition remain L1 checks. The startup-on
 continuous route needs a 480-second timeout at the current race pace.
+
+**Output-time texture version isolation (2026-09-25):** retaining a cached D3D12
+texture pointer did not freeze its content: later cache loads can write a new
+payload into that resource. The native output now copies each selected sampled
+texture on the shared command list after checking its allocation and payload
+generation. The copy is sampled only after its copy barrier, while both the
+source and the copy are retained through submission completion. If two
+identities for the same resource disagree within an output frame, or a copy
+cannot be allocated within a 64 MiB frame budget, native output yields the
+whole frame to compatibility before modifying it. The cold on/off/on saved-
+race route and a startup-on 21-frame continuous route exited normally. The
+continuous image verifier passed, but a repeat cold toggle found an expected
+source/output gap: output frame 5004 needed allocation 574 generation 2 after
+the cache had reached generation 3. Its native assertion failed while the
+whole-frame compatibility fallback worked. The revised cold route exited
+normally and passed a bounded on/off/on verifier: two of four first-window
+captures and both second-window captures contained native output; the off
+capture stayed fully compatible. Intermittent fallback in the first window
+shows that source-draw version ownership remains open. This safety fix does
+not make live capture responsive.
 
 **Capture-cost check (2026-09-25):** a RelWithDebInfo saved-race run with
 scene capture starting at source 5000 and native output off passed normal

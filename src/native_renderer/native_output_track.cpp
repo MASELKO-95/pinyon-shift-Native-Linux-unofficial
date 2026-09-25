@@ -701,7 +701,9 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   UploadArena arena;
   struct Material {
     ComPtr<ID3D12Resource> resource;
+    ComPtr<ID3D12Resource> snapshot;
     D3D12_SHADER_RESOURCE_VIEW_DESC view{};
+    uint64_t allocation_id = 0, payload_generation = 0;
   };
   std::vector<Material> materials;
   std::map<std::tuple<std::array<uint32_t, 6>, uint64_t, uint64_t>,
@@ -725,6 +727,13 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
                          &resource, &material.view) || !resource)
       return false;
     material.resource = static_cast<ID3D12Resource*>(resource);
+    for (const auto& prior : materials)
+      if (prior.resource.Get() == material.resource.Get() &&
+          (prior.allocation_id != identity.allocation_id ||
+           prior.payload_generation != identity.payload_generation))
+        return false;
+    material.allocation_id = identity.allocation_id;
+    material.payload_generation = identity.payload_generation;
     index = uint32_t(materials.size());
     material_indices.emplace(key, index);
     materials.push_back(std::move(material));
@@ -836,6 +845,24 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   TrackFrame frame;
   if (!CreateFrame(device, output, arena, frame)) return false;
   if (!materials.empty()) {
+    D3D12_HEAP_PROPERTIES heap_properties{};
+    heap_properties.Type = D3D12_HEAP_TYPE_DEFAULT;
+    uint64_t snapshot_bytes = 0;
+    for (auto& material : materials) {
+      const auto desc = material.resource->GetDesc();
+      if (desc.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
+          desc.DepthOrArraySize != 1 || desc.SampleDesc.Count != 1)
+        return false;
+      const uint64_t bytes =
+          device->GetResourceAllocationInfo(0, 1, &desc).SizeInBytes;
+      if (bytes > 64 * 1024 * 1024 - snapshot_bytes ||
+          FAILED(device->CreateCommittedResource(
+              &heap_properties, D3D12_HEAP_FLAG_NONE, &desc,
+              D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+              IID_PPV_ARGS(&material.snapshot))))
+        return false;
+      snapshot_bytes += bytes;
+    }
     D3D12_DESCRIPTOR_HEAP_DESC heap{};
     heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heap.NumDescriptors = UINT(materials.size());
@@ -846,15 +873,17 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     auto handle = frame.materials->GetCPUDescriptorHandleForHeapStart();
     const auto stride = device->GetDescriptorHandleIncrementSize(heap.Type);
     for (auto& material : materials) {
-      device->CreateShaderResourceView(material.resource.Get(),
+      device->CreateShaderResourceView(material.snapshot.Get(),
                                        &material.view, handle);
       frame.material_resources.push_back(std::move(material.resource));
+      frame.material_resources.push_back(std::move(material.snapshot));
       handle.ptr += stride;
     }
   }
   list->ReserveAdditionalBytes(
       (scene.draws.size() + item_bindings.size() +
-       vegetation_bindings.size() + remainder_bindings.size()) * 512 + 8192);
+       vegetation_bindings.size() + remainder_bindings.size() +
+       materials.size()) * 512 + 8192);
   const auto base = frame.upload->GetGPUVirtualAddress();
   const auto rtv = frame.rtv->GetCPUDescriptorHandleForHeapStart();
   auto output_rtv = rtv;
@@ -872,6 +901,30 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
   const auto scene_srv_gpu = frame.srv->GetGPUDescriptorHandleForHeapStart();
   graphics.submitted.emplace_back(context.submission, std::move(frame));
+
+  // Snapshot before any later cache upload can refresh the same allocation.
+  // Enqueue ownership first, so even a later render failure retains both
+  // resources until this submission completes.
+  const auto& retained = graphics.submitted.back().second.material_resources;
+  for (size_t i = 0; i < materials.size(); ++i) {
+    auto* source = retained[i * 2].Get();
+    auto* snapshot = retained[i * 2 + 1].Get();
+    D3D12_RESOURCE_BARRIER copy_barrier{};
+    copy_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    copy_barrier.Transition.pResource = source;
+    copy_barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    copy_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    copy_barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    list->D3DResourceBarrier(1, &copy_barrier);
+    list->D3DCopyResource(snapshot, source);
+    std::swap(copy_barrier.Transition.StateBefore,
+              copy_barrier.Transition.StateAfter);
+    list->D3DResourceBarrier(1, &copy_barrier);
+    copy_barrier.Transition.pResource = snapshot;
+    copy_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    copy_barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    list->D3DResourceBarrier(1, &copy_barrier);
+  }
 
   D3D12_RESOURCE_BARRIER barrier{};
   barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;

@@ -58,11 +58,14 @@ input 4200 0000 0 255 0 0 0 0
 capture 4560 race-moving
 native-race 5000 true
 capture 5001 before-on
-capture 5004 native-on
-capture 5005 before-off
-native-race 5006 false
-capture 5007 compatibility-off
-native-race 5008 true
-capture 5009 before-on-again
-capture 5012 native-on-again
-stop 5016
+capture 5004 warmup-on
+capture 5006 warmup-on-later
+capture 5008 native-on
+capture 5009 before-off
+native-race 5010 false
+capture 5011 compatibility-off
+native-race 5014 true
+capture 5015 before-on-again
+capture 5018 warmup-on-again
+capture 5020 native-on-again
+stop 5024
