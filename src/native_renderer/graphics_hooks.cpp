@@ -3082,6 +3082,8 @@ void ObserveCopy(const rex::system::GraphicsCopyObservation& observation) {
 void PublishNativeRaceAdmission(uint64_t source_frame, bool admitted) {
   native_race_admission[source_frame & (native_race_admission.size() - 1)].store(
       (source_frame << 1) | uint64_t(admitted), std::memory_order_release);
+  rex::perf::TraceCriticalPath("native_admission_publish", int64_t(source_frame),
+                               admitted);
 }
 
 bool NativeRaceAdmittedForOutput(uint64_t output_frame) {

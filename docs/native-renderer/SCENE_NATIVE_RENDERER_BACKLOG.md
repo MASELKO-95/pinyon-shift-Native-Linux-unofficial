@@ -1491,6 +1491,16 @@ trace. Next: instrument the admission publish/check ordering without adding
 per-draw logs, then fix the ordering and isolate the title-side missing UI
 pass before claiming sustained L1 usability.
 
+**Admission-order trace prepared (2026-09-25):** the title publication and
+the GPU pre-UI/output checks now emit `native_admission_publish`,
+`native_admission_pre_ui` and `native_admission_output` critical-path events
+only when critical-path tracing is enabled. These are per-frame events, not
+per-draw logging. The RelWithDebInfo build and idle smoke route passed. WPR
+denied access in the current non-elevated shell, so event order remains
+unmeasured. An elevated marker-only replay of
+`fh1-native-ui-admission-stress.fh1test` with native race, capture start
+6500, boundary/scene probes and `--log_level=warn` is the next check.
+
 1. Add the narrow D3D12 output-takeover seam first. The current FH1 output
    callback is an observer after compatibility output processing; it cannot
    replace the presented image. Let an opt-in native callback draw to the

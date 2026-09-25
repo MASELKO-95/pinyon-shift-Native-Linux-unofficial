@@ -1,6 +1,7 @@
 #include <rex/system/interfaces/graphics.h>
 #include <rex/cvar.h>
 #include <rex/logging.h>
+#include <rex/perf/counter.h>
 
 #include <chrono>
 #include <atomic>
@@ -67,10 +68,14 @@ bool ObserveRenderTestOutput(
   };
   if (context.phase == rex::system::NativeGuestOutputPhase::kBeforeUi) {
 #if defined(_WIN32)
-    if (!native_race_enabled.load(std::memory_order_acquire) ||
-        !pinyon_shift::native_renderer::NativeRaceAdmittedForOutput(
-            context.frame_sequence))
+    if (!native_race_enabled.load(std::memory_order_acquire))
       return false;
+    const bool admitted =
+        pinyon_shift::native_renderer::NativeRaceAdmittedForOutput(
+            context.frame_sequence);
+    rex::perf::TraceCriticalPath("native_admission_pre_ui",
+                                 int64_t(context.frame_sequence) - 1, admitted);
+    if (!admitted) return false;
     capture_scene();
     REXGPU_INFO("FH1 native pre-UI scene output_frame={} capture_us={}",
                 captured_frame, capture_us);
@@ -91,6 +96,13 @@ bool ObserveRenderTestOutput(
     return false;
   }
   if (context.phase == rex::system::NativeGuestOutputPhase::kNativeAttempt) {
+#if defined(_WIN32)
+    if (native_race_enabled.load(std::memory_order_acquire))
+      rex::perf::TraceCriticalPath(
+          "native_admission_output", int64_t(context.frame_sequence) - 1,
+          pinyon_shift::native_renderer::NativeRaceAdmittedForOutput(
+              context.frame_sequence));
+#endif
     if (captured_frame != context.frame_sequence) capture_scene();
 #if defined(_WIN32)
     // A missed early boundary must keep the complete guest frame. The late
