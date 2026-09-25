@@ -314,15 +314,16 @@ Effort is relative scope, not a time estimate.
    complete compatibility frames outside the race, and no stale or blank
    output. Keep native default-off and document any unsupported resolution.
 2. Make live capture responsive before broadening materials. On a route with
-   no per-frame screenshots, recent captured-race medians vary from 174 to
-   196 ms versus about 22 ms before capture starts. Profile the capture work
-   across the title hooks and command processor, then remove a measured
-   bottleneck. Broad and late exact filtering of prepared-draw observation
-   have not helped this route, and measured track range ownership and
-   constant packing are only a few milliseconds. Target the measured
-   prepared-draw observer and descriptor-binding paths; the title view-end
-   hook is under 1 ms. Establish the HUD dependency cut before a bounded
-   early suppression trial. Preserve immutable current-frame
+   no per-frame screenshots, captured-race medians vary from about 174 to
+   204 ms versus roughly 22–29 ms before capture starts. Attribute the
+   remaining frame time across title work, GPU draw preparation and scene
+   ownership before changing another path. Broad and late exact filtering of
+   prepared-draw observation have not helped; track range ownership,
+   constant packing, the title view-end hook and source texture pinning are
+   each only a few milliseconds. The prepared-draw observer and descriptor
+   bindings are larger measured components, but still require a matched
+   whole-frame gain before keeping a change. Establish the HUD dependency
+   cut before a bounded early suppression trial. Preserve immutable current-frame
    ownership and whole-frame fallback. Repeat the drive test until it is
    responsive.
    This is a usability requirement, not the later 15% speedup qualification.
@@ -475,6 +476,17 @@ trial skipped diagnostic-only title resource-generation hooks during native
 capture; its 27-frame median was 187 ms versus a recent 184 ms control, so
 the trial was reverted. The earlier 29–52 ms view-8 span includes the title's
 own work and is not itself a measurement of hook overhead.
+
+**Source-pin cost check (2026-09-25):** a temporary SDK timer on the same
+saved-race route, with capture starting at frame 5000 and no per-frame
+screenshots, reached normal exit. Frames 5005–5029 made 291 eligible sampled
+draw checks and 10 texture snapshots per frame (medians); lookup plus copy
+setup took 3.83 ms median. The performance CSV measured 29.1 ms median for
+frames 4900–4929 before capture and 203.9 ms for 5002–5028 with capture.
+The source-pin path is a small part of that increase; retain its current-frame
+version guarantee and measure a larger CPU boundary next. The timer was
+removed. Evidence: AppData preview log session `20260925T105813Z-p35704`
+and its `.perf.csv`.
 
 **Texture-continuity check (2026-09-25):** two normal saved-race visual runs
 each exited successfully but `verify-native-track-output.py` failed on one
