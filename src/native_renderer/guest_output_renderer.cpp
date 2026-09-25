@@ -93,6 +93,11 @@ bool ObserveRenderTestOutput(
   if (context.phase == rex::system::NativeGuestOutputPhase::kNativeAttempt) {
     if (captured_frame != context.frame_sequence) capture_scene();
 #if defined(_WIN32)
+    // A missed early boundary must keep the complete guest frame. The late
+    // compositor cannot safely recover UI over a partially replaced target.
+    if (REXCVAR_GET(pinyon_shift_native_ui_clear_probe) ||
+        REXCVAR_GET(pinyon_shift_native_ui_scene_probe))
+      return false;
     const bool native_race_requested =
         native_race_enabled.load(std::memory_order_acquire);
     const bool native_race_admitted =

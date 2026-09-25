@@ -2,13 +2,13 @@
 
 Status (2026-09-25): L1 is implemented as an opt-in race pilot and has passed
 scripted moving-frame, toggle and unsupported-mode fallback checks. A guarded
-pre-UI path now draws the owned scene beneath the game's original HUD on
-consecutive race frames. The live
-settings-UI toggle has been exercised in both directions; longer unscripted
-driving still needs validation before closing L1. L2 is open: the road and
-some foliage use current textures, the race HUD is readable, and the
-car/terrain/props remain crude; live capture is
-still too slow for comfortable driving. No net renderer speedup is claimed.
+pre-UI path draws the owned scene beneath the game's original HUD on admitted
+race frames, but a dense sustained capture found intermittent frames with no
+early UI admission or race HUD. The live settings-UI toggle works in both
+directions; longer unscripted driving and the HUD gap remain open before L1
+signoff. L2 is open: the road and some foliage use current textures, while
+car/terrain/props remain crude and live capture is too slow for comfortable
+driving. No net renderer speedup is claimed.
 **Delivery priority changed on 2026-09-24:** get an opt-in live native frame,
 then a usable race renderer. Performance and the approximately 90% visual
 target are later optimization/qualification goals, not blockers to those
@@ -311,21 +311,31 @@ Effort is relative scope, not a time estimate.
 
 **Next bounded work (2026-09-25):**
 
-1. Close L1 with a longer unscripted player-facing drive at the intended
+1. Explain intermittent missing early UI admission before promoting the HUD
+   bridge. A dense race capture alternates admitted native/HUD frames with
+   whole compatibility frames lacking the race HUD; the compatibility control
+   at the same script ticks has its HUD, though it reaches a different game
+   time. Instrument the first format-10 draw, current target and UI draw
+   count on admitted and missed output frames. Compare the same gameplay
+   state without the native probe, then repair the true boundary or guest
+   state-restoration cause. Keep missed frames entirely compatible and count
+   admission/fallback; do not call this continuous HUD support yet.
+2. Close L1 with a longer unscripted player-facing drive at the intended
    resolution, then pause, return to free roam/title and reload. Verify
    changing current-frame geometry and HUD, complete compatibility frames
    outside the race, and no stale or blank output. Keep native default-off
    and document any unsupported resolution.
-2. Promote the retained-HUD scene handoff after broader player validation.
+3. Promote the retained-HUD scene handoff after broader player validation.
    The guarded early path now renders the current owned race scene into the
    proved target before the guest HUD draws. Two adjacent saved-race frames
    show native geometry, materials and the updating original HUD; a full
    scripted race/pause/free-roam/title route exits normally and keeps
    compatibility output outside active race. Next test a longer unscripted
    drive, resize/resolution rejection and missing-scene fallback before
-   removing the extra probe switches. Keep the late takeover available
-   until those admission checks pass.
-3. Attribute live-race cost before another capture optimization. The committed
+   removing the extra probe switches. The late takeover remains available
+   for the separate non-HUD pilot, but must not run after this probe misses
+   its early boundary.
+4. Attribute live-race cost before another capture optimization. The committed
    `fh1-native-race-profile.fh1test` route captures no screenshots; its most
    recent pre-capture/captured medians were 25.35/219.05 ms. Capture a sampled
    CPU trace with that route and the native race flags, then rank the title,
@@ -342,7 +352,7 @@ Effort is relative scope, not a time estimate.
    speedup qualification. Preserve immutable current-frame ownership and
    whole-frame fallback. The observer's own range copies and constant packing
    are small; do not repeat those micro-optimizations.
-4. Make the existing L2 scene legible with owned inputs. Depth-only car draws
+5. Make the existing L2 scene legible with owned inputs. Depth-only car draws
    leave color intact, and the sampled rear mask now uses its owned constants
    and texture alpha instead of opaque gray. First close the intermittent car
    title/GPU join: a race view with visible cars sometimes has 57 car title
@@ -358,7 +368,7 @@ Effort is relative scope, not a time estimate.
    before submission. A bounded single-fetch visual approximation may help
    legibility after all bound inputs have current-frame identity; it does not
    count as a port of the guest material or resolve-backed dependency.
-5. Stress the sampled texture version handoff. Selected road, roadside and
+6. Stress the sampled texture version handoff. Selected road, roadside and
    foliage materials now copy their bound version at the final source draw,
    keep it through output submission, and use it directly when the exact
    fetch/allocation/generation matches. The output-time copy still protects a
@@ -1336,8 +1346,7 @@ before the first UI draw.
 **Owned scene beneath original HUD (2026-09-25):** the separate default-off
 `pinyon_shift_native_ui_scene_probe` uses the same validated pre-UI target,
 renders the current owned race scene there, restores guest GPU bindings and
-lets the game's remaining UI draws run. The late output compositor remains
-available if the early path is not admitted. The short saved-race route at
+lets the game's remaining UI draws run. The short saved-race route at
 `.local/native-renderer/scene-ui-20260925/` exited normally; captures at
 frames 5008 and 5012 show changing geometry and race time with the original
 lap, place, minimap and speed HUD over the native car, road and foliage. The
@@ -1352,6 +1361,32 @@ control, so this route does not establish clean title rendering. These tests
 prove a bounded early scene/HUD handoff, not longer player-driven stability,
 resolution independence or L2 usability. The scene still has flat car paint,
 crude terrain/props and a costly compatibility/capture path.
+
+**Dense UI-admission stress (2026-09-25):** a delayed race route reached the
+event reliably and sampled output ticks 6790–6810 every two ticks. Six of its
+11 scene-probe captures show native geometry with the original HUD; five show
+complete compatibility geometry without the race HUD. The same script ticks
+with native mode off show the HUD, but correspond to a much earlier game time
+because the native path is substantially slower. An earlier clear-probe run
+also produced one flat background without HUD. Trace evidence indicates some
+output frames have no recognized first format-10 UI boundary, so the late
+compositor must not replace them with a native image that cannot retain UI.
+The UI probes now leave those frames on the compatibility output path; the
+boundary is limited to the first format-10 draw on the qualified surface to
+avoid a later false handoff. This prevents mixed late output, but it does not
+explain the missing HUD or qualify continuous composition. Local captures:
+`.local/native-renderer/ui-scene-fallback-stress-20260925/` and
+`.local/native-renderer/ui-scene-fallback-control-20260925/`. The scripted car
+ends at a barrier, so a real driving signoff remains necessary. Reproduce the
+dense check with `fh1-native-ui-admission-stress.fh1test`, the installed
+AppData preview state, `--pinyon_shift_native_race=true`,
+`--pinyon_shift_native_race_capture_start_frame=6500`,
+`--fh1_native_ui_boundary_probe=true`, and
+`--pinyon_shift_native_ui_scene_probe=true`; omit the native flags for the
+compatibility control. After the first-target guard, the same route exited
+normally with seven native/HUD and four complete compatibility/no-HUD images;
+there was no flat placeholder fallback. Its captures are in
+`.local/native-renderer/ui-scene-fallback-final-20260925/`.
 
 1. Add the narrow D3D12 output-takeover seam first. The current FH1 output
    callback is an observer after compatibility output processing; it cannot
