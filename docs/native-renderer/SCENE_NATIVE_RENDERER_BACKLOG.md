@@ -337,8 +337,9 @@ Effort is relative scope, not a time estimate.
    fetch-13 image before shading families that sample it. Keep
    road texture, foliage cutouts and the bounded
    HUD bridge. Missing or stale resources must reject the entire native frame
-   before submission; do not invent a fixed tint or single-fetch material for
-   a shader that uses more inputs.
+   before submission. A bounded single-fetch visual approximation may help
+   legibility after all bound inputs have current-frame identity; it does not
+   count as a port of the guest material or resolve-backed dependency.
 4. Stress the sampled texture version handoff. Selected road, roadside and
    foliage materials now copy their bound version at the final source draw,
    keep it through output submission, and use it directly when the exact
@@ -1032,6 +1033,21 @@ material, then admit the frame only when all inputs for that material have
 current-frame versions. Evidence: fixture
 `.local/native-renderer/remainder-r5-material-capture-20260925/snr03-remainder-5000.bin`
 and local census `.local/native-renderer/analyze-r5-car.py`.
+
+**Car-body detail checkpoint (2026-09-25):** the 57 eight-binding draws in
+the source-5000 remainder fixture identify one visible body shader family.
+For this family, the SDK pins the source-draw version of fetch 1; native
+output requires current-frame allocation and generation identities for all
+eight bound fetches, then shades the car's existing red base with fetch-1
+detail. This is a legibility approximation, not the guest's layered paint,
+glass or lighting shader. A normal-exit early-race route passed seven
+changing native frames (source 4108–4114) with a visible red car. In a later
+source-5000 trial the player car was culled, so strict scene admission
+correctly selected whole-frame compatibility output. Remaining L2 work is
+ordered ownership for resolve-backed inputs and more complete vehicle and
+scene materials, alongside responsive sustained gameplay. Evidence:
+`.local/native-renderer/car-body-continuity-20260925` and the source-5000
+remainder fixture cited above.
 
 **Track material dependency checkpoint (2026-09-25):** the source-5000
 `SNR02T5` fixture has 666 track draws; 644 bind the same fetch-13 descriptor,

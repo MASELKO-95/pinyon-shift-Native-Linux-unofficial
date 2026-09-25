@@ -42,6 +42,10 @@ uint32_t TrackMaterialKind(const Snr04TrackDraw& draw) {
 }
 
 uint32_t RemainderMaterialKind(const Snr04RemainderDraw& draw) {
+  if (draw.family == 1 && draw.shader == 0xD34A83D9E6B3A399ull &&
+      draw.pixel_shader == 0xE9CD565D9C61D037ull &&
+      draw.pixel_specialization == 0x16003Full && draw.texture_count == 8)
+    return 3;
   if (draw.family == 3 && draw.shader == 0x0DF9CA19A93A75D9ull &&
       draw.pixel_shader == 0xE349204378CA1591ull) return 1;
   if (draw.family == 1 && draw.shader == 0xCC2F3F4B3FBA53F5ull &&
@@ -113,7 +117,7 @@ struct TrackGraphics {
   ComPtr<ID3D12Device> device;
   ComPtr<ID3D12RootSignature> root;
   ComPtr<ID3DBlob> pixel, pixel_textured, pixel_road, pixel_foliage,
-      pixel_car, pixel_car_dark;
+      pixel_car, pixel_car_dark, pixel_car_body;
   ComPtr<ID3D12RootSignature> blit_root;
   ComPtr<ID3D12PipelineState> blit_pipeline;
   std::map<PipelineKey, ComPtr<ID3D12PipelineState>> pipelines;
@@ -135,12 +139,13 @@ struct TrackGraphics {
       pixel_foliage.Reset();
       pixel_car.Reset();
       pixel_car_dark.Reset();
+      pixel_car_body.Reset();
       blit_root.Reset();
       blit_pipeline.Reset();
       device = current;
     }
     if (root && pixel && pixel_textured && pixel_road && pixel_foliage &&
-        pixel_car && pixel_car_dark)
+        pixel_car && pixel_car_dark && pixel_car_body)
       return true;
     constexpr char shader[] =
         "cbuffer Color : register(b2) { float4 flat; };"
@@ -205,6 +210,18 @@ struct TrackGraphics {
     if (FAILED(D3DCompile(car_dark_shader, sizeof(car_dark_shader) - 1,
                           nullptr, nullptr, nullptr, "main", "ps_5_1", 0, 0,
                           &pixel_car_dark, &errors)))
+      return false;
+    constexpr char car_body_shader[] =
+        "Texture2D<float4> detail_tex : register(t1);"
+        "SamplerState linear_wrap : register(s0);"
+        "cbuffer Color : register(b2) { float4 flat; };"
+        "float4 main(float4 varying[6] : TEXCOORD0) : SV_Target0 {"
+        " float3 detail=detail_tex.Sample(linear_wrap, varying[0].xy).rgb;"
+        " float value=dot(detail,float3(0.3,0.59,0.11));"
+        " return float4(flat.rgb*(0.45+0.7*saturate(value)),1); }";
+    if (FAILED(D3DCompile(car_body_shader, sizeof(car_body_shader) - 1,
+                          nullptr, nullptr, nullptr, "main", "ps_5_1", 0, 0,
+                          &pixel_car_body, &errors)))
       return false;
     D3D12_ROOT_PARAMETER parameters[8]{};
     for (uint32_t i = 0; i < 4; ++i) {
@@ -370,7 +387,8 @@ struct TrackGraphics {
     desc.VS = {vertex, size};
     const uint32_t material = RemainderMaterialKind(draw);
     ID3DBlob* fragment = material == 1 ? pixel_car.Get()
-        : material == 2 ? pixel_car_dark.Get() : pixel.Get();
+        : material == 2 ? pixel_car_dark.Get()
+        : material == 3 ? pixel_car_body.Get() : pixel.Get();
     desc.PS = {fragment->GetBufferPointer(), fragment->GetBufferSize()};
     if (material == 1) {
       auto& blend = desc.BlendState.RenderTarget[0];
@@ -960,8 +978,20 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
               &identity).second)
         return false;
   for (size_t i = 0; i < remainder.draws.size(); ++i) {
-    if (RemainderMaterialKind(remainder.draws[i]) != 1) continue;
-    const auto found = remainder_textures.find({remainder.draws[i].sequence, 0});
+    const uint32_t material = RemainderMaterialKind(remainder.draws[i]);
+    if (material != 1 && material != 3) continue;
+    if (material == 3) {
+      for (uint32_t fetch : {0u, 1u, 2u, 3u, 4u, 5u, 6u, 13u}) {
+        const auto input = remainder_textures.find({remainder.draws[i].sequence, fetch});
+        if (input == remainder_textures.end() || !input->second->allocation_id ||
+            !input->second->payload_generation || input->second->outdated_mask)
+          return false;
+      }
+      // ponytail: one-fetch paint detail is a visual stopgap; port the
+      // layered shader after resolve-backed inputs have ordered ownership.
+    }
+    const auto found = remainder_textures.find({remainder.draws[i].sequence,
+                                                material == 3 ? 1u : 0u});
     if (found == remainder_textures.end() ||
         !resolve_material(*found->second,
                           remainder_bindings[i].material_index))
