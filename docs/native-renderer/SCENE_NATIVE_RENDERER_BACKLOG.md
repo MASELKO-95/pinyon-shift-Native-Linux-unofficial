@@ -316,9 +316,10 @@ Effort is relative scope, not a time estimate.
    and document any unsupported resolution.
 2. Prove a retained-HUD boundary before trying to skip compatibility draws.
    The race and title captures both place their UI after the world, but the
-   shared shader sequence is only an injection candidate. Identify the first
-   retained draw from guest draw/target semantics, inject the native world
-   before it in a bounded race probe, and verify the complete original HUD.
+   shared shader sequence is only an injection candidate. Correlate the title
+   UI emitter's PM4 packets with a RenderDoc capture of the same source/output
+   frame before choosing a first retained draw. Inject the native world before
+   that draw in a bounded race probe and verify the complete original HUD.
    Reject the entire native frame when the boundary or race mode is uncertain;
    verify pause, free-roam and title keep complete compatibility output.
 3. Attribute live-race cost before another capture optimization. The committed
@@ -1233,6 +1234,18 @@ all supported gameplay, pause, map, or title frames have the same ordering,
 and the shared sequence supplies no game-mode admission signal. A production
 bridge must derive the boundary from validated draw/target semantics and keep
 the complete compatibility frame available when those checks fail.
+
+**Guest draw-state cross-check (2026-09-25):** a temporary one-frame
+`IssueDraw` trace on the normal-exit native race route recorded 3,126 draws
+for source frame 5029, including guest shader hashes, packet addresses and
+render-target registers. Only its last two draws had target-0 bound with
+`RB_COLOR_INFO=0x00020000` (the guest 2:10:10:10 format); both used the same
+fullscreen shader pair. No retained HUD block was identifiable from that
+guest register predicate. The earlier RenderDoc event counts refer to a
+different captured frame, so these traces do not yet establish how the guest
+packet stream maps onto the host R10 target's UI draws. Correlate a same-frame
+RenderDoc capture and title UI packet provenance before using a target or
+shader rule for native injection. The temporary draw logger was removed.
 
 1. Add the narrow D3D12 output-takeover seam first. The current FH1 output
    callback is an observer after compatibility output processing; it cannot
