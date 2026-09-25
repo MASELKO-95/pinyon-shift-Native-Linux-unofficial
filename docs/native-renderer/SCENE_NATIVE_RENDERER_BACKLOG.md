@@ -361,6 +361,17 @@ while capture warms; this is safe. Manual settings-UI switching and the
 race/pause/free-roam/title transition remain L1 checks. The startup-on
 continuous route needs a 480-second timeout at the current race pace.
 
+The current car-material build repeated the cold on/off/on route and passed
+`verify-native-race-toggle.py --cold-start`: its off capture was nonblank and
+contained no native-sky pixels, and native output returned after re-enabling.
+The race/pause/free-roam/title route also exited normally and passed
+`verify-native-race-mode-boundary.py`; race remained native and the three
+unsupported modes used nonblank compatibility frames. Evidence:
+`.local/native-renderer/car-material-hot-toggle-20260925` and
+`.local/native-renderer/car-material-mode-boundary-20260925`. These scripted
+checks do not replace direct settings-overlay interaction or a longer
+unscripted driving check, so L1's player-facing signoff remains open.
+
 **Output-time texture version isolation (2026-09-25):** retaining a cached D3D12
 texture pointer did not freeze its content: later cache loads can write a new
 payload into that resource. The native output now copies each selected sampled
