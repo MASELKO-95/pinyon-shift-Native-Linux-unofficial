@@ -6207,25 +6207,29 @@ void PinyonShiftObserveProceduralItemEnd() {
       scope.ordinal <= 512 && scope.descriptor_seen && scope.runtime_seen &&
       scope.descriptor_address && scope.runtime_address &&
       !snr01_view_scopes.empty() && snr01_view_scopes.back().ordinal == 8) {
-    std::string descriptor, runtime;
     Snr02ItemSnapshot snapshot{};
     snapshot.call = scope.ordinal;
     snapshot.packet = scope.snapshot_packet;
     snapshot.kind = scope.descriptor_kind;
     for (uint32_t word = 0; word < 23; ++word) {
       snapshot.descriptor[word] = SnrM02ReadU32(scope.descriptor_address + word * 4);
-      descriptor += fmt::format("{:08X}", snapshot.descriptor[word]);
     }
     for (uint32_t word = 0; word < 17; ++word) {
       snapshot.runtime[word] = SnrM02ReadU32(scope.runtime_address + word * 4);
-      runtime += fmt::format("{:08X}", snapshot.runtime[word]);
     }
-    REXGPU_INFO("FH1 SNR02 item payload {{\"frame\":{},\"call\":{},"
-                "\"descriptor\":{},\"runtime\":{},\"kind\":{},"
-                "\"descriptor_words\":\"{}\",\"runtime_words\":\"{}\"}}",
-                rex::perf::GetTotalCounter(rex::perf::CounterId::kSourceFrameCount),
-                scope.ordinal, scope.descriptor_address, scope.runtime_address,
-                scope.descriptor_kind, descriptor, runtime);
+    if (REXCVAR_GET(pinyon_shift_snr02_item_payload_probe)) {
+      std::string descriptor, runtime;
+      for (uint32_t word : snapshot.descriptor)
+        descriptor += fmt::format("{:08X}", word);
+      for (uint32_t word : snapshot.runtime)
+        runtime += fmt::format("{:08X}", word);
+      REXGPU_INFO("FH1 SNR02 item payload {{\"frame\":{},\"call\":{},"
+                  "\"descriptor\":{},\"runtime\":{},\"kind\":{},"
+                  "\"descriptor_words\":\"{}\",\"runtime_words\":\"{}\"}}",
+                  rex::perf::GetTotalCounter(rex::perf::CounterId::kSourceFrameCount),
+                  scope.ordinal, scope.descriptor_address, scope.runtime_address,
+                  scope.descriptor_kind, descriptor, runtime);
+    }
     if (snapshot_view) {
       if (!scope.submit_seen || scope.snapshot_packet_count != 1 ||
           snr02_item_title_items.size() >= 512) {

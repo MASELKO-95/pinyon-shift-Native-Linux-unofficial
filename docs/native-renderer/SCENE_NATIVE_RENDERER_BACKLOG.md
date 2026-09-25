@@ -313,21 +313,42 @@ Effort is relative scope, not a time estimate.
    roam/title and reload. Verify changing current-frame geometry and HUD,
    complete compatibility frames outside the race, and no stale or blank
    output. Keep native default-off and document any unsupported resolution.
-2. Make the existing L2 scene legible before expanding shader coverage:
+2. Make live capture responsive before broadening materials. On a route with
+   no per-frame screenshots, captured race frames still take about 185 ms
+   median versus 22 ms before capture starts. Measure the title hooks and
+   command-processing phases outside `IssueDraw`; do not assume fixture
+   serialization is the main cost. Remove a measured bottleneck, preserving
+   immutable current-frame ownership and whole-frame fallback. Repeat the
+   drive test until it is responsive. This is a usability requirement, not
+   the later 15% speedup qualification.
+3. Make the existing L2 scene legible before expanding shader coverage:
    prioritize player-car paint/glass and broad terrain/trackside color or
    texture families. Keep road texture, foliage cutouts and the bounded HUD
    bridge. Missing or stale borrowed resources must reject the entire native
    frame before submission.
-3. Measure the remaining sustained-race frame cost before changing the live
-   handoff. Prepared-draw snapshots and original title preparation are the
-   known large costs; track/remainder fixture serialization may be smaller.
-   Remove only a measured bottleneck, using the existing fixture path as an
-   oracle for any typed handoff. Repeat the drive test until it is responsive.
-   This is a usability requirement, not the later 15% speedup qualification.
 
 Do not start paired compatibility-work suppression, broad material parity or
 a second graphics backend to close L1/L2. The checkpoints below are evidence,
 not a prerequisite chain to repeat.
+
+**Capture-cost check (2026-09-25):** a RelWithDebInfo saved-race run with
+scene capture starting at source 5000 and native output off passed normal
+exit. Removing only the route's 21 consecutive full-resolution screenshots
+lowered the frame-5002–5028 median from 258 to 204 ms, showing that those
+test readbacks are part of the earlier apparent slowdown. Temporary SDK
+timers on the no-screenshot route measured roughly 10–14 ms/frame inside
+prepared-draw snapshot setup, 29–58 ms in the FH1 prepared-draw observer and
+79–130 ms across `IssueDraw` including that observer; they were removed after
+the measurement. The unaccounted frame cost is outside those measured scopes.
+The title's procedural-item hook also formatted two long hex strings on
+every native-race item solely for an optional diagnostic log. Gating that
+formatting on the explicit item-probe flag reduced the same 27-frame
+no-screenshot median from 204 to 185 ms (normal route exit). This is useful
+but still only about five frames per second. Evidence is in the AppData
+preview perf CSVs `20260925T070907Z-p37944.perf.csv` and
+`20260925T071309Z-p44652.perf.csv`. To repeat the no-screenshot comparison,
+copy `fh1-native-scene-continuous.fh1test`, remove only captures 5000–5020,
+and keep its input timeline and `stop 5030` unchanged.
 
 **Output-seam checkpoint (2026-09-24):** the D3D12 refresh now asks an
 opt-in native callback before compatibility gamma/FXAA and retains the final
