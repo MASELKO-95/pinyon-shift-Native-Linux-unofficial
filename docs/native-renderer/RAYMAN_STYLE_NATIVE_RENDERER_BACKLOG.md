@@ -257,9 +257,11 @@ The [manager material capture](RAYMAN_MANAGER_MATERIAL_CAPTURE_2026-09-26.md)
 now owns per-draw pixel constants, bool/loop words and two final texture
 versions. The original pixel shader now gives visible spectators textured
 clothing and skin when both source textures are pinned 2D views. Other draws
-retain the flat material, preserving native output across intermittent
-unsupported manager texture versions. A longer route and matched Xenos
-comparison remain open.
+retain the flat material when the texture version cannot be pinned. Adding
+manager fetches 0 and 13 to the SDK's normal snapshot filter keeps the crowd
+textured through a 309-frame scripted race with no native rejection or
+snapshot-limit warning. A matched Xenos comparison and unscripted drive
+remain open.
 
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major

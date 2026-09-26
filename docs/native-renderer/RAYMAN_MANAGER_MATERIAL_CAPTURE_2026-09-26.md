@@ -25,6 +25,14 @@ now retain the flat material instead of rejecting the whole native frame.
 The short route exited normally and promoted output frames 5001–5006,
 including frame 5004 where the earlier all-original trial fell back.
 
-Next, run a longer continuous route and compare one matched Xenos frame.
-Identify why the remaining manager texture versions cannot be pinned as 2D
-views before removing the flat fallback.
+The SDK's normal native-material snapshot filter did not include the manager
+shader pair. That explains why the selected trace frame was textured while
+ordinary frames fell back to flat: trace mode pins every used texture. The
+normal path now snapshots manager fetches 0 and 13. A RelWithDebInfo run of
+`.local/ray-ui-native-promotion-20260925/continuous-race.fh1test` saved a
+textured crowd at frame 5290. It promoted all 309 observed output frames
+4993–5301 with no native draw rejection or snapshot-limit warning. The
+fallback remains for resource versions outside the supported pinned 2D path.
+
+Next, compare one matched Xenos frame and perform an unscripted drive before
+calling the crowd quality gap closed.
