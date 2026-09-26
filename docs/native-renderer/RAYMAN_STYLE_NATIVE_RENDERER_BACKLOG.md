@@ -184,6 +184,12 @@ Nearby terrain and structures remain visibly rough. Evidence is in
 `.local/ray-ui-native-promotion-20260925/structure-title-entry-long-output`
 and `panel-original-long-output`. These visual gains do not establish race
 quality or performance completion.
+The 30-draw `6934E161812AB10B`/`B98566FB7CE14699` family also now uses its
+original six-texture pixel program. The native race route replaces a flat
+purple trackside area with textured vegetation and earth colors, but the
+underlying area is still far too dark. Compare it with a matched compatibility
+view and inspect alpha/depth before marking terrain playable. Evidence:
+`.local/ray-ui-native-promotion-20260925/terrain-original-long-output`.
 
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major

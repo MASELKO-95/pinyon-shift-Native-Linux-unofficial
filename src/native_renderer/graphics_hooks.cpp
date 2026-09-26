@@ -2193,7 +2193,9 @@ void ObserveSnr02TrackFinalDrawState(
   if ((draw.vertex_shader == 0x0CBC533419F61E0Dull &&
        draw.pixel_shader == 0xEFCA69AA2BEE366Bull) ||
       (draw.vertex_shader == 0x5DB1ECF39EA11DB0ull &&
-       draw.pixel_shader == 0x6508BAC22C4E1720ull)) {
+       draw.pixel_shader == 0x6508BAC22C4E1720ull) ||
+      (draw.vertex_shader == 0x6934E161812AB10Bull &&
+       draw.pixel_shader == 0xB98566FB7CE14699ull)) {
     if (!observation.bool_loop_constant_words ||
         observation.bool_loop_constant_word_count < 8) {
       Snr02RejectTrackPayload(payload, draw.sequence, draw.packet,

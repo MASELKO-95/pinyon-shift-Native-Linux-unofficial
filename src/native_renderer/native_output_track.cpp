@@ -40,6 +40,11 @@ uint32_t TrackMaterialKind(const Snr04TrackDraw& draw) {
       draw.pixel_specialization == 0x4000002B003Full &&
       draw.textures.size() == 3)
     return 3;
+  if (draw.shader == 0x6934E161812AB10Bull &&
+      draw.pixel_shader == 0xB98566FB7CE14699ull &&
+      draw.pixel_specialization == 0x4000005B007Full &&
+      draw.textures.size() == 6)
+    return 3;
   if (draw.pixel_shader == 0x6F7CDE74CDACCB08ull &&
       draw.shader == 0x07425D208E8BD688ull &&
       draw.specialization == 0x7Full) return 1;
@@ -49,10 +54,12 @@ uint32_t TrackMaterialKind(const Snr04TrackDraw& draw) {
   return 0;
 }
 
-std::array<uint32_t, 3> TrackShaderFetches(const Snr04TrackDraw& draw) {
+std::array<uint32_t, 6> TrackShaderFetches(const Snr04TrackDraw& draw) {
+  if (draw.pixel_shader == 0xB98566FB7CE14699ull)
+    return {6, 13, 2, 5, 1, 0};
   return draw.pixel_shader == 0x6508BAC22C4E1720ull
-      ? std::array<uint32_t, 3>{13, 3, 0}
-      : std::array<uint32_t, 3>{5, 13, 0};
+      ? std::array<uint32_t, 6>{13, 3, 0}
+      : std::array<uint32_t, 6>{5, 13, 0};
 }
 
 uint32_t RemainderMaterialKind(const Snr04RemainderDraw& draw) {
@@ -109,7 +116,8 @@ struct TrackDrawBinding {
   uint64_t vertex = 0, index = 0, b0 = 0, b1 = 0, b3 = 0;
   uint64_t pixel_constants = 0, pixel_bool = 0, pixel_descriptors = 0;
   uint32_t material_index = UINT32_MAX;
-  std::array<uint32_t, 3> shader_materials{};
+  std::array<uint32_t, 6> shader_materials{};
+  uint32_t shader_texture_count = 0;
   uint32_t shader_view_offset = 0, shader_sampler_offset = 0;
   D3D12_VIEWPORT viewport{};
   D3D12_RECT scissor{};
@@ -1010,8 +1018,9 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       }
     }
     if (material == 3) {
+      binding.shader_texture_count = uint32_t(draw.textures.size());
       const auto fetches = TrackShaderFetches(draw);
-      for (uint32_t j = 0; j < 3; ++j) {
+      for (uint32_t j = 0; j < draw.textures.size(); ++j) {
         const auto found = texture_identities.find({draw.sequence, fetches[j]});
         if (found == texture_identities.end() ||
             !resolve_material(*found->second, binding.shader_materials[j]) ||
@@ -1026,8 +1035,8 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       std::array<uint32_t, 40> bools{};
       bools[7] = draw.bool_word7;
       binding.pixel_bool = arena.Add(bools.data(), sizeof(bools));
-      std::array<uint32_t, 12> descriptors{};
-      for (uint32_t j = 0; j < 3; ++j) {
+      std::array<uint32_t, 20> descriptors{};
+      for (uint32_t j = 0; j < draw.textures.size(); ++j) {
         descriptors[j * 3 + 1] = j;
         descriptors[j * 3 + 2] = j * 2;
         descriptors[j * 3 + 3] = j * 2 + 1;
@@ -1045,7 +1054,9 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     std::copy(draw.fetch.begin(), draw.fetch.end(), fetch.begin() + 188);
     fetch[190] &= 3;
     if (material == 3) {
-      for (uint32_t texture : TrackShaderFetches(draw)) {
+      const auto fetches = TrackShaderFetches(draw);
+      for (uint32_t j = 0; j < draw.textures.size(); ++j) {
+        const uint32_t texture = fetches[j];
         const auto* identity = texture_identities.at({draw.sequence, texture});
         std::copy(identity->fetch_words.begin(), identity->fetch_words.end(),
                   fetch.begin() + texture * 6);
@@ -1202,7 +1213,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     }
     for (const auto& binding : bindings) {
       if (std::get<5>(binding.pipeline) != 3) continue;
-      for (uint32_t j = 0; j < 3; ++j) {
+      for (uint32_t j = 0; j < binding.shader_texture_count; ++j) {
         const auto& material = materials[binding.shader_materials[j]];
         auto view = material.view;
         view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;

@@ -1185,6 +1185,11 @@ pixel path with fetches 13, 3 and 0 and its 48 captured pixel words. A full
 race route exited normally and showed the formerly flat roadside arrow sign
 textured yellow and black in native output. Evidence:
 `.local/ray-ui-native-promotion-20260925/panel-original-long-output`.
+The 30-draw `6934E161812AB10B`/`B98566FB7CE14699` pair now binds its six
+source-frame textures and 48 pixel words in the same path. Its former flat
+purple trackside region becomes textured vegetation and earth in the native
+race frame, with an unresolved dark background beneath the foliage. Evidence:
+`.local/ray-ui-native-promotion-20260925/terrain-original-long-output`.
 
 **Final-pass boundary check (2026-09-24):** the existing race RenderDoc
 capture `renderdoc-gatea-full-b_frame5001.rdc` (SHA-256
