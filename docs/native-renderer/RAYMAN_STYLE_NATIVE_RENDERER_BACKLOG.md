@@ -198,11 +198,13 @@ view and inspect alpha/depth before marking terrain playable. Evidence:
 A same-run native/compatibility/native toggle at frames 5038, 5044 and 5055
 kept the HUD and full-frame fallback intact. Compatibility confirms dark soil
 is expected, but reveals missing building, crowd and lighting layers in native
-output. A trial of the 39-draw `0CBC533419F61E0D`/`56D45C45966FD938`
-building family produced neon-yellow surfaces and was reverted. Diagnose its
-resource/constant interpretation before readmitting it. Evidence:
-`.local/ray-ui-native-promotion-20260925/terrain-title-toggle-output` and
-`facade-title-toggle-output`.
+output. The 39-draw `0CBC533419F61E0D`/`56D45C45966FD938` building
+family now uses its original five-texture pixel program. Its first trial
+showed neon-yellow surfaces; a corrected sampler table and larger bounded
+material snapshot pool now admit the facade in a full race route. The route
+promoted 836 frames and recovered from 67 whole-frame compatibility fallbacks
+at `prepare_remainder`. See the
+[building material evidence](RAYMAN_BUILDING_MATERIAL_2026-09-26.md).
 The live draw consumes the procedural-character fixture and its recorded
 tiled viewport/scissor. The separate character-manager family now joins
 backend draw packets and final state without title records and replays in
@@ -243,7 +245,7 @@ not a prerequisite for the first usable renderer.
 
 ## Next implementation slice
 
-Use the continuous opt-in run as the RAY-03 test bed. Resolve the remaining
-flat building/terrain layers and cross-family draw order, keeping the
-complete-frame fallback. Then perform the longer unscripted drive required
-by RAY-04. Profile only after that drive is playable.
+Use the continuous opt-in run as the RAY-03 test bed. Explain the
+`prepare_remainder` fallback in the scripted race, then perform the longer
+unscripted drive required by RAY-04. Continue RAY-00/01 toward one
+authoritative ordered frame stream. Profile only after that drive is playable.
