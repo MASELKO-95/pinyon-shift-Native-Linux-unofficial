@@ -1174,6 +1174,13 @@ albedo approximation for the leading pair. Evidence: fixture
 translated pixel shaders in `.local/native-renderer/managed`, and the corpus
 resolve record for address `0x1CE2D000`.
 
+**Structure material update (2026-09-26):** the 69-draw pair above now uses
+source-frame-pinned fetches 0, 5 and 13, the original pixel program, captured
+pixel constants and bool word 7. The corrected title-to-race route reached
+native output at frame 5020; the formerly flat-purple block shows a truck and
+support detail. The separate gray panel is still unresolved. Keep fetch-13
+source-frame pinning and whole-frame fallback as admission requirements.
+
 **Final-pass boundary check (2026-09-24):** the existing race RenderDoc
 capture `renderdoc-gatea-full-b_frame5001.rdc` (SHA-256
 `277c2a371a86038901d845332704574b708f632eab6f427175827bf93660e955`)

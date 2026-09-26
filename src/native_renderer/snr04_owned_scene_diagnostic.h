@@ -73,6 +73,7 @@ struct Snr04TrackDraw {
   std::array<uint32_t, 64> system{};
   std::array<uint32_t, 4> fetch{};
   uint32_t raster_mode = 0, clip_control = 0, depth_control = 0;
+  uint32_t bool_word7 = 0;
   std::array<float, 6> viewport{};
   std::array<int32_t, 4> scissor{};
 };

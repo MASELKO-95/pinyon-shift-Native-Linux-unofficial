@@ -2225,8 +2225,10 @@ pinyon_shift::native_renderer::Snr04TrackScene pinyon_shift::native_renderer::Pa
   const auto source = fixture;
   Reader reader{source};
   const auto magic = reader.take<std::array<char, 8>>();
+  const bool track_bool = magic ==
+      (std::array<char, 8>{'S','N','R','0','2','T','6','\0'});
   const bool materials_captured = magic ==
-      (std::array<char, 8>{'S','N','R','0','2','T','5','\0'});
+      (std::array<char, 8>{'S','N','R','0','2','T','5','\0'}) || track_bool;
   const bool raster_captured = materials_captured || magic ==
       (std::array<char, 8>{'S','N','R','0','2','T','4','\0'});
   require(raster_captured || magic ==
@@ -2330,6 +2332,7 @@ pinyon_shift::native_renderer::Snr04TrackScene pinyon_shift::native_renderer::Pa
         last_fetch = fetch[0];
         draw.textures.push_back(fetch);
       }
+      if (track_bool) draw.bool_word7 = reader.take<uint32_t>();
     }
     require(draw.sequence && (!i || draw.sequence > draws.back().sequence) &&
                 target_addresses.contains(target) && vertices.contains(draw.vertex) &&
@@ -4091,7 +4094,8 @@ pinyon_shift::native_renderer::RunSnr04BatchDiagnosticFromBytes(
     else if (kind == "SNR02I3" || kind == "SNR03C1")
       covered = RunSnr04ProceduralDiagnosticFromBytes(fixture, shader, output,
                                              borrowed_device, samples, &segment);
-    else if (kind == "SNR02T3" || kind == "SNR02T4" || kind == "SNR02T5")
+    else if (kind == "SNR02T3" || kind == "SNR02T4" || kind == "SNR02T5" ||
+             kind == "SNR02T6")
       covered = RunSnr04TrackDiagnosticFromBytes(fixture, shader, output,
                                         borrowed_device, samples, &segment);
     else if (kind == "SNR03M1")

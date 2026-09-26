@@ -172,6 +172,15 @@ route. Compare a matched Xenos frame
 and inspect sampled values before calling this car-quality gap closed. The
 scripted native and Xenos runs diverged in game time and car position at the
 same output frame, so an unscripted drive remains essential for playability.
+The first original track structure program now uses its three pinned
+source-frame textures, pixel constants and bool word. In the corrected
+title-to-race route, the former flat-purple structure gains truck and support
+detail in the native frame at output 5020. A large gray panel and nearby
+purple terrain remain; the next bounded material target is the seven-draw
+`5DB1ECF39EA11DB0`/`6508BAC22C4E1720` pair. Evidence is in
+`.local/ray-ui-native-promotion-20260925/structure-title-entry-long-output`
+and the earlier `original-glass-long-output` capture. This visual result is
+one scene improvement, not a claim that race quality is complete.
 
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major

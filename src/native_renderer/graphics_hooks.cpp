@@ -850,6 +850,7 @@ struct Snr02TrackDraw {
   std::vector<rex::system::GraphicsFinalDrawTextureIdentity> texture_identities;
   std::array<uint32_t, 64> system_constants{};
   std::array<uint32_t, 4> fetch47{};
+  uint32_t bool_word7 = 0;
   uint32_t raster_mode_control = 0, clip_control = 0, depth_control = 0;
   std::array<float, 6> viewport{};
   std::array<int32_t, 4> scissor{};
@@ -2189,6 +2190,16 @@ void ObserveSnr02TrackFinalDrawState(
   }
   draw.texture_identities.assign(observation.textures,
                                  observation.textures + observation.texture_count);
+  if (draw.vertex_shader == 0x0CBC533419F61E0Dull &&
+      draw.pixel_shader == 0xEFCA69AA2BEE366Bull) {
+    if (!observation.bool_loop_constant_words ||
+        observation.bool_loop_constant_word_count < 8) {
+      Snr02RejectTrackPayload(payload, draw.sequence, draw.packet,
+                              "final_bool_missing");
+      return;
+    }
+    draw.bool_word7 = observation.bool_loop_constant_words[7];
+  }
   draw.dynamic_state = observation.dynamic_state;
   std::copy_n(observation.system_constant_words, 64,
               draw.system_constants.begin());
@@ -3316,7 +3327,7 @@ void ObserveSnr02TrackOutputFrame(uint64_t output_frame) {
     const auto* bytes = reinterpret_cast<const char*>(&value);
     encoded.insert(encoded.end(), bytes, bytes + sizeof(value));
   };
-  constexpr std::array<char, 8> magic{'S', 'N', 'R', '0', '2', 'T', '5', '\0'};
+  constexpr std::array<char, 8> magic{'S', 'N', 'R', '0', '2', 'T', '6', '\0'};
   write(magic);
   write(output_frame - 1);
   write(uint32_t(targets.size()));
@@ -3369,6 +3380,7 @@ void ObserveSnr02TrackOutputFrame(uint64_t output_frame) {
     for (uint32_t word : draw.pixel_packed) write(word);
     write(uint32_t(draw.textures.size()));
     for (const auto& texture : draw.textures) write(texture);
+    write(draw.bool_word7);
   }
   const auto directory = fh1_render_test::OutputDirectory();
   const bool live = Snr04LiveCaptureEnabled();

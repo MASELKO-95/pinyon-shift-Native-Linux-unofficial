@@ -20,7 +20,8 @@ uint32_t run(const std::string& fixture, const std::string& shader,
   if (kind == "SNR02I3" || kind == "SNR03C1")
     return RunSnr04ProceduralDiagnostic(fixture, shader, output, nullptr,
                                        samples, segment);
-  if (kind == "SNR02T3" || kind == "SNR02T4" || kind == "SNR02T5")
+  if (kind == "SNR02T3" || kind == "SNR02T4" || kind == "SNR02T5" ||
+      kind == "SNR02T6")
     return RunSnr04TrackDiagnostic(fixture, shader, output, nullptr,
                                    samples, segment);
   if (kind == "SNR03M1")
