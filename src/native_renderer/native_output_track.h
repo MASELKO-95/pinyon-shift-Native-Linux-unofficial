@@ -7,5 +7,5 @@ namespace pinyon_shift::native_renderer {
 struct Snr04LiveScene;
 bool DrawNativeOutputTrack(
     const rex::system::NativeGuestOutputRenderContext& context,
-    const Snr04LiveScene& scene);
+    const Snr04LiveScene& scene, bool scene_only = false);
 }

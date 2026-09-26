@@ -52,6 +52,10 @@ full immutable resource inputs and offline replay remain open.
 An opt-in [owned UI draw capture](RAYMAN_UI_FRAME_CAPTURE_2026-09-25.md)
 now preserves one HUD-visible frame's ordered UI draws and CPU inputs. It
 does not yet capture texture pixels, clears, resolves, or the full race frame.
+The [UI replay pilot](RAYMAN_UI_REPLAY_PILOT_2026-09-25.md) presents the owned
+scene plus 116 original untextured HUD draws from source frame 6803. A separate
+run at source frame 6801 again had no UI producer, so the scheduling gap is
+confirmed intermittent; full-frame capture and replay are still open.
 
 - [ ] From one moving-race frame and one known HUD-gap frame, record one
   ordered stream of draw, clear, resolve and output-target events. Each event
@@ -72,6 +76,11 @@ its missing events are explicit. If the HUD is absent at the producer in the
 gap frame, record that fact and address its scheduling cause before takeover.
 
 ### RAY-01 — replay one captured frame offline
+
+The first visible pilot has a recognizable native scene and readable text,
+but skips 50 textured UI draws and does not consume the full ordered event
+stream. Its image and constraints are recorded in the
+[UI replay evidence](RAYMAN_UI_REPLAY_PILOT_2026-09-25.md).
 
 - [ ] Feed the selected event stream into the existing D3D12 native output,
   retaining draw order, targets, clears, depth, resolves, viewport, scissor,

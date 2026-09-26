@@ -37,6 +37,10 @@ and the inspected native-capture `scene-6802.ppm` shows a readable HUD. The
 earlier observation remains a scheduling risk to test during live shadow;
 these runs do not establish that it is fixed.
 
+A later [UI replay pilot](RAYMAN_UI_REPLAY_PILOT_2026-09-25.md) did reproduce
+the gap: one source-6801 run wrote no UI binary, while adjacent runs captured
+complete UI. The whole-frame guard kept compatibility output in that run.
+
 **Still needed for RAY-00/RAY-01:** the frame CSV carries shader/target IDs
 and texture-version counts, not all vertex/index bytes, texture identities,
 pixel contents, or intermediate render-target versions. Only UI has the owned

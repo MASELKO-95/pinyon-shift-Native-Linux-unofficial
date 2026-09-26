@@ -12,6 +12,7 @@
 #include "native_renderer/guest_output_renderer.h"
 #if defined(_WIN32)
 #include "native_renderer/native_output_track.h"
+#include "native_renderer/native_output_ui.h"
 #include "native_renderer/native_output_triangle.h"
 #endif
 #include "native_renderer/snr04_owned_scene_diagnostic.h"
@@ -33,6 +34,10 @@ REXCVAR_DEFINE_BOOL(pinyon_shift_native_scene_triangle_probe, false,
 REXCVAR_DEFINE_BOOL(pinyon_shift_native_track_probe, false,
                     "Pinyon Shift",
                     "Draw owned track geometry into the native output")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+REXCVAR_DEFINE_INT32(pinyon_shift_native_ui_replay_source_frame, 0,
+                     "Pinyon Shift",
+                     "Render-test pilot for ordered untextured HUD replay")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 REXCVAR_DEFINE_BOOL(pinyon_shift_native_race, false, "Pinyon Shift",
                     "Experimental native race output (requires scene capture)")
@@ -120,6 +125,27 @@ bool ObserveRenderTestOutput(
     if (REXCVAR_GET(pinyon_shift_native_ui_clear_probe) ||
         REXCVAR_GET(pinyon_shift_native_ui_scene_probe))
       return false;
+    const int32_t ui_replay_frame =
+        REXCVAR_GET(pinyon_shift_native_ui_replay_source_frame);
+    if (ui_replay_frame > 0 && pinyon_shift::fh1_render_test::Enabled() &&
+        context.frame_sequence == uint64_t(ui_replay_frame) + 1 &&
+        context.guest_output_width == 1280 &&
+        context.guest_output_height == 720) {
+      auto scene = pinyon_shift::native_renderer::SnapshotSnr04LiveScene(
+          context.frame_sequence);
+      const bool ui_ready = pinyon_shift::native_renderer::WithOrderedUiFrame(
+          ui_replay_frame, [](const auto&) { return true; });
+      REXGPU_WARN("FH1 UI pilot admission scene={} ui={}", bool(scene), ui_ready);
+      if (!scene || !ui_ready)
+        return false;
+      const bool scene_drawn = pinyon_shift::native_renderer::DrawNativeOutputTrack(
+          context, *scene, true);
+      const bool ui_drawn = scene_drawn &&
+          pinyon_shift::native_renderer::DrawNativeOutputUi(
+              context, ui_replay_frame);
+      REXGPU_WARN("FH1 UI pilot output scene={} ui={}", scene_drawn, ui_drawn);
+      return ui_drawn;
+    }
     const bool native_race_requested =
         native_race_enabled.load(std::memory_order_acquire);
     const bool native_race_admitted =

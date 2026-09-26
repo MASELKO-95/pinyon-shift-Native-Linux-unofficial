@@ -713,7 +713,7 @@ bool PrepareRemainder(
 }
 
 bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
-                 const UploadArena& arena, bool pre_ui, TrackFrame& frame) {
+                 const UploadArena& arena, bool scene_only, TrackFrame& frame) {
   D3D12_HEAP_PROPERTIES upload_heap{};
   upload_heap.Type = D3D12_HEAP_TYPE_UPLOAD;
   D3D12_RESOURCE_DESC upload_desc{};
@@ -750,7 +750,7 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
           D3D12_RESOURCE_STATE_RENDER_TARGET, nullptr,
           IID_PPV_ARGS(&frame.color))))
     return false;
-  if (!pre_ui) {
+  if (!scene_only) {
     color_desc.Flags = D3D12_RESOURCE_FLAG_NONE;
     if (FAILED(device->CreateCommittedResource(
             &default_heap, D3D12_HEAP_FLAG_NONE, &color_desc,
@@ -817,22 +817,24 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
   auto hud_view = frame.srv->GetCPUDescriptorHandleForHeapStart();
   hud_view.ptr += device->GetDescriptorHandleIncrementSize(
       D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-  if (!pre_ui) device->CreateShaderResourceView(frame.hud.Get(), &view, hud_view);
+  if (!scene_only) device->CreateShaderResourceView(frame.hud.Get(), &view, hud_view);
   return true;
 }
 
 bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
-               const Snr04LiveScene& live, TrackGraphics& graphics) {
+               const Snr04LiveScene& live, TrackGraphics& graphics,
+               bool diagnostic_scene_only) {
   const auto reject = [&](const char* stage) {
     static const bool trace =
         rex::cvar::GetFlagByName("perf_critical_path_trace") == "true";
-    if (trace)
+    if (trace || diagnostic_scene_only)
       REXGPU_WARN("FH1 native draw rejected source_frame={} stage={}",
                   live.source_frame, stage);
     return false;
   };
   const bool pre_ui =
       context.phase == rex::system::NativeGuestOutputPhase::kBeforeUi;
+  const bool scene_only = pre_ui || diagnostic_scene_only;
   auto* device = static_cast<ID3D12Device*>(context.device);
   auto* output = static_cast<ID3D12Resource*>(context.guest_output);
   auto* list = static_cast<rex::graphics::d3d12::DeferredCommandList*>(
@@ -908,7 +910,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       if (!texture_identities.emplace(
               std::pair{identity.sequence, identity.fetch_constant},
               &identity).second)
-        return false;
+        return reject("duplicate_vegetation_texture");
   }
   std::map<Snr04TrackRange, uint64_t> vertices, indices;
   for (const auto& [range, bytes] : scene.vertices)
@@ -931,7 +933,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         draw.scissor[1] != 0 || draw.scissor[2] != 1280 ||
         draw.scissor[3] > draw.viewport[3] ||
         tile_offset + draw.scissor[3] > 720)
-      return false;
+      return reject("track_viewport");
     TrackDrawBinding binding;
     const uint32_t material = TrackMaterialKind(draw);
     if (material) {
@@ -985,7 +987,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       if (!vegetation_textures.emplace(
               std::pair{identity.sequence, identity.fetch_constant},
               &identity).second)
-        return false;
+        return reject("duplicate_remainder_texture");
   for (auto& binding : vegetation_bindings) {
     if (!binding.alpha) continue;
     const auto alpha = vegetation_textures.find({binding.sequence, 0});
@@ -1020,7 +1022,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         const auto input = remainder_textures.find({remainder.draws[i].sequence, fetch});
         if (input == remainder_textures.end() || !input->second->allocation_id ||
             !input->second->payload_generation || input->second->outdated_mask)
-          return false;
+          return reject("missing_car_texture");
       }
       // ponytail: one-fetch paint detail is a visual stopgap; port the
       // layered shader after resolve-backed inputs have ordered ownership.
@@ -1033,7 +1035,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       return reject("remainder_texture");
   }
   TrackFrame frame;
-  if (!CreateFrame(device, output, arena, pre_ui, frame))
+  if (!CreateFrame(device, output, arena, scene_only, frame))
     return reject("create_frame");
   if (!materials.empty()) {
     D3D12_HEAP_PROPERTIES heap_properties{};
@@ -1125,7 +1127,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   D3D12_RESOURCE_BARRIER barrier{};
   barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
   barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-  if (!pre_ui) {
+  if (!scene_only) {
     barrier.Transition.pResource = output;
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATES(
         context.guest_output_state);
@@ -1243,17 +1245,19 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         context.guest_output_state);
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
     list->D3DResourceBarrier(1, &barrier);
-    barrier.Transition.pResource = hud;
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    list->D3DResourceBarrier(1, &barrier);
+    if (!scene_only) {
+      barrier.Transition.pResource = hud;
+      barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+      barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+      list->D3DResourceBarrier(1, &barrier);
+    }
   }
   list->D3DOMSetRenderTargets(1, &output_rtv, FALSE, nullptr);
   list->RSSetViewport({0, 0, 1280, 720, 0, 1});
   list->RSSetScissorRect({0, 0, 1280, 720});
   list->SetDescriptorHeaps(scene_srv, nullptr);
   list->D3DSetGraphicsRootSignature(graphics.blit_root.Get());
-  list->D3DSetPipelineState((pre_ui ? graphics.scene_blit_pipeline
+  list->D3DSetPipelineState((scene_only ? graphics.scene_blit_pipeline
                                    : graphics.blit_pipeline).Get());
   list->D3DSetGraphicsRootDescriptorTable(0, scene_srv_gpu);
   list->D3DIASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -1271,13 +1275,17 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
 
 bool DrawNativeOutputTrack(
     const rex::system::NativeGuestOutputRenderContext& context,
-    const Snr04LiveScene& scene) {
+    const Snr04LiveScene& scene, bool scene_only) {
   static thread_local TrackGraphics graphics;
   try {
-    return DrawTrack(context, scene, graphics);
+    return DrawTrack(context, scene, graphics, scene_only);
   } catch (const std::exception& error) {
-    REXGPU_INFO("FH1 native output rejected source_frame={} reason={}",
-                scene.source_frame, error.what());
+    if (scene_only)
+      REXGPU_WARN("FH1 native output rejected source_frame={} reason={}",
+                  scene.source_frame, error.what());
+    else
+      REXGPU_INFO("FH1 native output rejected source_frame={} reason={}",
+                  scene.source_frame, error.what());
     return false;
   }
 }
