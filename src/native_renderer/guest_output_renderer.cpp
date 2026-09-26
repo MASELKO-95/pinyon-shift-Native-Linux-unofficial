@@ -108,13 +108,18 @@ void DrainShadow(uint64_t completed_submission) {
 }
 
 bool DrawShadow(const rex::system::NativeGuestOutputRenderContext& context,
-                bool save_image) {
+                bool save_image, bool promote) {
   auto* device = static_cast<ID3D12Device*>(context.device);
   auto* list = static_cast<rex::graphics::d3d12::DeferredCommandList*>(
       context.deferred_command_list);
+  auto* output = static_cast<ID3D12Resource*>(context.guest_output);
   if (!device || !list || context.guest_output_width != 1280 ||
       context.guest_output_height != 720 || shadow_pending.size() >= 8)
     return false;
+  if (promote && (!output ||
+      output->GetDesc().Format != DXGI_FORMAT_R10G10B10A2_UNORM ||
+      output->GetDesc().Width != 1280 || output->GetDesc().Height != 720 ||
+      output->GetDesc().SampleDesc.Count != 1)) return false;
   auto scene = pinyon_shift::native_renderer::SnapshotSnr04LiveScene(
       context.frame_sequence);
   const uint64_t source_frame = context.frame_sequence - 1;
@@ -179,11 +184,31 @@ bool DrawShadow(const rex::system::NativeGuestOutputRenderContext& context,
       list->D3DResourceBarrier(1, &barrier);
     }
   }
+  if (ui_drawn && promote) {
+    D3D12_RESOURCE_BARRIER barriers[2]{};
+    for (auto& barrier : barriers) {
+      barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+      barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    }
+    barriers[0].Transition.pResource = frame.target.Get();
+    barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+    barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    barriers[1].Transition.pResource = output;
+    barriers[1].Transition.StateBefore =
+        D3D12_RESOURCE_STATES(context.guest_output_state);
+    barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+    list->D3DResourceBarrier(2, barriers);
+    list->D3DCopyResource(output, frame.target.Get());
+    for (auto& barrier : barriers)
+      std::swap(barrier.Transition.StateBefore,
+                barrier.Transition.StateAfter);
+    list->D3DResourceBarrier(2, barriers);
+  }
   shadow_pending.push_back(std::move(frame));
   REXGPU_WARN("FH1 UI shadow replay output_frame={} source_frame={} "
-              "scene={} ui={}", context.frame_sequence, source_frame,
-              scene_drawn, ui_drawn);
-  return ui_drawn;
+              "scene={} ui={} promoted={}", context.frame_sequence,
+              source_frame, scene_drawn, ui_drawn, ui_drawn && promote);
+  return ui_drawn && promote;
 }
 #endif
 
@@ -257,12 +282,17 @@ bool ObserveRenderTestOutput(
             "pinyon_shift_native_ui_shadow_start_frame").c_str(),
         nullptr, 10);
     const uint64_t source_frame = context.frame_sequence - 1;
-    if (shadow_start && pinyon_shift::fh1_render_test::Enabled() &&
-        !native_race_enabled.load(std::memory_order_acquire) &&
-        source_frame >= shadow_start &&
-        source_frame - shadow_start < 24) {
-      DrawShadow(context, source_frame - shadow_start >= 8 &&
-                          source_frame - shadow_start < 16);
+    if (shadow_start && pinyon_shift::fh1_render_test::Enabled()) {
+      if (source_frame >= shadow_start &&
+          source_frame - shadow_start < 24) {
+        const bool promote =
+            native_race_enabled.load(std::memory_order_acquire) &&
+            pinyon_shift::native_renderer::NativeRaceAdmittedForOutput(
+                context.frame_sequence);
+        return DrawShadow(context, source_frame - shadow_start >= 8 &&
+                                      source_frame - shadow_start < 16,
+                          promote);
+      }
       return false;
     }
     // A missed early boundary must keep the complete guest frame. The late

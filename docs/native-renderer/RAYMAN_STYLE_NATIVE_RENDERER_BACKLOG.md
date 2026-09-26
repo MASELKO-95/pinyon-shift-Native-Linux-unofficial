@@ -128,6 +128,13 @@ frames with readable, updating world and HUD, and no unbounded capture stall.
 
 ### RAY-03 — own the visible race output
 
+The [bounded takeover pilot](RAYMAN_NATIVE_TAKEOVER_PILOT_2026-09-25.md)
+now copies a complete scene-plus-HUD scratch frame into guest output only
+when both passes succeed. The hot-toggle route showed native presentation,
+full compatibility fallback on a no-producer HUD frame, and recovery after
+turning native output off and on. The 24-frame capture limit, intermittent
+HUD producer and rough world still prevent a sustained playable race.
+
 - [ ] Route the complete native frame through the existing guest-output hook
   and hot toggle. Select one output target from the captured target/resolve
   chain. Admit only a current, complete frame; otherwise show the **entire**
