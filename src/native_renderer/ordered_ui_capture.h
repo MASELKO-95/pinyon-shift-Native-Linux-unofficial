@@ -48,6 +48,7 @@ struct OrderedUiDraw {
 bool WithOrderedUiFrame(
     uint64_t source_frame,
     const std::function<bool(const std::map<uint64_t, OrderedUiDraw>&)>& use);
+uint64_t ResolveOrderedUiReplayFrame(uint64_t source_frame);
 
 void CaptureOrderedUiDraw(
     const rex::system::GraphicsPreparedDrawObservation& observation);

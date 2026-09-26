@@ -116,6 +116,25 @@ bool WithOrderedUiFrame(
          use(frame->second.draws);
 }
 
+uint64_t ResolveOrderedUiReplayFrame(uint64_t source_frame) {
+  std::lock_guard lock(capture_mutex);
+  const auto current = captured_frames.find(source_frame);
+  if (current != captured_frames.end()) {
+    if (CompleteUi(current->second)) return source_frame;
+    if (current->second.rejected || !current->second.draws.empty()) return 0;
+    if (std::any_of(current->second.events.begin(),
+                    current->second.events.end(), [](const auto& entry) {
+                      const auto& event = entry.second;
+                      return event.surface == 0x14000500 &&
+                             event.color == 0x000A0000;
+                    })) return 0;
+  }
+  if (!source_frame) return 0;
+  const auto previous = captured_frames.find(source_frame - 1);
+  return previous != captured_frames.end() && CompleteUi(previous->second)
+             ? source_frame - 1 : 0;
+}
+
 void CaptureOrderedFrameDraw(
     const rex::system::GraphicsPreparedDrawObservation& observation) {
   if (!observation.draw_sequence) return;

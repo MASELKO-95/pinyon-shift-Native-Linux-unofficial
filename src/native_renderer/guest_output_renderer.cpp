@@ -123,8 +123,9 @@ bool DrawShadow(const rex::system::NativeGuestOutputRenderContext& context,
   auto scene = pinyon_shift::native_renderer::SnapshotSnr04LiveScene(
       context.frame_sequence);
   const uint64_t source_frame = context.frame_sequence - 1;
-  if (!scene || !pinyon_shift::native_renderer::WithOrderedUiFrame(
-                    source_frame, [](const auto&) { return true; }))
+  const uint64_t ui_frame =
+      pinyon_shift::native_renderer::ResolveOrderedUiReplayFrame(source_frame);
+  if (!scene || !ui_frame)
     return false;
   ShadowFrame frame;
   frame.output_frame = context.frame_sequence;
@@ -150,7 +151,7 @@ bool DrawShadow(const rex::system::NativeGuestOutputRenderContext& context,
       shadow_context, *scene, true);
   const bool ui_drawn = scene_drawn &&
       pinyon_shift::native_renderer::DrawNativeOutputUi(
-          shadow_context, source_frame);
+          shadow_context, ui_frame);
   if (ui_drawn && save_image) {
     heap.Type = D3D12_HEAP_TYPE_READBACK;
     device->GetCopyableFootprints(&desc, 0, 1, 0, &frame.footprint,
@@ -206,8 +207,9 @@ bool DrawShadow(const rex::system::NativeGuestOutputRenderContext& context,
   }
   shadow_pending.push_back(std::move(frame));
   REXGPU_WARN("FH1 UI shadow replay output_frame={} source_frame={} "
-              "scene={} ui={} promoted={}", context.frame_sequence,
-              source_frame, scene_drawn, ui_drawn, ui_drawn && promote);
+              "ui_frame={} scene={} ui={} promoted={}",
+              context.frame_sequence, source_frame, ui_frame, scene_drawn,
+              ui_drawn, ui_drawn && promote);
   return ui_drawn && promote;
 }
 #endif

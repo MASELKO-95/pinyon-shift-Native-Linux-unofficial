@@ -134,6 +134,10 @@ when both passes succeed. The hot-toggle route showed native presentation,
 full compatibility fallback on a no-producer HUD frame, and recovery after
 turning native output off and on. The 24-frame capture limit, intermittent
 HUD producer and rough world still prevent a sustained playable race.
+The [retained HUD pilot](RAYMAN_RETAINED_UI_2026-09-25.md) now replays the
+immediately previous complete HUD on a no-draw frame when no target-write
+event intervened. One observed gap stayed native, but the exact guest target
+version and longer-run cadence still need validation.
 
 - [ ] Route the complete native frame through the existing guest-output hook
   and hot toggle. Select one output target from the captured target/resolve
