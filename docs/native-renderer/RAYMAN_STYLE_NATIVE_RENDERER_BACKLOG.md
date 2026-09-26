@@ -161,6 +161,10 @@ output. This is the first usable renderer milestone.
 The [first original car pixel program](RAYMAN_ORIGINAL_CAR_PIXEL_2026-09-26.md)
 replaces one bounded no-texture approximation. The main eight-texture body
 remains placeholder shaded and is the next car-material target.
+The [body texture snapshot run](RAYMAN_BODY_TEXTURE_SNAPSHOTS_2026-09-26.md)
+preserves all eight source-frame texture versions, including two cube maps.
+The original body program still needs its bool/loop constant and descriptor
+bindings before presentation.
 
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major
