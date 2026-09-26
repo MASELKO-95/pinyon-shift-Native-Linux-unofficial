@@ -1,5 +1,8 @@
 # Scene-native renderer backlog
 
+The active delivery order is now the [complete-frame backlog](RAYMAN_STYLE_NATIVE_RENDERER_BACKLOG.md).
+This document remains the historical implementation and evidence ledger.
+
 Status (2026-09-25): L1 is implemented as an opt-in race pilot and has passed
 scripted moving-frame, toggle and unsupported-mode fallback checks. A guarded
 pre-UI path draws the owned scene beneath the game's original HUD on admitted
@@ -23,7 +26,7 @@ measurements reject reuse of the SNR-01/full-fixture probe pipeline for
 production: capture-only drops the matched 30-second interval from roughly
 1,200 to 715 consumed swaps. This is a path-level no-go, not a decision on
 the native architecture; see the [cost decision](SCENE_NATIVE_SNR04_COMPLETE_SLICE_2026-09-23.md#shared-queue-and-legacy-capture-cost-decision--2026-09-24).
-This is the primary execution roadmap for new renderer architecture. The
+This ledger records the earlier renderer architecture work. The
 [performance backlog](PERFORMANCE_BACKLOG.md) remains the record of previous
 experiments; the [resource migration checklist](NATIVE_RESOURCE_MIGRATION_CHECKLIST.md)
 remains the acceptance ledger for resource ownership and eventual Xenos retirement.
@@ -308,7 +311,7 @@ Effort is relative scope, not a time estimate.
 | SNR-11 | Qualify images, streaming and net performance | L3 replacement; L4 | Large / validation |
 | SNR-12 | Remove a proven upstream preparation path | New post-L3 critical-path evidence | Large / title |
 
-### Active delivery path — L1, then L2
+### Prior delivery path — L1, then L2
 
 **Next bounded work (2026-09-25):**
 
