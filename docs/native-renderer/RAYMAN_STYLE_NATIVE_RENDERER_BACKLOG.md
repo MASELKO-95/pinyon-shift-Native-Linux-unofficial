@@ -142,6 +142,11 @@ copy a depth/stencil subresource. The selected frame again promoted with
 readable HUD and a normal race exit. The initial depth texture and later
 shader reads remain compatibility-backed.
 
+The [initial color-version pilot](RAYMAN_INITIAL_COLOR_VERSIONS_2026-09-26.md)
+now snapshots two full-size native color versions at their captured copy
+ordinals, around the feedback draw. They are not bound to consumers yet:
+the offscreen producer and feedback draw still need native replay.
+
 - [ ] Feed the selected event stream into the existing D3D12 native output,
   retaining draw order, targets, clears, depth, resolves, viewport, scissor,
   blending and texture versions needed by this race frame. Start with the

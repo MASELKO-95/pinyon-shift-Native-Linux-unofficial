@@ -119,6 +119,7 @@ struct UploadArena {
 
 struct TrackFrame {
   ComPtr<ID3D12Resource> upload, depth, color, color_tiles, hud;
+  std::array<ComPtr<ID3D12Resource>, 2> initial_color_versions;
   std::array<ComPtr<ID3D12Resource>, 3> depth_versions;
   ComPtr<ID3D12DescriptorHeap> rtv, dsv, srv, materials, samplers;
   std::vector<ComPtr<ID3D12Resource>> material_resources;
@@ -924,6 +925,13 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
           D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
           IID_PPV_ARGS(&frame.color_tiles))))
     return false;
+  if (ordered_tiles)
+    for (auto& version : frame.initial_color_versions)
+      if (FAILED(device->CreateCommittedResource(
+              &default_heap, D3D12_HEAP_FLAG_NONE, &color_desc,
+              D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+              IID_PPV_ARGS(&version))))
+        return false;
   if (!scene_only) {
     color_desc.Flags = D3D12_RESOURCE_FLAG_NONE;
     if (FAILED(device->CreateCommittedResource(
@@ -1556,6 +1564,9 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   auto* scene_color = frame.color.Get();
   auto* scene_depth = frame.depth.Get();
   auto* color_tiles = frame.color_tiles.Get();
+  std::array<ID3D12Resource*, 2> initial_color_versions{};
+  for (size_t i = 0; i < initial_color_versions.size(); ++i)
+    initial_color_versions[i] = frame.initial_color_versions[i].Get();
   std::array<ID3D12Resource*, 3> depth_versions{};
   for (size_t i = 0; i < depth_versions.size(); ++i)
     depth_versions[i] = frame.depth_versions[i].Get();
@@ -1907,6 +1918,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     }
     uint32_t copied_height = 0, tile_copies = 0, tile_base = 0;
     uint32_t depth_height = 0, depth_copies = 0, depth_base = 0;
+    uint32_t initial_color_copies = 0;
     for (const auto& event : *operations) {
       if (main_clear && event.sequence == main_clear->sequence) {
         const auto& bounds = event.bounds[0];
@@ -1949,6 +1961,33 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         REXGPU_WARN("FH1 RAY01 ordered depth tile frame={} sequence={} "
                     "height={} total={}", trace_frame, event.sequence,
                     height, depth_height);
+      }
+      if (event.kind == 'C' && event.dest_base == 484626432 &&
+          event.copy.source_base_tiles == 720) {
+        if (!event.succeeded || !event.copy.info_valid ||
+            !event.copy.source_available || initial_color_copies >= 2 ||
+            event.copy.source_format != 0 ||
+            (event.copy.control & 7) != 0 ||
+            event.resolve_width != 1280 || event.resolve_height != 720 ||
+            event.copy.physical_x || event.copy.physical_y ||
+            event.copy.physical_width != 1280 ||
+            event.copy.physical_height != 720 ||
+            event.copy.dest_x || event.copy.dest_y ||
+            event.copy.dest_pitch != 1280)
+          return reject("ordered_initial_color_shape");
+        barrier.Transition.pResource = scene_color;
+        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        list->D3DResourceBarrier(1, &barrier);
+        list->D3DCopyResource(initial_color_versions[initial_color_copies],
+                              scene_color);
+        std::swap(barrier.Transition.StateBefore,
+                  barrier.Transition.StateAfter);
+        list->D3DResourceBarrier(1, &barrier);
+        REXGPU_WARN("FH1 RAY01 ordered initial color frame={} sequence={} "
+                    "version={}", trace_frame, event.sequence,
+                    initial_color_copies);
+        ++initial_color_copies;
       }
       if (event.kind == 'C' && event.copy.source_format == 3 &&
           (event.copy.control & 7) == 0 &&
@@ -1996,7 +2035,8 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
           found != supported.end())
         issue_draw(found->second.first, found->second.second);
     }
-    if (tile_copies != 3 || copied_height != 720 ||
+    if (initial_color_copies != 2 ||
+        tile_copies != 3 || copied_height != 720 ||
         depth_copies != 3 || depth_height != 720)
       return reject("ordered_tiles_incomplete");
   } else {
