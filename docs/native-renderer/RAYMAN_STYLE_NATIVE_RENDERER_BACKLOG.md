@@ -65,6 +65,12 @@ The [adjacent-frame census](RAYMAN_UI_PRODUCER_CADENCE_2026-09-25.md)
 confirmed three no-producer frames among ten while the compatibility HUD
 remained visible. Indexed-vertex trimming reduced a complete UI capture
 from about 67 MB to 2 MB without changing the rendered HUD.
+The [ordered draw-state capture](RAYMAN_ORDERED_DRAW_STATE_2026-09-26.md)
+now preserves replay-critical draw state and exact texture-version keys in
+the selected command stream. A source-5000 HUD-gap frame explicitly names
+retained UI source 4999 and exports its complete 166-draw fixture. World
+geometry bytes, texture pixels and intermediate target versions still need
+ownership before this is a replayable full frame.
 
 - [ ] From one moving-race frame and one known HUD-gap frame, record one
   ordered stream of draw, clear, resolve and output-target events. Each event
@@ -95,6 +101,8 @@ The [six-family world replay](RAYMAN_ORDERED_WORLD_REPLAY_2026-09-26.md) now
 issues supported world draws by backend sequence rather than by family. This
 improves their draw ordering, but clears/resolves, unsupported draws and the
 separately captured HUD are not yet one authoritative event stream.
+The selected ordered stream now includes the state and retained-UI source
+needed to drive that replay; its immutable world inputs remain incomplete.
 
 - [ ] Feed the selected event stream into the existing D3D12 native output,
   retaining draw order, targets, clears, depth, resolves, viewport, scissor,
@@ -252,7 +260,9 @@ not a prerequisite for the first usable renderer.
 
 ## Next implementation slice
 
-Use the continuous opt-in run as the RAY-03 test bed. Diagnose the remaining
-intermittent track-texture fallback, then perform the longer unscripted drive
-required by RAY-04. Continue RAY-00/01 toward one authoritative ordered
-frame stream. Profile only after that drive is playable.
+Use the continuous opt-in run as the RAY-03 test bed. The isolated
+track-texture resolution miss did not recur on the next route and is covered
+by whole-frame fallback. Attach immutable world inputs and intermediate
+target versions to the selected RAY-00 stream, then replay its draw/clear/
+resolve order offline. Perform the longer unscripted drive required by
+RAY-04 before profiling duplicate work.
