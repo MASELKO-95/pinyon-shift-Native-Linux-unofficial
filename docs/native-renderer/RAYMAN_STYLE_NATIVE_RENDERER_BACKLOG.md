@@ -275,6 +275,12 @@ it (including 166 HUD draws currently replayed separately). The first
 six tiled main-scene draws sample across three pinned texture generations.
 Prioritize that intermediate target/version chain before expanding materials
 for already visible geometry.
+The [color alias probe](RAYMAN_COLOR_TARGET_ALIAS_PROBE_2026-09-26.md)
+confirmed the two main `RB_COLOR_INFO[0]` values select float-format aliases
+at the **same** EDRAM base. Isolating their draws removed complementary
+parts of the car/crowd and structures/ground. A float-scratch-only trial did
+not improve the saved image and was removed. Preserve that alias and include
+the resolve/output conversion in any later format change.
 
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major
@@ -315,5 +321,7 @@ existing D3D12 output, then use the stream's owned geometry, pinned textures
 and final state to issue remaining visible main-scene draws. Save the
 resulting full-frame image and integrate the same-frame HUD at its ordered
 suffix.
+Treat `0x00030000` and `0x000C0000` as format aliases over one EDRAM base,
+not separate color targets.
 Perform the longer unscripted drive required by
 RAY-04 before profiling duplicate work.
