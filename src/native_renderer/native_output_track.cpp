@@ -133,6 +133,13 @@ struct ItemDrawBinding {
   D3D12_RECT scissor{};
 };
 
+struct ManagerDrawBinding {
+  uint32_t count = 0, index_bytes = 0;
+  uint64_t index = 0, b0 = 0, b1 = 0, b3 = 0;
+  D3D12_VIEWPORT viewport{};
+  D3D12_RECT scissor{};
+};
+
 struct RemainderDrawBinding {
   RemainderPipelineKey pipeline;
   uint64_t index = 0, b0 = 0, b1 = 0, b3 = 0, b4 = 0;
@@ -152,6 +159,7 @@ struct TrackGraphics {
   ComPtr<ID3D12RootSignature> root;
   ComPtr<ID3DBlob> pixel, pixel_textured, pixel_road, pixel_foliage,
       pixel_car;
+  ComPtr<ID3D12PipelineState> manager_pipeline;
   ComPtr<ID3D12RootSignature> blit_root;
   ComPtr<ID3D12PipelineState> blit_pipeline, scene_blit_pipeline;
   std::map<PipelineKey, ComPtr<ID3D12PipelineState>> pipelines;
@@ -172,6 +180,7 @@ struct TrackGraphics {
       pixel_road.Reset();
       pixel_foliage.Reset();
       pixel_car.Reset();
+      manager_pipeline.Reset();
       blit_root.Reset();
       blit_pipeline.Reset();
       scene_blit_pipeline.Reset();
@@ -395,6 +404,45 @@ struct TrackGraphics {
       return false;
     item_pipelines.emplace(key, std::move(pipeline));
     return true;
+  }
+
+  bool ManagerPipeline(
+      const rex::system::NativeGuestOutputRenderContext& context,
+      const Snr04ManagerScene& scene) {
+    if (manager_pipeline) return true;
+    const uint8_t* vertex = nullptr;
+    size_t size = 0;
+    if (!context.shader || !context.shader(context, 0,
+            0xB8489164D5A86043ull, 31, &vertex, &size) ||
+        !vertex || size < 4 || std::memcmp(vertex, "DXBC", 4))
+      return false;
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
+    desc.pRootSignature = root.Get();
+    desc.VS = {vertex, size};
+    desc.PS = {pixel->GetBufferPointer(), pixel->GetBufferSize()};
+    desc.BlendState.RenderTarget[0].RenderTargetWriteMask =
+        D3D12_COLOR_WRITE_ENABLE_ALL;
+    desc.SampleMask = UINT_MAX;
+    desc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+    desc.RasterizerState.CullMode = (scene.raster_mode & 2)
+        ? D3D12_CULL_MODE_BACK : D3D12_CULL_MODE_NONE;
+    desc.RasterizerState.FrontCounterClockwise =
+        (scene.raster_mode & 4) == 0;
+    desc.RasterizerState.DepthClipEnable =
+        (scene.clip_control & (1u << 16)) == 0;
+    desc.DepthStencilState.DepthEnable = (scene.depth_control & 2) != 0;
+    desc.DepthStencilState.DepthWriteMask = (scene.depth_control & 4)
+        ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+    desc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC(
+        uint32_t(D3D12_COMPARISON_FUNC_NEVER) +
+        ((scene.depth_control >> 4) & 7));
+    desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    desc.NumRenderTargets = 1;
+    desc.RTVFormats[0] = DXGI_FORMAT_R10G10B10A2_UNORM;
+    desc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+    desc.SampleDesc.Count = 1;
+    return SUCCEEDED(device->CreateGraphicsPipelineState(
+        &desc, IID_PPV_ARGS(&manager_pipeline)));
   }
 
   bool RemainderPipeline(
@@ -944,11 +992,15 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   Snr04ProceduralScene characters;
   if (live.characters)
     characters = ParseSnr04CharacterScene(*live.characters);
+  Snr04ManagerScene manager;
+  if (live.manager)
+    manager = ParseSnr04ManagerScene(*live.manager);
   if (scene.source_frame != live.source_frame || !scene.raster_captured ||
       scene.draws.empty() || live.items->frame != live.source_frame ||
       live.vegetation->source_frame != live.source_frame ||
       remainder.source_frame != live.source_frame ||
-      (live.characters && characters.frame != live.source_frame))
+      (live.characters && characters.frame != live.source_frame) ||
+      (live.manager && manager.source_frame != live.source_frame))
     return reject("scene_parse");
   while (!graphics.submitted.empty() &&
          graphics.submitted.front().first <= context.completed_submission)
@@ -1111,6 +1163,35 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
                     character_bindings, character_index,
                     character_index_bytes))
     return reject("prepare_characters");
+  std::vector<ManagerDrawBinding> manager_bindings;
+  uint64_t manager_vertex = 0;
+  if (live.manager) {
+    if (!graphics.ManagerPipeline(context, manager))
+      return reject("manager_pipeline");
+    manager_vertex = arena.Add(manager.vertex_span.data(),
+                               manager.vertex_span.size());
+    std::map<Snr04ManagerRange, uint64_t> manager_indices;
+    for (const auto& [range, bytes] : manager.indices)
+      manager_indices.emplace(range, arena.Add(bytes.data(), bytes.size()));
+    manager_bindings.reserve(manager.draws.size());
+    for (const auto& draw : manager.draws) {
+      std::array<uint32_t, 120> system{};
+      std::copy(draw.system.begin(), draw.system.end(), system.begin());
+      std::array<uint32_t, 192> fetch{};
+      std::copy(draw.fetch.begin(), draw.fetch.end(), fetch.begin() + 188);
+      const float tile_offset = 720.f - draw.viewport[3];
+      manager_bindings.push_back({
+          draw.count, draw.ranges[2].second,
+          manager_indices.at(draw.ranges[2]),
+          arena.Add(system.data(), sizeof(system)),
+          arena.Add(draw.packed.data(), draw.packed.size() * 4),
+          arena.Add(fetch.data(), sizeof(fetch)),
+          {draw.viewport[0], tile_offset, draw.viewport[2], draw.viewport[3],
+           draw.viewport[4], draw.viewport[5]},
+          {draw.scissor[0], LONG(draw.scissor[1] + tile_offset),
+           draw.scissor[2], LONG(draw.scissor[3] + tile_offset)}});
+    }
+  }
   std::vector<ItemDrawBinding> vegetation_bindings;
   uint64_t vegetation_index = 0;
   uint32_t vegetation_index_bytes = 0;
@@ -1326,7 +1407,8 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   list->ReserveAdditionalBytes(
       (scene.draws.size() + item_bindings.size() +
        character_bindings.size() +
-       vegetation_bindings.size() + remainder_bindings.size() +
+       vegetation_bindings.size() + manager_bindings.size() +
+       remainder_bindings.size() +
        materials.size()) * 512 + 8192);
   const auto base = frame.upload->GetGPUVirtualAddress();
   const auto rtv = frame.rtv->GetCPUDescriptorHandleForHeapStart();
@@ -1489,6 +1571,25 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       list->D3DSetGraphicsRootConstantBufferView(2, base + binding.b3);
       list->D3DSetGraphicsRootShaderResourceView(3, base + binding.vertex);
       const float color[]{0.36f, 0.32f, 0.28f, 1.f};
+      list->D3DSetGraphicsRoot32BitConstants(4, 4, color, 0);
+      list->D3DDrawIndexedInstanced(binding.count, 1, 0, 0, 0);
+    }
+  }
+  if (!manager_bindings.empty()) {
+    list->D3DSetGraphicsRootShaderResourceView(3, base + manager_vertex);
+    list->D3DIASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    list->D3DSetPipelineState(graphics.manager_pipeline.Get());
+    for (const auto& binding : manager_bindings) {
+      list->RSSetViewport(binding.viewport);
+      list->RSSetScissorRect(binding.scissor);
+      D3D12_INDEX_BUFFER_VIEW index{base + binding.index,
+                                    binding.index_bytes,
+                                    DXGI_FORMAT_R16_UINT};
+      list->D3DIASetIndexBuffer(&index);
+      list->D3DSetGraphicsRootConstantBufferView(0, base + binding.b0);
+      list->D3DSetGraphicsRootConstantBufferView(1, base + binding.b1);
+      list->D3DSetGraphicsRootConstantBufferView(2, base + binding.b3);
+      const float color[]{0.32f, 0.29f, 0.27f, 1.f};
       list->D3DSetGraphicsRoot32BitConstants(4, 4, color, 0);
       list->D3DDrawIndexedInstanced(binding.count, 1, 0, 0, 0);
     }

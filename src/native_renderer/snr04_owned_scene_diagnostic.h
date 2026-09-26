@@ -61,6 +61,27 @@ struct Snr04ProceduralScene {
 };
 Snr04ProceduralScene ParseSnr04CharacterScene(std::span<const char> fixture);
 
+using Snr04ManagerRange = std::pair<uint32_t, uint32_t>;
+struct Snr04ManagerDraw {
+  uint64_t sequence = 0;
+  uint32_t packet = 0, count = 0;
+  std::array<Snr04ManagerRange, 3> ranges{};
+  std::vector<uint32_t> packed;
+  std::array<uint32_t, 64> system{};
+  std::array<uint32_t, 4> fetch{};
+  std::array<float, 6> viewport{};
+  std::array<int32_t, 4> scissor{};
+};
+struct Snr04ManagerScene {
+  uint64_t source_frame = 0;
+  uint32_t record_count = 0;
+  std::vector<char> vertex_span;
+  std::map<Snr04ManagerRange, std::vector<char>> indices;
+  std::vector<Snr04ManagerDraw> draws;
+  uint32_t raster_mode = 0, clip_control = 0, depth_control = 0;
+};
+Snr04ManagerScene ParseSnr04ManagerScene(std::span<const char> fixture);
+
 using Snr04TrackRange = std::pair<uint32_t, uint32_t>;
 struct Snr04TrackDraw {
   uint64_t sequence = 0, shader = 0, pixel_shader = 0, specialization = 0;

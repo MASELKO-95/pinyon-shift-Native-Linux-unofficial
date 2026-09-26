@@ -1848,12 +1848,27 @@ void ObserveSnr03ManagerPayload(
   const uint64_t target = observation.frame_sequence - 1;
   std::lock_guard lock(snr03_scene_mutex);
   const auto scene = snr03_manager_scenes.find(uint64_t(target));
-  if (scene == snr03_manager_scenes.end()) return;
-  const auto title = std::find_if(scene->second->records.begin(),
-                                  scene->second->records.end(), [&](const auto& row) {
-    return row.packet == observation.draw_packet_physical_address;
-  });
-  if (title == scene->second->records.end()) return;
+  const bool backend_only = NativeRaceCaptureEnabled() &&
+      scene == snr03_manager_scenes.end();
+  if (scene == snr03_manager_scenes.end() && !backend_only) return;
+  if (backend_only &&
+      (observation.vertex_shader_hash != 0xB8489164D5A86043ull ||
+       observation.pixel_shader_hash != 0x68150A8E959006CDull ||
+       observation.surface_info != 0x14020500 ||
+       (observation.color_info[0] != 0x00030000 &&
+        observation.color_info[0] != 0x000C0000) ||
+       observation.depth_info != 0x00010400 ||
+       observation.bound_render_target_bits != 3))
+    return;
+  const Snr03ManagerRecord* title = nullptr;
+  if (!backend_only) {
+    const auto found = std::find_if(scene->second->records.begin(),
+                                    scene->second->records.end(), [&](const auto& row) {
+      return row.packet == observation.draw_packet_physical_address;
+    });
+    if (found == scene->second->records.end()) return;
+    title = &*found;
+  }
   auto& payload = snr03_manager_payloads[uint64_t(target)];
   if (payload.rejected) return;
   const auto* fetch = observation.vertex_fetches;
@@ -1875,7 +1890,17 @@ void ObserveSnr03ManagerPayload(
       !observation.vertex_float_constant_bitmap ||
       !observation.vertex_float_constant_words ||
       observation.vertex_float_constant_count > 256 ||
-      payload.draws.size() >= 512) {
+      payload.draws.size() >= 2048) {
+    if (NativeRaceCaptureEnabled())
+      REXGPU_WARN("FH1 native manager rejected frame={} sequence={} "
+                  "shader={:016X} vertex_fetches={} texture_fetches={} "
+                  "indices={} index_status={} draws={}",
+                  observation.frame_sequence, observation.draw_sequence,
+                  observation.vertex_shader_hash,
+                  observation.vertex_fetch_count,
+                  observation.texture_fetch_count, observation.index_count,
+                  observation.index_cpu_snapshot_status,
+                  payload.draws.size());
     payload.rejected = true;
     return;
   }
@@ -1884,7 +1909,8 @@ void ObserveSnr03ManagerPayload(
   draw.shader = observation.vertex_shader_hash;
   draw.pixel_shader = observation.pixel_shader_hash;
   draw.specialization = observation.vertex_specialization_mask;
-  draw.packet = title->packet;
+  draw.packet = backend_only ? observation.draw_packet_physical_address
+                             : title->packet;
   draw.count = observation.index_count;
   draw.host_index_format = observation.host_index_format;
   draw.index_endianness = observation.index_buffer_guest_endianness;
@@ -1895,6 +1921,12 @@ void ObserveSnr03ManagerPayload(
                              fetch[slot].cpu_snapshot_status,
                              fetch[slot].cpu_snapshot_hash, payload.bytes,
                              8 * 1024 * 1024)) {
+      if (NativeRaceCaptureEnabled())
+        REXGPU_WARN("FH1 native manager vertex rejected frame={} "
+                    "sequence={} slot={} status={} address={:08X} length={}",
+                    observation.frame_sequence, draw.sequence, slot,
+                    fetch[slot].cpu_snapshot_status, fetch[slot].guest_base,
+                    fetch[slot].length);
       payload.rejected = true;
       return;
     }
@@ -1906,6 +1938,13 @@ void ObserveSnr03ManagerPayload(
                            observation.index_cpu_snapshot_status,
                            observation.index_cpu_snapshot_hash, payload.bytes,
                            8 * 1024 * 1024)) {
+    if (NativeRaceCaptureEnabled())
+      REXGPU_WARN("FH1 native manager index rejected frame={} sequence={} "
+                  "status={} address={:08X} length={}",
+                  observation.frame_sequence, draw.sequence,
+                  observation.index_cpu_snapshot_status,
+                  observation.index_buffer_guest_base,
+                  observation.index_buffer_length);
     payload.rejected = true;
     return;
   }
@@ -2247,20 +2286,23 @@ void ObserveSnr03FinalDrawState(
   if (!Snr03ProbeOutputFrame(observation.frame_sequence)) return;
   const uint64_t target = observation.frame_sequence - 1;
   std::lock_guard lock(snr03_scene_mutex);
-  if (const auto manager_scene = snr03_manager_scenes.find(uint64_t(target));
-      manager_scene != snr03_manager_scenes.end()) {
-    const auto title = std::find_if(manager_scene->second->records.begin(),
-                                    manager_scene->second->records.end(),
-                                    [&](const auto& row) {
-      return row.packet == observation.draw_packet_physical_address;
-    });
-    if (title != manager_scene->second->records.end()) {
-      auto& payload = snr03_manager_payloads[uint64_t(target)];
-      const auto found = std::find_if(payload.draws.begin(), payload.draws.end(),
-                                      [&](const auto& row) {
-        return row.sequence == observation.draw_sequence &&
-               row.packet == title->packet;
+  const auto manager_scene = snr03_manager_scenes.find(uint64_t(target));
+  const auto manager_payload = snr03_manager_payloads.find(uint64_t(target));
+  const bool title_packet = manager_scene != snr03_manager_scenes.end() &&
+      std::any_of(manager_scene->second->records.begin(),
+                  manager_scene->second->records.end(), [&](const auto& row) {
+        return row.packet == observation.draw_packet_physical_address;
       });
+  if (title_packet || (manager_scene == snr03_manager_scenes.end() &&
+                       NativeRaceCaptureEnabled() &&
+                       manager_payload != snr03_manager_payloads.end())) {
+    auto& payload = snr03_manager_payloads[uint64_t(target)];
+    const auto found = std::find_if(payload.draws.begin(), payload.draws.end(),
+                                    [&](const auto& row) {
+      return row.sequence == observation.draw_sequence &&
+             row.packet == observation.draw_packet_physical_address;
+    });
+    if (title_packet || found != payload.draws.end()) {
       if (found == payload.draws.end() || found->final_seen ||
           !observation.system_constant_words ||
           observation.system_constant_word_count < 64 ||
@@ -3577,6 +3619,15 @@ void ObserveSnr03ManagerOutputFrame(uint64_t output_frame) {
       snr03_manager_payloads.erase(found);
     }
   }
+  if (!scene && NativeRaceCaptureEnabled() && !payload.draws.empty()) {
+    Snr03ManagerScene backend;
+    backend.source_frame = output_frame - 1;
+    std::set<uint32_t> packets;
+    for (const auto& draw : payload.draws)
+      if (packets.insert(draw.packet).second)
+        backend.records.push_back({0, 0, 0, draw.packet, {}, {}});
+    scene = std::make_shared<const Snr03ManagerScene>(std::move(backend));
+  }
   if (!scene) {
     REXGPU_INFO("FH1 SNR03 manager scene missing output_frame={}", output_frame);
     return;
@@ -3584,7 +3635,7 @@ void ObserveSnr03ManagerOutputFrame(uint64_t output_frame) {
   std::set<uint32_t> packets;
   std::set<uint64_t> sequences;
   bool valid = !payload.rejected && !payload.draws.empty() &&
-               payload.draws.size() <= 512 && scene->records.size() <= 256;
+               payload.draws.size() <= 2048 && scene->records.size() <= 1024;
   for (const auto& record : scene->records) {
     valid &= record.packet && packets.insert(record.packet).second;
   }

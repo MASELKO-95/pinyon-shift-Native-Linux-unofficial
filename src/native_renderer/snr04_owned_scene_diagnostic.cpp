@@ -2809,19 +2809,9 @@ uint32_t pinyon_shift::native_renderer::RunSnr04TrackDiagnosticFromBytes(
   return covered;
 }
 
-uint32_t pinyon_shift::native_renderer::RunSnr04ManagerDiagnosticFromBytes(
-    std::span<const char> fixture,
-    const std::filesystem::path& shader_directory,
-    const std::filesystem::path& output_directory,
-    ID3D12Device* borrowed_device, uint32_t samples,
-    const Snr04SegmentOptions* segment) {
-  require(samples == 1 || samples == 4, "unsupported manager sample count");
-  if (segment)
-    require(segment->first_sequence &&
-                segment->first_sequence <= segment->last_sequence &&
-                segment->first_id && segment->draw_count &&
-                segment->first_id + uint64_t(segment->draw_count) <= 65536,
-            "invalid manager segment");
+pinyon_shift::native_renderer::Snr04ManagerScene
+pinyon_shift::native_renderer::ParseSnr04ManagerScene(
+    std::span<const char> fixture) {
   const auto source = fixture;
   Reader reader{source};
   require(reader.take<std::array<char, 8>>() ==
@@ -2833,11 +2823,11 @@ uint32_t pinyon_shift::native_renderer::RunSnr04ManagerDiagnosticFromBytes(
   const auto record_count = reader.take<uint32_t>();
   const auto draw_count = reader.take<uint32_t>();
   const auto range_counts = reader.take<std::array<uint32_t, 3>>();
-  require(record_count > 0 && record_count <= 256 &&
-              draw_count >= record_count && draw_count <= 512 &&
-              range_counts[0] > 0 && range_counts[0] <= 256 &&
+  require(record_count > 0 && record_count <= 1024 &&
+              draw_count >= record_count && draw_count <= 2048 &&
+              range_counts[0] > 0 && range_counts[0] <= 1024 &&
               range_counts[1] > 0 && range_counts[1] <= 16 &&
-              range_counts[2] > 0 && range_counts[2] <= 512,
+              range_counts[2] > 0 && range_counts[2] <= 2048,
           "unsupported manager fixture counts");
   reader.take<std::array<uint32_t, 32>>();  // Title camera matrices.
   std::set<uint32_t> packets;
@@ -2849,7 +2839,7 @@ uint32_t pinyon_shift::native_renderer::RunSnr04ManagerDiagnosticFromBytes(
             "duplicate manager title packet");
     reader.take<std::array<uint32_t, 7>>();  // Title record/source words.
   }
-  using Range = std::pair<uint32_t, uint32_t>;
+  using Range = Snr04ManagerRange;
   std::array<std::map<Range, std::vector<char>>, 3> ranges;
   size_t owned_bytes = 0;
   for (uint32_t slot = 0; slot < 3; ++slot) {
@@ -2887,21 +2877,11 @@ uint32_t pinyon_shift::native_renderer::RunSnr04ManagerDiagnosticFromBytes(
       std::copy(bytes.begin(), bytes.end(),
                 vertex_span.begin() + (key.first - first_address));
 
-  struct ManagerDraw {
-    uint64_t sequence = 0;
-    uint32_t packet = 0, count = 0;
-    std::array<Range, 3> ranges{};
-    std::vector<uint32_t> packed;
-    std::array<uint32_t, 64> system{};
-    std::array<uint32_t, 4> fetch{};
-    std::array<float, 6> viewport{};
-    std::array<int32_t, 4> scissor{};
-  };
-  std::vector<ManagerDraw> draws;
+  std::vector<Snr04ManagerDraw> draws;
   std::set<uint32_t> drawn_packets;
   uint32_t raster_mode = 0, clip_control = 0, depth_control = 0;
   for (uint32_t i = 0; i < draw_count; ++i) {
-    ManagerDraw draw{};
+    Snr04ManagerDraw draw{};
     draw.sequence = reader.take<uint64_t>();
     draw.packet = reader.take<uint32_t>();
     const auto shader = reader.take<uint64_t>();
@@ -2981,6 +2961,41 @@ uint32_t pinyon_shift::native_renderer::RunSnr04ManagerDiagnosticFromBytes(
   }
   require(reader.position == source.size() && drawn_packets == packets,
           "incomplete manager fixture");
+  Snr04ManagerScene scene;
+  scene.source_frame = frame;
+  scene.record_count = record_count;
+  scene.vertex_span = std::move(vertex_span);
+  scene.indices = std::move(ranges[2]);
+  scene.draws = std::move(draws);
+  scene.raster_mode = raster_mode;
+  scene.clip_control = clip_control;
+  scene.depth_control = depth_control;
+  return scene;
+}
+
+uint32_t pinyon_shift::native_renderer::RunSnr04ManagerDiagnosticFromBytes(
+    std::span<const char> fixture,
+    const std::filesystem::path& shader_directory,
+    const std::filesystem::path& output_directory,
+    ID3D12Device* borrowed_device, uint32_t samples,
+    const Snr04SegmentOptions* segment) {
+  require(samples == 1 || samples == 4, "unsupported manager sample count");
+  if (segment)
+    require(segment->first_sequence &&
+                segment->first_sequence <= segment->last_sequence &&
+                segment->first_id && segment->draw_count &&
+                segment->first_id + uint64_t(segment->draw_count) <= 65536,
+            "invalid manager segment");
+  auto manager = ParseSnr04ManagerScene(fixture);
+  const auto source = fixture;
+  const auto frame = manager.source_frame;
+  const auto record_count = manager.record_count;
+  const auto& vertex_span = manager.vertex_span;
+  const auto& draws = manager.draws;
+  const auto raster_mode = manager.raster_mode;
+  const auto clip_control = manager.clip_control;
+  const auto depth_control = manager.depth_control;
+  using Range = Snr04ManagerRange;
   const auto shader = read(shader_directory /
       "vertex_B8489164D5A86043_000000000000001F.dxil");
   require(shader.size() >= 4 && std::memcmp(shader.data(), "DXBC", 4) == 0 &&
@@ -3095,7 +3110,7 @@ uint32_t pinyon_shift::native_renderer::RunSnr04ManagerDiagnosticFromBytes(
   auto vertices = upload(device.Get(), vertex_span.data(), vertex_span.size());
   std::map<Range, ComPtr<ID3D12Resource>> index_buffers;
   // The translated VS swaps the raw k8in16 index received from D3D12.
-  for (const auto& [key, bytes] : ranges[2])
+  for (const auto& [key, bytes] : manager.indices)
     index_buffers.emplace(key, upload(device.Get(), bytes.data(), bytes.size()));
   struct Bindings { ComPtr<ID3D12Resource> b0, b1, b3; };
   std::vector<Bindings> bindings;
