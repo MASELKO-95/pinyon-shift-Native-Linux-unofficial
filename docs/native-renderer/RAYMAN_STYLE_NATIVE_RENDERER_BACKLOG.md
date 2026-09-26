@@ -176,6 +176,12 @@ guest output addresses. Frame 6782 promoted with UI source 6781 and normal
 route exit. The saved selected-frame image from a separate same-frame-HUD run
 is recognizable but still shows major yellow background artifacts.
 
+- [ ] Diagnose the shared `DEVICE_HUNG` in large indexed scene draws: isolate
+  one draw with the D3D12 debug layer and DRED, verify index/vertex bounds,
+  vertex transform/raster coverage, depth state and draw cost. A flat pixel
+  program still hung with 1,024 indices per draw; test a single triangle
+  only on a frame whose race HUD and native shadow gate are verified. Keep
+  failing families out of live admission.
 - [ ] Feed the selected event stream into the existing D3D12 native output,
   retaining draw order, targets, clears, depth, resolves, viewport, scissor,
   blending and texture versions needed by this race frame. Start with the
@@ -384,11 +390,17 @@ pinned textures and final state to issue remaining visible main-scene draws.
 Choose the next draw family by visible missing coverage, not merely by a
 small input shape: the first three-draw textured strip ran successfully but
 did not visibly change the saved race image.
-Use the newly admitted retained-HUD frame to isolate the two large
-main-color shader families one at a time. Require GPU stability and a saved
-visible image before adding either family to the live path. The offscreen
-target still needs earlier color/depth history before replacing its pinned
-guest consumer texture.
+The [main-scene family isolation](RAYMAN_MAIN_SCENE_FAMILY_TRIALS_2026-09-26.md)
+used the retained-HUD frame to test the 8,700-index atlas and a distinct
+one-texture indexed strip separately. Both caused D3D12 `DEVICE_HUNG` after
+submission and were removed. Stop admitting large indexed families by input
+shape alone. Diagnose one draw's GPU bindings and translated shader under
+the D3D12 debug layer and DRED, then retry only when its cause is addressed.
+Until that path is stable, prioritize the already captured offscreen
+color/depth history and its pinned guest consumer comparison rather than
+admitting another large scene family.
+The offscreen target still needs earlier color/depth history before replacing
+its pinned guest consumer texture.
 Save the resulting full-frame image and integrate the same-frame HUD at its ordered
 suffix.
 Treat `0x00030000` and `0x000C0000` as format aliases over one EDRAM base,
