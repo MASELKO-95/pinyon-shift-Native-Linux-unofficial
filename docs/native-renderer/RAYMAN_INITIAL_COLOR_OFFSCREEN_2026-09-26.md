@@ -31,6 +31,9 @@ the native and guest diagnostic previews are under the sibling
 `ordered-producer-rgba-preview-output/` and `guest-producer-preview-output/`
 directories.
 
-Next, compare the producer's target/depth state and texture descriptors
-against the ordered guest trace. Restore the earliest missing input with
-a matched preview before routing native versions to any visible consumer.
+The [depth-prepass census](RAYMAN_OFFSCREEN_DEPTH_PREPASS_2026-09-26.md)
+identifies the earliest missing input: 498 depth-writing draws precede the
+eleven color draws, and the intervening clear preserves depth. Snapshot the
+compatibility depth target at that clear, test the color pass against its
+copied DSV, and compare previews before routing native versions to a visible
+consumer.

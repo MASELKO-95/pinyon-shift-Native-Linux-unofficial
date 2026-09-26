@@ -157,6 +157,11 @@ owned RGBA target and makes both ordered copies from it. The guest first
 version is a full scene image; a diagnostic view of the native version shows
 large flat regions instead. It remains detached from consumers while target
 history, depth and binding differences are resolved.
+The [depth-prepass census](RAYMAN_OFFSCREEN_DEPTH_PREPASS_2026-09-26.md)
+identifies the missing offscreen input: 498 depth-writing draws precede its
+eleven depth-tested color draws. The source depth target is 1× and can be
+snapshotted at the color/stencil clear boundary; native replay currently
+binds no DSV for that pass.
 The [main-scene original draw pilot](RAYMAN_MAIN_SCENE_ORIGINAL_DRAW_2026-09-26.md)
 also issues one captured textured strip in each of the three color tiles at
 its stream ordinal. A short native race passed with readable HUD, but the
@@ -399,8 +404,11 @@ the D3D12 debug layer and DRED, then retry only when its cause is addressed.
 Until that path is stable, prioritize the already captured offscreen
 color/depth history and its pinned guest consumer comparison rather than
 admitting another large scene family.
-The offscreen target still needs earlier color/depth history before replacing
-its pinned guest consumer texture.
+Snapshot the compatibility depth target immediately after the offscreen
+color/stencil clear, retain it through native submission, and bind its copied
+DSV for the eleven indexed color draws. Validate resource shape and compare
+the native offscreen preview with the pinned guest version before replacing
+its visible consumer texture.
 Save the resulting full-frame image and integrate the same-frame HUD at its ordered
 suffix.
 Treat `0x00030000` and `0x000C0000` as format aliases over one EDRAM base,
