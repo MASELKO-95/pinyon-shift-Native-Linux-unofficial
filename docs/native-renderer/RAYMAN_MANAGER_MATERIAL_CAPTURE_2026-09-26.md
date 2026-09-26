@@ -34,5 +34,11 @@ textured crowd at frame 5290. It promoted all 309 observed output frames
 4993–5301 with no native draw rejection or snapshot-limit warning. The
 fallback remains for resource versions outside the supported pinned 2D path.
 
-Next, compare one matched Xenos frame and perform an unscripted drive before
-calling the crowd quality gap closed.
+A same-session toggle route captured native frame 5038, compatibility frame
+5044 and native frame 5055. The spectator clothing and skin colors are now
+recognizably similar across those nearby views, and native promotion resumed
+after the toggle. The comparison also exposes much larger remaining gaps in
+lighting, the background structure, roadside ground and car material. The
+frames are under `.local/ray-ui-native-promotion-20260925/manager-textured-toggle-output`.
+
+An unscripted drive remains before calling the crowd quality gap closed.

@@ -260,8 +260,10 @@ clothing and skin when both source textures are pinned 2D views. Other draws
 retain the flat material when the texture version cannot be pinned. Adding
 manager fetches 0 and 13 to the SDK's normal snapshot filter keeps the crowd
 textured through a 309-frame scripted race with no native rejection or
-snapshot-limit warning. A matched Xenos comparison and unscripted drive
-remain open.
+snapshot-limit warning. A same-session native/compatibility/native toggle
+shows comparable spectator textures and safe recovery. Background structure,
+lighting, ground and car materials still differ visibly; an unscripted drive
+remains open.
 
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major
