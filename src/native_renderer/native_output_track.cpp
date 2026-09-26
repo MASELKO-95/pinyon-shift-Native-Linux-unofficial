@@ -43,6 +43,10 @@ uint32_t TrackMaterialKind(const Snr04TrackDraw& draw) {
 }
 
 uint32_t RemainderMaterialKind(const Snr04RemainderDraw& draw) {
+  if (draw.family == 1 && draw.shader == 0x2E5E0A854BE00027ull &&
+      draw.pixel_shader == 0xBDFFA72B7ED2FBA4ull &&
+      draw.pixel_specialization == 0x16003Full && draw.texture_count == 5)
+    return 4;
   if (draw.family == 1 && draw.shader == 0xD34A83D9E6B3A399ull &&
       draw.pixel_shader == 0xE9CD565D9C61D037ull &&
       draw.pixel_specialization == 0x16003Full && draw.texture_count == 8)
@@ -106,12 +110,12 @@ struct ItemDrawBinding {
 struct RemainderDrawBinding {
   RemainderPipelineKey pipeline;
   uint64_t index = 0, b0 = 0, b1 = 0, b3 = 0, b4 = 0;
-  uint64_t pixel_constants = 0, body_bool = 0;
+  uint64_t pixel_constants = 0, shader_bool = 0;
   uint32_t count = 0, index_bytes = 0, format = 0, primitive = 0;
   uint32_t family = 0;
   uint32_t material_index = UINT32_MAX;
-  std::array<uint32_t, 8> body_materials{};
-  uint32_t body_view_offset = 0, body_sampler_offset = 0;
+  std::array<uint32_t, 8> shader_materials{};
+  uint32_t shader_view_offset = 0, shader_sampler_offset = 0;
   std::array<float, 4> color{};
   D3D12_VIEWPORT viewport{};
   D3D12_RECT scissor{};
@@ -375,7 +379,7 @@ struct TrackGraphics {
     desc.pRootSignature = root.Get();
     desc.VS = {vertex, size};
     const uint32_t material = RemainderMaterialKind(draw);
-    if (material == 2 || material == 3) {
+    if (material == 2 || material == 3 || material == 4) {
       const uint8_t* pixel_bytecode = nullptr;
       size_t pixel_size = 0;
       if (!context.shader(context, 1, draw.pixel_shader,
@@ -674,17 +678,33 @@ bool PrepareRemainder(
       binding.pixel_constants = arena.Add(draw.pixel_packed.data(),
                                           draw.pixel_packed.size() * 4);
     }
-    if (RemainderMaterialKind(draw) == 3) {
-      if (draw.pixel_packed.size() < 46 * 4 ||
-          draw.system[61] != 0x3F800000u) return false;
-      binding.pixel_constants = arena.Add(draw.pixel_packed.data(),
-                                          draw.pixel_packed.size() * 4);
+    const uint32_t shader_material = RemainderMaterialKind(draw);
+    if (shader_material == 3 || shader_material == 4) {
+      if (draw.system[61] != 0x3F800000u) return false;
+      if (shader_material == 3) {
+        if (draw.pixel_packed.size() < 46 * 4) return false;
+        binding.pixel_constants = arena.Add(draw.pixel_packed.data(),
+                                            draw.pixel_packed.size() * 4);
+      } else {
+        std::array<uint32_t, 256 * 4> constants{};
+        uint32_t packed = 0;
+        for (uint32_t reg = 0; reg < 256; ++reg)
+          if (draw.pixel_bitmap[reg / 64] & (uint64_t(1) << (reg % 64))) {
+            std::copy_n(draw.pixel_packed.data() + packed, 4,
+                        constants.data() + reg * 4);
+            packed += 4;
+          }
+        binding.pixel_constants = arena.Add(constants.data(), sizeof(constants));
+      }
       std::array<uint32_t, 40> bools{};
       bools[4] = draw.bool_word4;
-      binding.body_bool = arena.Add(bools.data(), sizeof(bools));
+      binding.shader_bool = arena.Add(bools.data(), sizeof(bools));
       std::array<uint32_t, 28> descriptors{};
-      for (uint32_t i = 0; i < 8; ++i) {
-        const uint32_t view = i < 6 ? i : i - 6;
+      const uint32_t count = shader_material == 3 ? 8 : 5;
+      for (uint32_t i = 0; i < count; ++i) {
+        const bool cube = shader_material == 3 ? i >= 6 : i == 2 || i == 3;
+        const uint32_t view = shader_material == 3
+            ? (cube ? i - 6 : i) : (cube ? i - 2 : i == 4 ? 2 : i);
         descriptors[i * 3 + 1] = i;
         descriptors[i * 3 + 2] = view * 2;
         descriptors[i * 3 + 3] = view * 2 + 1;
@@ -1033,22 +1053,26 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         return false;
   for (size_t i = 0; i < remainder.draws.size(); ++i) {
     const uint32_t material = RemainderMaterialKind(remainder.draws[i]);
-    if (material != 1 && material != 3) continue;
-    if (material == 3) {
-      constexpr uint32_t fetches[]{1, 0, 13, 2, 3, 4, 5, 6};
-      for (uint32_t j = 0; j < 8; ++j) {
-        const uint32_t fetch = fetches[j];
+    if (material != 1 && material != 3 && material != 4) continue;
+    if (material == 3 || material == 4) {
+      constexpr uint32_t body_fetches[]{1, 0, 13, 2, 3, 4, 5, 6};
+      constexpr uint32_t glass_fetches[]{13, 1, 2, 3, 4};
+      const uint32_t count = material == 3 ? 8 : 5;
+      for (uint32_t j = 0; j < count; ++j) {
+        const uint32_t fetch = material == 3
+            ? body_fetches[j] : glass_fetches[j];
         const auto input = remainder_textures.find({remainder.draws[i].sequence, fetch});
         if (input == remainder_textures.end() || !input->second->allocation_id ||
             !input->second->payload_generation || input->second->outdated_mask ||
             !resolve_material(*input->second,
-                              remainder_bindings[i].body_materials[j]))
+                              remainder_bindings[i].shader_materials[j]))
           return reject("missing_car_texture");
-        const auto& texture = materials[remainder_bindings[i].body_materials[j]];
+        const auto& texture = materials[remainder_bindings[i].shader_materials[j]];
+        const bool cube = material == 3 ? j >= 6 : j == 2 || j == 3;
         if (!texture.pinned ||
-            texture.view.ViewDimension != (j < 6
-                ? D3D12_SRV_DIMENSION_TEXTURE2D
-                : D3D12_SRV_DIMENSION_TEXTURECUBE))
+            texture.view.ViewDimension != (cube
+                ? D3D12_SRV_DIMENSION_TEXTURECUBE
+                : D3D12_SRV_DIMENSION_TEXTURE2D))
           return reject("unsupported_car_texture");
       }
       continue;
@@ -1063,12 +1087,13 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   TrackFrame frame;
   if (!CreateFrame(device, output, arena, scene_only, frame))
     return reject("create_frame");
-  uint32_t body_count = 0;
+  uint32_t original_count = 0;
   for (auto& binding : remainder_bindings)
-    if (std::get<8>(binding.pipeline) == 3) {
-      binding.body_view_offset = uint32_t(materials.size()) + body_count * 16;
-      binding.body_sampler_offset = 2 + body_count * 8;
-      ++body_count;
+    if (std::get<8>(binding.pipeline) == 3 ||
+        std::get<8>(binding.pipeline) == 4) {
+      binding.shader_view_offset = uint32_t(materials.size()) + original_count * 16;
+      binding.shader_sampler_offset = 2 + original_count * 8;
+      ++original_count;
     }
   if (!materials.empty()) {
     D3D12_HEAP_PROPERTIES heap_properties{};
@@ -1095,7 +1120,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     }
     D3D12_DESCRIPTOR_HEAP_DESC heap{};
     heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    heap.NumDescriptors = UINT(materials.size() + body_count * 16);
+    heap.NumDescriptors = UINT(materials.size() + original_count * 16);
     heap.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     if (FAILED(device->CreateDescriptorHeap(
             &heap, IID_PPV_ARGS(&frame.materials))))
@@ -1110,11 +1135,14 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       handle.ptr += stride;
     }
     for (const auto& binding : remainder_bindings) {
-      if (std::get<8>(binding.pipeline) != 3) continue;
-      for (uint32_t j = 0; j < 8; ++j) {
-        const auto& material = materials[binding.body_materials[j]];
+      const uint32_t kind = std::get<8>(binding.pipeline);
+      if (kind != 3 && kind != 4) continue;
+      const uint32_t count = kind == 3 ? 8 : 5;
+      for (uint32_t j = 0; j < count; ++j) {
+        const auto& material = materials[binding.shader_materials[j]];
         auto view = material.view;
-        if (j < 6) {
+        const bool cube = kind == 3 ? j >= 6 : j == 2 || j == 3;
+        if (!cube) {
           view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
           view.Texture2DArray.MostDetailedMip =
               material.view.Texture2D.MostDetailedMip;
@@ -1126,11 +1154,13 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
               material.view.Texture2D.ResourceMinLODClamp;
         }
         auto slot = frame.materials->GetCPUDescriptorHandleForHeapStart();
-        const uint32_t offset = binding.body_view_offset +
-            (j < 6 ? j * 2 : 12 + (j - 6) * 2);
+        const uint32_t view_index = kind == 3
+            ? (cube ? j - 6 : j) : (cube ? j - 2 : j == 4 ? 2 : j);
+        const uint32_t offset = binding.shader_view_offset +
+            (cube ? 12 : 0) + view_index * 2;
         slot.ptr += SIZE_T(offset) * stride;
         auto* snapshot = frame.material_resources[
-            binding.body_materials[j] * 2 + 1].Get();
+            binding.shader_materials[j] * 2 + 1].Get();
         device->CreateShaderResourceView(snapshot, &view, slot);
         slot.ptr += stride;
         device->CreateShaderResourceView(snapshot, &view, slot);
@@ -1140,7 +1170,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   {
     D3D12_DESCRIPTOR_HEAP_DESC heap{};
     heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-    heap.NumDescriptors = 2 + body_count * 8;
+    heap.NumDescriptors = 2 + original_count * 8;
     heap.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     if (FAILED(device->CreateDescriptorHeap(
             &heap, IID_PPV_ARGS(&frame.samplers))))
@@ -1321,13 +1351,13 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     if (binding.pixel_constants)
       list->D3DSetGraphicsRootConstantBufferView(8,
                                                  base + binding.pixel_constants);
-    if (binding.body_bool) {
-      list->D3DSetGraphicsRootConstantBufferView(9, base + binding.body_bool);
+    if (binding.shader_bool) {
+      list->D3DSetGraphicsRootConstantBufferView(9, base + binding.shader_bool);
       auto sampler = sampler_gpu_start;
-      sampler.ptr += SIZE_T(binding.body_sampler_offset) * sampler_stride;
+      sampler.ptr += SIZE_T(binding.shader_sampler_offset) * sampler_stride;
       list->D3DSetGraphicsRootDescriptorTable(10, sampler);
       auto textures = material_gpu_start;
-      textures.ptr += SIZE_T(binding.body_view_offset) * material_stride;
+      textures.ptr += SIZE_T(binding.shader_view_offset) * material_stride;
       list->D3DSetGraphicsRootDescriptorTable(11, textures);
       textures.ptr += 12 * material_stride;
       list->D3DSetGraphicsRootDescriptorTable(12, textures);
@@ -1339,7 +1369,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     }
     list->D3DSetGraphicsRoot32BitConstants(4, 4, binding.color.data(), 0);
     list->D3DDrawIndexedInstanced(binding.count, 1, 0, 0, 0);
-    if (binding.body_bool)
+    if (binding.shader_bool)
       list->D3DSetGraphicsRootDescriptorTable(10, sampler_gpu_start);
   }
   barrier.Transition.pResource = scene_color;

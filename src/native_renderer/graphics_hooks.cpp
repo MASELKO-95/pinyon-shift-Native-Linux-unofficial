@@ -2334,8 +2334,10 @@ void ObserveSnr03FinalDrawState(
       std::copy_n(observation.system_constant_words, 64, draw.system.begin());
       std::copy_n(observation.fetch_constant_words, 192,
                   draw.bound_fetch.begin());
-      if (draw.shader == 0xD34A83D9E6B3A399ull &&
-          draw.pixel_shader == 0xE9CD565D9C61D037ull) {
+      if ((draw.shader == 0xD34A83D9E6B3A399ull &&
+           draw.pixel_shader == 0xE9CD565D9C61D037ull) ||
+          (draw.shader == 0x2E5E0A854BE00027ull &&
+           draw.pixel_shader == 0xBDFFA72B7ED2FBA4ull)) {
         if (!observation.bool_loop_constant_words ||
             observation.bool_loop_constant_word_count < 5) {
           payload.rejected = true;

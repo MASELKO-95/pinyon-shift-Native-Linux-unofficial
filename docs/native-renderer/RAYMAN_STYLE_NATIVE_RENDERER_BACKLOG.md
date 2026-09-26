@@ -165,8 +165,10 @@ The [body texture snapshot run](RAYMAN_BODY_TEXTURE_SNAPSHOTS_2026-09-26.md)
 preserves all eight source-frame texture versions, including two cube maps.
 The [original body program](RAYMAN_ORIGINAL_BODY_PIXEL_2026-09-26.md) now
 binds those resources and its constants in live presentation. It adds
-specular shading, but the rear paint is darker than the placeholder and the
-window remains opaque. Compare a matched Xenos frame
+specular shading, but the rear paint is darker than the placeholder.
+The [original glass program](RAYMAN_ORIGINAL_GLASS_PIXEL_2026-09-26.md)
+replaces the flat red rear window with dark glass across a full native race
+route. Compare a matched Xenos frame
 and inspect sampled values before calling this car-quality gap closed. The
 scripted native and Xenos runs diverged in game time and car position at the
 same output frame, so an unscripted drive remains essential for playability.
