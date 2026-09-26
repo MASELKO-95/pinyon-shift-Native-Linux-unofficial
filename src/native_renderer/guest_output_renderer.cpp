@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <optional>
 
 #include "fh1_render_test.h"
 #include "native_renderer/graphics_hooks.h"
@@ -127,17 +128,59 @@ bool DrawShadow(const rex::system::NativeGuestOutputRenderContext& context,
       rex::cvar::GetFlagByName("pinyon_shift_snr01_trace_source_frame").c_str(),
       nullptr, 10);
   const bool ordered_pilot = trace_frame == context.frame_sequence;
+  save_image |= ordered_pilot && pinyon_shift::fh1_render_test::Enabled();
   const uint64_t ui_frame = pinyon_shift::native_renderer::ResolveOrderedUiReplayFrame(
       ordered_pilot ? context.frame_sequence : source_frame);
-  if (ordered_pilot && ui_frame != context.frame_sequence) return false;
   if (ordered_pilot) {
     const auto operations = pinyon_shift::native_renderer::
         SnapshotOrderedFrameOperations(context.frame_sequence);
+    const auto previous = ui_frame + 1 == context.frame_sequence
+        ? pinyon_shift::native_renderer::SnapshotOrderedFrameOperations(ui_frame)
+        : std::nullopt;
     if (!operations || !pinyon_shift::native_renderer::WithOrderedUiFrame(
-            context.frame_sequence, [&](const auto& draws) {
+            ui_frame, [&](const auto& draws) {
+              const auto& last = draws.rbegin()->second;
+              const auto final_copy = [&](const auto& event) {
+                return event.kind == 'C' && event.succeeded &&
+                    event.dest_base && event.dest_pitch &&
+                    event.resolve_width == 1280 &&
+                    event.resolve_height == 720 &&
+                    event.surface == last.surface &&
+                    event.depth == last.depth &&
+                    (event.color & 0xFFFFu) == (last.color & 0xFFFFu);
+              };
+              if (ui_frame + 1 == context.frame_sequence) {
+                if (!previous || previous->empty() || operations->empty() ||
+                    !final_copy(previous->back()) ||
+                    !final_copy(operations->back())) return false;
+                const auto& before = previous->back();
+                const auto& current = operations->back();
+                const auto changed = std::find_if(
+                    operations->begin(), operations->end(),
+                    [&](const auto& event) {
+                      return event.surface == last.surface &&
+                             event.color == last.color;
+                    });
+                // Guest output addresses alternate; compare the copied source.
+                const bool same_source =
+                    before.dest_pitch == current.dest_pitch &&
+                    before.copy.source_base_tiles ==
+                        current.copy.source_base_tiles &&
+                    before.copy.source_format == current.copy.source_format &&
+                    before.copy.source_pitch_tiles ==
+                        current.copy.source_pitch_tiles &&
+                    before.copy.source_msaa == current.copy.source_msaa &&
+                    before.copy.control == current.copy.control;
+                if (same_source && changed == operations->end())
+                  REXGPU_WARN("FH1 ordered retained HUD admitted frame={} "
+                              "ui_frame={} dest={}:{}", context.frame_sequence,
+                              ui_frame, before.dest_base, current.dest_base);
+                return same_source && changed == operations->end();
+              }
+              if (ui_frame != context.frame_sequence) return false;
               auto next = draws.begin();
               bool started = false;
-              bool final_copy = false;
+              bool found_final_copy = false;
               for (const auto& event : *operations) {
                 if (next != draws.end() && event.sequence == next->first) {
                   const auto& draw = next->second;
@@ -148,20 +191,14 @@ bool DrawShadow(const rex::system::NativeGuestOutputRenderContext& context,
                   started = true;
                   ++next;
                 } else if (started) {
-                  const auto& last = draws.rbegin()->second;
-                  if (next != draws.end() || final_copy || event.kind != 'C' ||
+                  if (next != draws.end() || found_final_copy || event.kind != 'C' ||
                       event.sequence != operations->back().sequence ||
-                      !event.succeeded || !event.dest_base ||
-                      !event.dest_pitch || event.resolve_width != 1280 ||
-                      event.resolve_height != 720 ||
-                      event.surface != last.surface ||
-                      event.depth != last.depth ||
-                      (event.color & 0xFFFFu) != (last.color & 0xFFFFu))
+                      !final_copy(event))
                     return false;
-                  final_copy = true;
+                  found_final_copy = true;
                 }
               }
-              return started && next == draws.end() && final_copy;
+              return started && next == draws.end() && found_final_copy;
             })) return false;
   }
   if (!scene || !ui_frame)

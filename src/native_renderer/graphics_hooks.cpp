@@ -3204,7 +3204,10 @@ void ObserveCopy(const rex::system::GraphicsCopyObservation& observation) {
   if ((target > 0 && observation.frame_sequence == uint64_t(target)) ||
       (UiShadowFrame(observation.frame_sequence) &&
        observation.surface_info == 0x14000500 &&
-       observation.color_info[0] == 0x000A0000))
+       ((observation.color_info[0] == 0x000A0000) ||
+        (observation.color_info[0] == 0x00020000 &&
+         observation.resolve_guest_width == 1280 &&
+         observation.resolve_guest_height == 720))))
     pinyon_shift::native_renderer::CaptureOrderedFrameCopy(observation);
   if (target <= 0 || observation.frame_sequence + 1 < uint64_t(target) ||
       observation.frame_sequence > uint64_t(target) +
