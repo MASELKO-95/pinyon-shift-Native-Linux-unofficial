@@ -91,6 +91,10 @@ The textured pilot has a recognizable native scene and complete captured
 HUD, but does not consume the full ordered world event stream. Its image and
 constraints are recorded in the
 [textured replay evidence](RAYMAN_TEXTURED_UI_REPLAY_2026-09-25.md).
+The [six-family world replay](RAYMAN_ORDERED_WORLD_REPLAY_2026-09-26.md) now
+issues supported world draws by backend sequence rather than by family. This
+improves their draw ordering, but clears/resolves, unsupported draws and the
+separately captured HUD are not yet one authoritative event stream.
 
 - [ ] Feed the selected event stream into the existing D3D12 native output,
   retaining draw order, targets, clears, depth, resolves, viewport, scissor,
@@ -141,8 +145,9 @@ version and longer-run cadence still need validation.
 The [continuous race run](RAYMAN_CONTINUOUS_NATIVE_RACE_2026-09-26.md) extends
 opt-in promotion beyond the 24-frame pilot. Scripted runs covered more than
 300 moving frames, hot toggle, pause/resume and return to compatibility.
-The native road and car remain visibly rough; the world does not yet consume
-one authoritative ordered event stream.
+The native road and car remain visibly rough; the supported world draws now
+follow backend order, but the complete frame does not yet consume one
+authoritative ordered event stream.
 
 - [ ] Route the complete native frame through the existing guest-output hook
   and hot toggle. Select one output target from the captured target/resolve
