@@ -32,8 +32,9 @@ the native and guest diagnostic previews are under the sibling
 directories.
 
 The [depth-prepass census](RAYMAN_OFFSCREEN_DEPTH_PREPASS_2026-09-26.md)
-identifies the earliest missing input: 498 depth-writing draws precede the
-eleven color draws, and the intervening clear preserves depth. Snapshot the
-compatibility depth target at that clear, test the color pass against its
-copied DSV, and compare previews before routing native versions to a visible
+identifies 498 depth-writing draws before the eleven color draws. The
+selected-frame pilot now snapshots their 1× depth at its resolve and binds
+the copied DSV. This reveals some scene structure, but the native version
+still lacks earlier color history. Capture the 1× color target before its
+first draw and compare previews before routing native versions to a visible
 consumer.

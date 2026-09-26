@@ -21,21 +21,28 @@ depth-test against a compatible 1× depth view. Its current pipeline
 explicitly disables depth and binds no DSV, which explains the large
 green/yellow polygons in the diagnostic preview.
 
-The cache's `last_update_accumulated_render_targets()[0]` is the live depth
-target during the color/stencil clear. `GetFullyOwnedRenderTarget` is not a
-safe late lookup: it requires every EDRAM ownership range to match one key,
-and subsequent draws can change ownership. The smallest safe handoff is to
-snapshot that depth resource immediately after the qualified color/stencil
-clear, retain the copy through the native submission, and expose it to the
-native output context. Native replay can bind its copied DSV for the eleven
-color draws and restore the borrowed resource state afterward. The snapshot
-and DSV must use the source resource's actual dimensions, format and sample
-count; reject the replay if any differ from the expected shape. Do not bind
-the native color version to visible consumers until its diagnostic preview
-resembles the pinned guest version.
+The depth resolve to `497831936` is the precise snapshot seam. Its observed
+source is a 1×, 1280×2048 `R32G8X24_TYPELESS` cache resource at depth base
+0; the remaining 24 draws before the color clear have depth disabled. At
+the later color/stencil clear, the cache changes to a 4× view, so a snapshot
+there would be the wrong resource. `GetFullyOwnedRenderTarget` is also not a
+safe late lookup: it requires every EDRAM ownership range to match one key.
 
-This is an implementation direction, not a completed depth handoff. The
-current compatibility texture remains the visible consumer input. Source
-evidence: `ordered-frame-5001.csv` and `ordered-frame-6782.csv` under the
-local `ray-ui-native-promotion-20260925` capture directory, plus
-`native-shadow-5001.png` and the guest producer preview.
+The selected-frame pilot now copies the 1× depth resource immediately after
+that resolve and retains it through native submission. Native replay checks
+its shape, binds a read-only `D32_FLOAT_S8X24_UINT` view for the eleven
+color draws, and restores the resource state. The RelWithDebInfo short route
+exited normally with the snapshot, both offscreen copies and selected-frame
+promotion. A diagnostic blit of the second native color version shows new
+upper-scene structure compared with the depth-disabled pilot, but still has
+a largely blank lower scene. The pinned guest version has extensive detail
+there. The next missing input is the 1× color target's starting history;
+capture it after the 4× clear transfers into the 1× target and before the
+first 1× color draw. Keep the compatibility texture as the visible consumer
+input until the previews match closely enough.
+
+Source evidence: `ordered-frame-5001.csv` and `ordered-frame-6782.csv` under
+the local `ray-ui-native-promotion-20260925` directory. The normal-exit run
+is `ordered-depth-snapshot-first-output/`; the diagnostic image is
+`ordered-depth-preview-output/native-shadow-5001.png`, compared with
+`ordered-producer-rgba-preview-output/` and `guest-producer-preview-output/`.

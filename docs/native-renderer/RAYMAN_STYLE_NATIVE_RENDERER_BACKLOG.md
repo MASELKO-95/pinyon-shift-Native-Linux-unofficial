@@ -159,9 +159,10 @@ large flat regions instead. It remains detached from consumers while target
 history, depth and binding differences are resolved.
 The [depth-prepass census](RAYMAN_OFFSCREEN_DEPTH_PREPASS_2026-09-26.md)
 identifies the missing offscreen input: 498 depth-writing draws precede its
-eleven depth-tested color draws. The source depth target is 1× and can be
-snapshotted at the color/stencil clear boundary; native replay currently
-binds no DSV for that pass.
+eleven depth-tested color draws. The selected-frame pilot now snapshots the
+1× source at the depth resolve and binds a copied DSV. Its diagnostic preview
+shows some new structure but still lacks most lower-scene detail, pointing
+to missing starting color history.
 The [main-scene original draw pilot](RAYMAN_MAIN_SCENE_ORIGINAL_DRAW_2026-09-26.md)
 also issues one captured textured strip in each of the three color tiles at
 its stream ordinal. A short native race passed with readable HUD, but the
@@ -404,11 +405,11 @@ the D3D12 debug layer and DRED, then retry only when its cause is addressed.
 Until that path is stable, prioritize the already captured offscreen
 color/depth history and its pinned guest consumer comparison rather than
 admitting another large scene family.
-Snapshot the compatibility depth target immediately after the offscreen
-color/stencil clear, retain it through native submission, and bind its copied
-DSV for the eleven indexed color draws. Validate resource shape and compare
-the native offscreen preview with the pinned guest version before replacing
-its visible consumer texture.
+Capture the compatibility 1× color target after the 4× clear transfers into
+it and before the first 1× color draw. Initialize native offscreen replay
+from that color version, then compare with the pinned guest preview before
+replacing its visible consumer texture. The depth snapshot and copied DSV
+are already in the selected-frame pilot.
 Save the resulting full-frame image and integrate the same-frame HUD at its ordered
 suffix.
 Treat `0x00030000` and `0x000C0000` as format aliases over one EDRAM base,

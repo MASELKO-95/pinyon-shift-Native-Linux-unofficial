@@ -121,7 +121,8 @@ struct UploadArena {
 };
 
 struct TrackFrame {
-  ComPtr<ID3D12Resource> upload, depth, color, color_tiles, offscreen, hud;
+  ComPtr<ID3D12Resource> upload, depth, color, color_tiles, offscreen,
+      offscreen_depth, hud;
   std::array<ComPtr<ID3D12Resource>, 2> initial_color_versions;
   std::array<ComPtr<ID3D12Resource>, 3> depth_versions;
   ComPtr<ID3D12DescriptorHeap> rtv, dsv, srv, materials, samplers;
@@ -602,10 +603,7 @@ struct TrackGraphics {
         ? D3D12_CULL_MODE_BACK : D3D12_CULL_MODE_NONE;
     desc.RasterizerState.FrontCounterClockwise = (draw.raster & 4) == 0;
     desc.RasterizerState.DepthClipEnable = TRUE;
-    // ponytail: offscreen depth waits for its earlier EDRAM producer;
-    // keep that diagnostic version detached from visible consumers.
-    desc.DepthStencilState.DepthEnable =
-        scene && (draw.final_depth & 2);
+    desc.DepthStencilState.DepthEnable = (draw.final_depth & 2) != 0;
     desc.DepthStencilState.DepthWriteMask =
         scene && (draw.final_depth & 4)
             ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
@@ -616,7 +614,8 @@ struct TrackGraphics {
     desc.NumRenderTargets = 1;
     desc.RTVFormats[0] = scene ? DXGI_FORMAT_R10G10B10A2_UNORM
                                : DXGI_FORMAT_R8G8B8A8_UNORM;
-    desc.DSVFormat = scene ? DXGI_FORMAT_D32_FLOAT : DXGI_FORMAT_UNKNOWN;
+    desc.DSVFormat = scene ? DXGI_FORMAT_D32_FLOAT
+                           : DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
     desc.SampleDesc.Count = 1;
     ComPtr<ID3D12PipelineState> pipeline;
     if (FAILED(device->CreateGraphicsPipelineState(
@@ -955,7 +954,8 @@ bool PrepareRemainder(
 
 bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
                  const UploadArena& arena, bool scene_only,
-                 bool ordered_tiles, TrackFrame& frame) {
+                 bool ordered_tiles, ID3D12Resource* initial_depth,
+                 TrackFrame& frame) {
   D3D12_HEAP_PROPERTIES upload_heap{};
   upload_heap.Type = D3D12_HEAP_TYPE_UPLOAD;
   D3D12_RESOURCE_DESC upload_desc{};
@@ -998,6 +998,14 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
           IID_PPV_ARGS(&frame.color_tiles))))
     return false;
   if (ordered_tiles) {
+    if (!initial_depth) return false;
+    const auto source_desc = initial_depth->GetDesc();
+    if (source_desc.Width != 1280 || source_desc.Height != 2048 ||
+        source_desc.Format != DXGI_FORMAT_R32G8X24_TYPELESS ||
+        source_desc.SampleDesc.Count != 1 ||
+        !(source_desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL))
+      return false;
+    frame.offscreen_depth = initial_depth;
     auto producer_desc = color_desc;
     producer_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     if (FAILED(device->CreateCommittedResource(
@@ -1066,7 +1074,7 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
         D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     device->CreateRenderTargetView(frame.offscreen.Get(), nullptr, output_rtv);
   }
-  heap_desc.NumDescriptors = 1;
+  heap_desc.NumDescriptors = ordered_tiles ? 2 : 1;
   heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
   if (FAILED(device->CreateDescriptorHeap(&heap_desc,
                                           IID_PPV_ARGS(&frame.dsv))))
@@ -1074,6 +1082,18 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
   device->CreateDepthStencilView(
       frame.depth.Get(), nullptr,
       frame.dsv->GetCPUDescriptorHandleForHeapStart());
+  if (ordered_tiles) {
+    D3D12_DEPTH_STENCIL_VIEW_DESC view{};
+    view.Format = DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
+    view.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+    view.Flags = D3D12_DSV_FLAG_READ_ONLY_DEPTH |
+                 D3D12_DSV_FLAG_READ_ONLY_STENCIL;
+    auto handle = frame.dsv->GetCPUDescriptorHandleForHeapStart();
+    handle.ptr += device->GetDescriptorHandleIncrementSize(
+        D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+    device->CreateDepthStencilView(
+        frame.offscreen_depth.Get(), &view, handle);
+  }
   heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
   heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
   heap_desc.NumDescriptors = ordered_tiles ? 4 : 2;
@@ -1615,7 +1635,9 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       return reject("scene_producer_count");
   }
   TrackFrame frame;
-  if (!CreateFrame(device, output, arena, scene_only, ordered_tiles, frame))
+  if (!CreateFrame(device, output, arena, scene_only, ordered_tiles,
+                   static_cast<ID3D12Resource*>(
+                       context.fh1_initial_color_depth), frame))
     return reject("create_frame");
   uint32_t original_count = 0;
   for (auto& binding : bindings)
@@ -1833,10 +1855,14 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   offscreen_rtv.ptr += device->GetDescriptorHandleIncrementSize(
       D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
   const auto dsv = frame.dsv->GetCPUDescriptorHandleForHeapStart();
+  auto offscreen_dsv = dsv;
+  offscreen_dsv.ptr += device->GetDescriptorHandleIncrementSize(
+      D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
   auto* scene_color = frame.color.Get();
   auto* scene_depth = frame.depth.Get();
   auto* color_tiles = frame.color_tiles.Get();
   auto* offscreen = frame.offscreen.Get();
+  auto* offscreen_depth = frame.offscreen_depth.Get();
   std::array<ID3D12Resource*, 2> initial_color_versions{};
   for (size_t i = 0; i < initial_color_versions.size(); ++i)
     initial_color_versions[i] = frame.initial_color_versions[i].Get();
@@ -2205,6 +2231,20 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     for (const auto& binding : producer_bindings)
       if (supported.contains(binding.sequence))
         return reject("ordered_producer_overlap");
+    const auto restore_offscreen_depth = [&] {
+      barrier.Transition.pResource = offscreen_depth;
+      barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_READ;
+      barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+      list->D3DResourceBarrier(1, &barrier);
+    };
+    const auto reject_ordered = [&](const char* stage) {
+      restore_offscreen_depth();
+      return reject(stage);
+    };
+    barrier.Transition.pResource = offscreen_depth;
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_READ;
+    list->D3DResourceBarrier(1, &barrier);
     const auto first_draw = std::lower_bound(
         operations->begin(), operations->end(), std::get<0>(order.front()),
         [](const OrderedFrameOperation& event, uint64_t sequence) {
@@ -2239,10 +2279,11 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         if (event.kind != 'K' || !(event.clear_flags & 1) ||
             event.rectangle_count != 1 ||
             event.bounds[0] != std::array<int32_t, 4>{0, 0, 640, 360})
-          return reject("ordered_producer_clear");
+          return reject_ordered("ordered_producer_clear");
         list->D3DClearRenderTargetView(offscreen_rtv,
                                       event.clear_color[0].data(), 0, nullptr);
-        list->D3DOMSetRenderTargets(1, &offscreen_rtv, FALSE, nullptr);
+        list->D3DOMSetRenderTargets(1, &offscreen_rtv, FALSE,
+                                   &offscreen_dsv);
       }
       if (main_clear && event.sequence == main_clear->sequence) {
         const auto& bounds = event.bounds[0];
@@ -2267,11 +2308,11 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
             event.copy.physical_height != height ||
             event.copy.dest_x || event.copy.dest_y ||
             event.copy.dest_pitch != 1280)
-          return reject("ordered_depth_tile_shape");
+          return reject_ordered("ordered_depth_tile_shape");
         if (!depth_copies) depth_base = event.dest_base;
         if (uint64_t(event.dest_base) !=
             uint64_t(depth_base) + uint64_t(depth_height) * 1280 * 4)
-          return reject("ordered_depth_tile_address");
+          return reject_ordered("ordered_depth_tile_address");
         barrier.Transition.pResource = scene_depth;
         barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
         barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
@@ -2299,7 +2340,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
             event.copy.dest_x || event.copy.dest_y ||
             event.copy.dest_pitch != 1280 ||
             producer_index != (initial_color_copies ? 12u : 11u))
-          return reject("ordered_initial_color_shape");
+          return reject_ordered("ordered_initial_color_shape");
         barrier.Transition.pResource = offscreen;
         barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
         barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
@@ -2337,11 +2378,11 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
             event.copy.physical_height != height ||
             event.copy.dest_x || event.copy.dest_y ||
             event.copy.dest_pitch != 1280)
-          return reject("ordered_color_tile_shape");
+          return reject_ordered("ordered_color_tile_shape");
         if (!tile_copies) tile_base = event.dest_base;
         if (uint64_t(event.dest_base) !=
             uint64_t(tile_base) + uint64_t(copied_height) * 1280 * 4)
-          return reject("ordered_color_tile_address");
+          return reject_ordered("ordered_color_tile_address");
         barrier.Transition.pResource = scene_color;
         barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
         barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
@@ -2379,10 +2420,11 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         initial_color_copies != 2 ||
         tile_copies != 3 || copied_height != 720 ||
         depth_copies != 3 || depth_height != 720)
-      return reject("ordered_tiles_incomplete");
+      return reject_ordered("ordered_tiles_incomplete");
     REXGPU_WARN("FH1 RAY01 original draw replay frame={} "
                 "offscreen_draws=12 scene_draws=3 copies={}", trace_frame,
                 initial_color_copies);
+    restore_offscreen_depth();
   } else {
     for (const auto& entry : order)
       issue_draw(std::get<1>(entry), std::get<2>(entry));
