@@ -76,6 +76,12 @@ in that source-5000 run have verified index and vertex payloads. The
 all 415 exact texture versions in a separate selected-frame run, including
 the previously unsupported 3D texture. Intermediate target versions and
 ordered execution still need work before a full-frame image is replayed.
+The [final-bound input artifact](RAYMAN_ORDERED_DRAW_INPUTS_2026-09-26.md)
+now owns the shader constant and fetch state for every draw in another
+selected-frame run. Its 2,965 draws also have complete geometry and exact
+texture pins; all required shader specializations exist in the installed
+pack. The remaining RAY-00/01 gap is native execution of the ordered target
+and copy sequence, not input identification for that sampled frame.
 
 - [ ] From one moving-race frame and one known HUD-gap frame, record one
   ordered stream of draw, clear, resolve and output-target events. Each event
@@ -110,7 +116,8 @@ The selected ordered stream now includes the state and retained-UI source
 needed to drive that replay. Its geometry inputs are complete for the
 selected source-5000 run, and exact texture versions are pinned as immutable
 GPU copies for same-process replay. Intermediate target contents and ordered
-execution remain incomplete.
+execution remain incomplete. The final-bound shader state is also exported
+per draw, and the installed shader pack covers every sampled variant.
 
 - [ ] Feed the selected event stream into the existing D3D12 native output,
   retaining draw order, targets, clears, depth, resolves, viewport, scissor,
@@ -271,8 +278,9 @@ not a prerequisite for the first usable renderer.
 Use the continuous opt-in run as the RAY-03 test bed. The isolated
 track-texture resolution miss did not recur on the next route and is covered
 by whole-frame fallback. Use the selected RAY-00 stream's owned geometry and
-pinned texture versions to replay draw/clear/resolve order in the existing
-D3D12 output; capture or reconstruct intermediate target versions where that
-replay needs them. Save the resulting full-frame image.
+pinned texture versions and final-bound state to replay draw/clear/resolve
+order in the existing D3D12 output; capture or reconstruct intermediate
+target versions where that replay needs them. Save the resulting full-frame
+image.
 Perform the longer unscripted drive required by
 RAY-04 before profiling duplicate work.
