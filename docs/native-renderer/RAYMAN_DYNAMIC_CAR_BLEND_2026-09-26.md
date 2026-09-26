@@ -17,3 +17,11 @@ road and readable HUD. There was one later native rejection at
 `track_structure_texture` near source frame 4380. Scripted race position
 varies between runs, so this verifies admission and gross visual continuity,
 not a matched pixel comparison.
+
+The tracked `fh1-native-race-mode-boundary.fh1test` route also exited
+normally on this build. Its race checkpoint was promoted according to the
+runtime log, but a large sign left only 606 exact native-sky pixels, below
+the verifier's former 1,000-pixel threshold. Two saved compatibility race
+frames had zero such pixels. The verifier now accepts more than 100;
+it passed native race output and compatibility pause, free roam, transition
+and title checkpoints for this run.

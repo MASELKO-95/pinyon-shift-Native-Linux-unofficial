@@ -180,7 +180,10 @@ same output frame, so an unscripted drive remains essential for playability.
 The [dynamic car blend check](RAYMAN_DYNAMIC_CAR_BLEND_2026-09-26.md) removed
 a zero-only constant restriction from the original no-texture car shader.
 This closed a repeated `prepare_remainder` fallback interval in a short race
-route; one later `track_structure_texture` rejection remains to diagnose.
+route; one later `track_structure_texture` rejection remains to diagnose. The
+mode-boundary route passed after this change: race output was native and pause,
+free roam, transition and title stayed on compatibility. Its exact-sky color
+threshold was corrected for a race view mostly covered by a roadside sign.
 The first original track structure program now uses its three pinned
 source-frame textures, pixel constants and bool word. In the corrected
 title-to-race route, the former flat-purple structure gains truck and support
