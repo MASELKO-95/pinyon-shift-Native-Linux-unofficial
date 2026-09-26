@@ -33,12 +33,15 @@ frame 5001 promoted this source frame with its own UI pass.
 The same stream has 5,688 texture bindings but only 448 distinct exact
 fetch/version keys (394 allocation/generation pairs). The existing native
 material snapshot pins selected D3D12 resources for live replay; it does
-not export their pixels. The next capture step should deduplicate by these
-exact keys and read back only the selected frame's required versions.
+not export their pixels. The subsequent
+[texture-pin capture](RAYMAN_ORDERED_TEXTURE_PINS_2026-09-26.md) broadened
+that path to every version used by the selected frame, allowing immediate
+same-process replay without a disk pixel export.
 
 `verify-ordered-frame.py` checked the ordering, state, every referenced
 geometry byte/hash and the UI artifact. `verify-ordered-ui-capture.py`
 verified the separate UI fixture. RAY-00/01 still need immutable texture
-pixels, intermediate target versions, and offline execution of the ordered
+versions, intermediate target versions, and offline execution of the ordered
 draw/clear/resolve stream; owning geometry alone does not establish a full
-frame replay.
+frame replay. The later texture-pin capture supplies immutable GPU copies
+for same-process replay, while a portable pixel artifact remains optional.

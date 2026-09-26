@@ -71,9 +71,11 @@ the selected command stream. A source-5000 HUD-gap frame explicitly names
 retained UI source 4999 and exports its complete 166-draw fixture. World
 geometry bytes are now owned in the selected-frame
 [geometry artifact](RAYMAN_ORDERED_GEOMETRY_2026-09-26.md): all 3,100 draws
-in the final source-5000 run have verified index and vertex payloads. Texture
-pixels and intermediate target versions still need ownership before this is
-a replayable full frame.
+in that source-5000 run have verified index and vertex payloads. The
+[texture-pin capture](RAYMAN_ORDERED_TEXTURE_PINS_2026-09-26.md) now retains
+all 415 exact texture versions in a separate selected-frame run, including
+the previously unsupported 3D texture. Intermediate target versions and
+ordered execution still need work before a full-frame image is replayed.
 
 - [ ] From one moving-race frame and one known HUD-gap frame, record one
   ordered stream of draw, clear, resolve and output-target events. Each event
@@ -106,8 +108,9 @@ improves their draw ordering, but clears/resolves, unsupported draws and the
 separately captured HUD are not yet one authoritative event stream.
 The selected ordered stream now includes the state and retained-UI source
 needed to drive that replay. Its geometry inputs are complete for the
-selected source-5000 run; texture pixels and intermediate target contents
-remain incomplete.
+selected source-5000 run, and exact texture versions are pinned as immutable
+GPU copies for same-process replay. Intermediate target contents and ordered
+execution remain incomplete.
 
 - [ ] Feed the selected event stream into the existing D3D12 native output,
   retaining draw order, targets, clears, depth, resolves, viewport, scissor,
@@ -267,8 +270,9 @@ not a prerequisite for the first usable renderer.
 
 Use the continuous opt-in run as the RAY-03 test bed. The isolated
 track-texture resolution miss did not recur on the next route and is covered
-by whole-frame fallback. Attach immutable world inputs and intermediate
-target versions to the selected RAY-00 stream, starting with texture pixels
-now that geometry is owned. Then replay its draw/clear/resolve order offline.
+by whole-frame fallback. Use the selected RAY-00 stream's owned geometry and
+pinned texture versions to replay draw/clear/resolve order in the existing
+D3D12 output; capture or reconstruct intermediate target versions where that
+replay needs them. Save the resulting full-frame image.
 Perform the longer unscripted drive required by
 RAY-04 before profiling duplicate work.
