@@ -3,6 +3,7 @@
 import csv
 import json
 import math
+import struct
 import sys
 from collections import Counter
 from pathlib import Path
@@ -39,6 +40,15 @@ def verify(path: Path) -> dict:
     state_draws = 0
     texture_keys = 0
     outdated_texture_keys = 0
+    geometry_metadata_draws = 0
+    geometry_snapshot_ready_draws = 0
+    missing_index_snapshots = 0
+    missing_vertex_snapshots = 0
+    truncated_vertex_metadata = 0
+    vertex_ranges = set()
+    geometry_blob_refs = set()
+    geometry_incomplete = 0
+    geometry_payload_ready_draws = 0
     if "texture_versions" in rows[0]:
         for row in draws:
             viewport = [float(value) for value in row["viewport"].split(":")]
@@ -55,6 +65,88 @@ def verify(path: Path) -> dict:
             state_draws += 1
             texture_keys += len(keys)
             outdated_texture_keys += sum(key[9] != 0 for key in keys)
+    if "vertex_inputs" in rows[0]:
+        for row in draws:
+            inputs = row["vertex_inputs"].split(";") if row["vertex_inputs"] else []
+            vertices = [[int(value) for value in item.split(":")] for item in inputs]
+            if any(len(vertex) != 7 or vertex[4] > 4 for vertex in vertices):
+                raise ValueError(f"invalid vertex metadata at ordinal {row['sequence']}")
+            index_status = int(row["index_snapshot_status"])
+            if index_status > 4:
+                raise ValueError(f"invalid index metadata at ordinal {row['sequence']}")
+            index_ready = not int(row["index_type"]) or index_status == 1
+            vertex_ready = (len(vertices) == int(row["vertex_fetches"])
+                            and all(vertex[4] == 1 for vertex in vertices))
+            geometry_metadata_draws += 1
+            geometry_snapshot_ready_draws += index_ready and vertex_ready
+            missing_index_snapshots += not index_ready
+            missing_vertex_snapshots += sum(vertex[4] != 1 for vertex in vertices)
+            truncated_vertex_metadata += len(vertices) != int(row["vertex_fetches"])
+            vertex_ranges.update((vertex[1], vertex[2]) for vertex in vertices)
+    if "vertex_blobs" in rows[0]:
+        flags = {int(row["geometry_incomplete"]) for row in rows}
+        if len(flags) != 1:
+            raise ValueError("inconsistent geometry completion")
+        geometry_incomplete = flags.pop()
+        for row in draws:
+            vertices = [[int(value) for value in item.split(":")]
+                        for item in row["vertex_inputs"].split(";")] if row["vertex_inputs"] else []
+            blobs = [[int(value) for value in item.split(":")]
+                     for item in row["vertex_blobs"].split(";")] if row["vertex_blobs"] else []
+            if len(blobs) != len(vertices) or any(len(blob) != 2 for blob in blobs):
+                raise ValueError(f"invalid geometry references at ordinal {row['sequence']}")
+            payload_ready = len(vertices) == int(row["vertex_fetches"])
+            for vertex, blob in zip(vertices, blobs):
+                if blob[1]:
+                    if vertex[4] != 1 or blob[1] != (vertex[5] or vertex[2]):
+                        raise ValueError(f"invalid vertex blob at ordinal {row['sequence']}")
+                    geometry_blob_refs.add(tuple(blob))
+                else:
+                    payload_ready = False
+                    if vertex[4] == 1 and not geometry_incomplete:
+                        raise ValueError(f"missing vertex blob at ordinal {row['sequence']}")
+            index_length = int(row["index_blob_length"])
+            if index_length:
+                if (int(row["index_snapshot_status"]) != 1
+                        or index_length != int(row["index_length"])):
+                    raise ValueError(f"invalid index blob at ordinal {row['sequence']}")
+                geometry_blob_refs.add((int(row["index_blob_hash"]), index_length))
+            elif int(row["index_type"]):
+                payload_ready = False
+                if int(row["index_snapshot_status"]) == 1 and not geometry_incomplete:
+                    raise ValueError(f"missing index blob at ordinal {row['sequence']}")
+            geometry_payload_ready_draws += payload_ready
+    geometry_blob_count = 0
+    geometry_blob_bytes = 0
+    unreferenced_geometry_blobs = 0
+    if geometry_blob_refs:
+        frame = path.stem.rsplit("-", 1)[-1]
+        artifact = path.parent / f"ordered-geometry-{frame}.bin"
+        data = artifact.read_bytes()
+        if data[:8] != b"RAYGEO01" or len(data) < 20 or struct.unpack_from("<Q", data, 8)[0] != int(frame):
+            raise ValueError("invalid geometry artifact header")
+        count = struct.unpack_from("<I", data, 16)[0]
+        offset = 20
+        keys = set()
+        for _ in range(count):
+            if offset + 12 > len(data):
+                raise ValueError("truncated geometry artifact")
+            hash_value, length = struct.unpack_from("<QI", data, offset)
+            offset += 12
+            if offset + length > len(data):
+                raise ValueError("truncated geometry blob")
+            actual = 14695981039346656037
+            for byte in data[offset:offset + length]:
+                actual = ((actual ^ byte) * 1099511628211) & ((1 << 64) - 1)
+            if actual != hash_value or (hash_value, length) in keys:
+                raise ValueError("invalid geometry blob hash")
+            keys.add((hash_value, length))
+            geometry_blob_bytes += length
+            offset += length
+        if offset != len(data) or not geometry_blob_refs.issubset(keys):
+            raise ValueError("geometry references do not match artifact")
+        unreferenced_geometry_blobs = len(keys - geometry_blob_refs)
+        geometry_blob_count = count
     ui = [row for row in draws
           if int(row["surface"]) == 0x14000500
           and int(row["color"]) == 0xA0000
@@ -88,6 +180,17 @@ def verify(path: Path) -> dict:
                                            for row in draws),
         "state_draws": state_draws, "texture_keys": texture_keys,
         "outdated_texture_keys": outdated_texture_keys,
+        "geometry_metadata_draws": geometry_metadata_draws,
+        "geometry_snapshot_ready_draws": geometry_snapshot_ready_draws,
+        "missing_index_snapshots": missing_index_snapshots,
+        "missing_vertex_snapshots": missing_vertex_snapshots,
+        "truncated_vertex_metadata": truncated_vertex_metadata,
+        "unique_vertex_ranges": len(vertex_ranges),
+        "geometry_incomplete": geometry_incomplete,
+        "geometry_blob_count": geometry_blob_count,
+        "geometry_blob_bytes": geometry_blob_bytes,
+        "unreferenced_geometry_blobs": unreferenced_geometry_blobs,
+        "geometry_payload_ready_draws": geometry_payload_ready_draws,
     }
 
 

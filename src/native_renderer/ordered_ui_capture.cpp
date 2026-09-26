@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -24,6 +25,7 @@ namespace pinyon_shift::native_renderer {
 namespace {
 
 constexpr uint64_t kMaximumPayloadBytes = 128ull * 1024 * 1024;
+constexpr uint64_t kMaximumGeometryBytes = 256ull * 1024 * 1024;
 constexpr size_t kMaximumDraws = 256;
 static_assert(sizeof(rex::system::GraphicsPreparedDrawTextureFetch) == 36);
 static_assert(sizeof(rex::system::GraphicsFinalDrawTextureIdentity) == 56);
@@ -32,9 +34,17 @@ using Vertex = OrderedUiVertex;
 using Draw = OrderedUiDraw;
 
 struct Frame {
-  uint64_t source_frame = 0, payload_bytes = 0;
-  bool rejected = false;
+  uint64_t source_frame = 0, payload_bytes = 0, geometry_bytes = 0;
+  bool rejected = false, geometry_incomplete = false;
   std::map<uint64_t, Draw> draws;
+  std::map<std::pair<uint64_t, uint32_t>, std::vector<uint8_t>> geometry;
+  struct VertexInput {
+    uint32_t fetch = 0, base = 0, length = 0, stride = 0;
+    uint32_t snapshot_status = 0, snapshot_length = 0;
+    uint64_t snapshot_hash = 0;
+    uint64_t blob_hash = 0;
+    uint32_t blob_length = 0;
+  };
   struct Event {
     char kind = 'D';
     uint32_t surface = 0, color = 0, depth = 0, target_bits = 0;
@@ -43,6 +53,11 @@ struct Frame {
     uint32_t index_count = 0, vertex_fetches = 0, texture_fetches = 0;
     uint32_t primitive = 0, index_type = 0, index_base = 0;
     uint32_t index_length = 0, index_endianness = 0;
+    uint32_t index_snapshot_status = 0;
+    uint64_t index_snapshot_hash = 0;
+    uint64_t index_blob_hash = 0;
+    uint32_t index_blob_length = 0;
+    std::vector<VertexInput> vertices;
     uint32_t prepared_depth = 0, color_mask = 0;
     uint32_t raster = 0, clip = 0, final_depth = 0;
     std::array<float, 6> viewport{};
@@ -108,9 +123,37 @@ void WriteBytes(std::ofstream& stream, const std::vector<uint8_t>& bytes) {
     stream.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
 }
 
-uint64_t ArtifactHash(const std::vector<uint8_t>& bytes) {
+uint64_t ArtifactHash(const uint8_t* bytes, size_t length) {
   uint64_t hash = 14695981039346656037ull;
-  for (uint8_t byte : bytes) hash = (hash ^ byte) * 1099511628211ull;
+  for (size_t i = 0; i < length; ++i)
+    hash = (hash ^ bytes[i]) * 1099511628211ull;
+  return hash;
+}
+
+uint64_t ArtifactHash(const std::vector<uint8_t>& bytes) {
+  return ArtifactHash(bytes.data(), bytes.size());
+}
+
+std::optional<uint64_t> RecordGeometry(Frame& frame, const uint8_t* bytes,
+                                       uint32_t length) {
+  if (!bytes || !length) {
+    frame.geometry_incomplete = true;
+    return std::nullopt;
+  }
+  const uint64_t hash = ArtifactHash(bytes, length);
+  const auto key = std::pair{hash, length};
+  if (const auto found = frame.geometry.find(key);
+      found != frame.geometry.end()) {
+    if (!std::equal(found->second.begin(), found->second.end(), bytes))
+      frame.rejected = true;
+    return hash;
+  }
+  if (length > kMaximumGeometryBytes - frame.geometry_bytes) {
+    frame.geometry_incomplete = true;
+    return std::nullopt;
+  }
+  frame.geometry.emplace(key, std::vector<uint8_t>(bytes, bytes + length));
+  frame.geometry_bytes += length;
   return hash;
 }
 
@@ -162,12 +205,53 @@ void CaptureOrderedFrameDraw(
   event.index_base = observation.index_buffer_guest_base;
   event.index_length = observation.index_buffer_length;
   event.index_endianness = observation.index_buffer_guest_endianness;
+  event.index_snapshot_status = observation.index_cpu_snapshot_status;
+  event.index_snapshot_hash = observation.index_cpu_snapshot_hash;
+  if (observation.vertex_fetches)
+    for (uint32_t i = 0;
+         i < std::min(observation.vertex_fetch_count,
+                      observation.vertex_fetch_capacity); ++i) {
+      const auto& input = observation.vertex_fetches[i];
+      event.vertices.push_back({input.fetch_constant, input.guest_base,
+                                input.length, input.stride_words,
+                                input.cpu_snapshot_status,
+                                input.cpu_snapshot_length,
+                                input.cpu_snapshot_hash});
+    }
   event.prepared_depth = observation.normalized_depth_control;
   event.color_mask = observation.normalized_color_mask;
   event.vertex_fetches = observation.vertex_fetch_count;
   event.texture_fetches = observation.texture_fetch_count;
   std::lock_guard lock(capture_mutex);
   auto& frame = CaptureFrame(observation.frame_sequence);
+  static const uint64_t trace_frame = std::strtoull(
+      rex::cvar::GetFlagByName("pinyon_shift_snr01_trace_source_frame").c_str(),
+      nullptr, 10);
+  if (observation.frame_sequence == trace_frame) {
+    if (event.index_type && observation.index_cpu_snapshot_status == 1) {
+      if (const auto hash = RecordGeometry(
+              frame, observation.index_cpu_snapshot_bytes, event.index_length)) {
+        event.index_blob_hash = *hash;
+        event.index_blob_length = event.index_length;
+      }
+    }
+    for (size_t i = 0; i < event.vertices.size(); ++i) {
+      const auto& input = observation.vertex_fetches[i];
+      if (input.cpu_snapshot_status != 1) continue;
+      const uint32_t length = input.cpu_snapshot_length
+          ? input.cpu_snapshot_length : input.length;
+      if (length > input.length) {
+        frame.geometry_incomplete = true;
+        continue;
+      }
+      auto& vertex = event.vertices[i];
+      if (const auto hash = RecordGeometry(
+              frame, input.cpu_snapshot_bytes, length)) {
+        vertex.blob_hash = *hash;
+        vertex.blob_length = length;
+      }
+    }
+  }
   if (frame.events.size() >= 8192 ||
       !frame.events.emplace(observation.draw_sequence, event).second)
     frame.rejected = true;
@@ -429,7 +513,9 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
                 "vertex_specialization,pixel_specialization,primitive,"
                 "index_type,index_base,index_length,index_endianness,"
                 "prepared_depth,color_mask,raster,clip,final_depth,"
-                "viewport,scissor,texture_versions\n";
+                "viewport,scissor,texture_versions,index_snapshot_status,"
+                "index_snapshot_hash,vertex_inputs,geometry_incomplete,"
+                "index_blob_hash,index_blob_length,vertex_blobs\n";
       for (const auto& [sequence, event] : frame.events) {
         events << event.kind << ',' << sequence << ',' << event.surface << ','
                << event.color << ',' << event.depth << ',' << event.target_bits
@@ -471,6 +557,21 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
           events << ':' << texture.allocation_id << ':'
                  << texture.payload_generation << ':' << texture.outdated_mask;
         }
+        events << ',' << event.index_snapshot_status << ','
+               << event.index_snapshot_hash << ',';
+        for (size_t i = 0; i < event.vertices.size(); ++i) {
+          const auto& vertex = event.vertices[i];
+          events << (i ? ";" : "") << vertex.fetch << ':' << vertex.base
+                 << ':' << vertex.length << ':' << vertex.stride << ':'
+                 << vertex.snapshot_status << ':' << vertex.snapshot_length
+                 << ':' << vertex.snapshot_hash;
+        }
+        events << ',' << uint32_t(frame.geometry_incomplete) << ','
+               << event.index_blob_hash << ',' << event.index_blob_length
+               << ',';
+        for (size_t i = 0; i < event.vertices.size(); ++i)
+          events << (i ? ";" : "") << event.vertices[i].blob_hash << ':'
+                 << event.vertices[i].blob_length;
         events << '\n';
       }
       events.close();
@@ -478,6 +579,26 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
                   "written={} path={}", frame.source_frame,
                   frame.events.size(), frame.rejected, bool(events),
                   path.string());
+    }
+  }
+  if (!frame.geometry.empty()) {
+    const auto path = *output /
+        ("ordered-geometry-" + std::to_string(frame.source_frame) + ".bin");
+    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    if (stream) {
+      stream.write("RAYGEO01", 8);
+      Write(stream, frame.source_frame);
+      Write(stream, uint32_t(frame.geometry.size()));
+      for (const auto& [key, bytes] : frame.geometry) {
+        Write(stream, key.first);
+        Write(stream, key.second);
+        WriteBytes(stream, bytes);
+      }
+      stream.close();
+      REXGPU_INFO("FH1 RAY00 geometry frame={} blobs={} bytes={} "
+                  "incomplete={} written={} path={}", frame.source_frame,
+                  frame.geometry.size(), frame.geometry_bytes,
+                  frame.geometry_incomplete, bool(stream), path.string());
     }
   }
   if (ui_frame.draws.empty()) return;
