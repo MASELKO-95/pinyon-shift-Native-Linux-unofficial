@@ -60,6 +60,18 @@ in the same event stream. This ties the existing separate UI draw routine to
 the authoritative order for this selected frame; intermediate targets and
 copies are still absent from native execution.
 
+The selected-frame replay also recognizes the regular main-scene clear when
+it immediately precedes the first supported draw and matches its surface,
+depth, tile bounds and EDRAM base. It applies the captured color and depth
+values to the native scene at that ordinal. A run under
+`.local/ray-ui-native-promotion-20260925/ordered-main-clear-probe-output/`
+logged clear ordinal 11340416 with a 1280×256 rectangle, promoted output
+5001, exited normally, and saved a visually readable native frame. Its strict
+capture verified 2,918/2,918 geometry/state draws and 419/419 texture pins.
+This executes one of 20 captured clears; the other clears, all 94 copies,
+target aliases, and stencil handling remain open. A separate source-5001
+no-producer run rejected selected-frame takeover and retained compatibility.
+
 Next: execute target changes, clears and copies in the same event loop, then
 bring the remaining draws and UI into that loop. Keep the pilot in shadow
 until a complete saved frame is coherent.

@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <iterator>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -1728,7 +1729,42 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
                 std::get<0>(order.back()), operations->front().sequence,
                 operations->back().sequence);
     if (matched != order.size()) return reject("ordered_draw_mismatch");
+    const auto first_draw = std::lower_bound(
+        operations->begin(), operations->end(), std::get<0>(order.front()),
+        [](const OrderedFrameOperation& event, uint64_t sequence) {
+          return event.sequence < sequence;
+        });
+    const OrderedFrameOperation* main_clear = nullptr;
+    if (first_draw != operations->begin() && first_draw != operations->end() &&
+        first_draw->kind == 'D') {
+      const auto& clear = *std::prev(first_draw);
+      const auto& bounds = clear.bounds[0];
+      if (clear.kind == 'K' && clear.sequence + 1 == first_draw->sequence &&
+          clear.clear_mode == 0 && (clear.clear_flags & 3) == 3 &&
+          clear.rectangle_count == 1 &&
+          clear.surface == first_draw->surface &&
+          clear.depth == first_draw->depth &&
+          (clear.color & 0xFFFFu) == (first_draw->color & 0xFFFFu) &&
+          clear.target_bits == first_draw->target_bits &&
+          bounds[0] == 0 && bounds[1] == 0 && bounds[2] == 1280 &&
+          bounds[3] > 0 && bounds[3] <= 720 &&
+          std::isfinite(clear.clear_depth[0]) &&
+          std::all_of(clear.clear_color[0].begin(),
+                      clear.clear_color[0].end(),
+                      [](float value) { return std::isfinite(value); }))
+        main_clear = &clear;
+    }
     for (const auto& event : *operations) {
+      if (main_clear && event.sequence == main_clear->sequence) {
+        const auto& bounds = event.bounds[0];
+        const D3D12_RECT rect{bounds[0], bounds[1], bounds[2], bounds[3]};
+        list->D3DClearRenderTargetView(rtv, event.clear_color[0].data(), 1,
+                                      &rect);
+        list->D3DClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH,
+                                      event.clear_depth[0], 0, 1, &rect);
+        REXGPU_WARN("FH1 RAY01 ordered main clear frame={} sequence={} "
+                    "height={}", trace_frame, event.sequence, bounds[3]);
+      }
       if (event.kind != 'D') continue;
       if (const auto found = supported.find(event.sequence);
           found != supported.end())

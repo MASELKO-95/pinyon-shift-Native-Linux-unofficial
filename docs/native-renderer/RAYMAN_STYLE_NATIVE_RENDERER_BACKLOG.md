@@ -121,8 +121,10 @@ per draw, and the installed shader pack covers every sampled variant.
 The [ordered-dispatch pilot](RAYMAN_ORDERED_DISPATCH_PILOT_2026-09-26.md)
 now feeds the selected event order to all 2,477 existing six-family draws in
 source frame 5001 and saves a recognizable shadow image with the HUD from that
-same frame. The other 1,796 draws, 94 copies and 20 clears remain counted but
-unexecuted by that pilot; target transitions and original pixel programs
+same frame. The other 1,796 draws and 94 copies remain counted but unexecuted.
+The selected-frame replay applies one of 20 captured clears: the main scene
+color/depth clear at its stream ordinal when its target and rectangle match
+the native surface. Other target operations and original pixel programs
 remain next.
 
 - [ ] Feed the selected event stream into the existing D3D12 native output,

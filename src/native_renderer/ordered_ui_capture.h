@@ -50,6 +50,10 @@ struct OrderedFrameOperation {
   uint64_t sequence = 0;
   char kind = 'D';
   uint32_t surface = 0, color = 0, depth = 0, target_bits = 0;
+  uint32_t clear_mode = 0, clear_flags = 0, rectangle_count = 0;
+  std::array<std::array<int32_t, 4>, 2> bounds{};
+  std::array<float, 2> clear_depth{};
+  std::array<std::array<float, 4>, 2> clear_color{};
 };
 
 std::optional<std::vector<OrderedFrameOperation>> SnapshotOrderedFrameOperations(
