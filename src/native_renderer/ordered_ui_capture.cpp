@@ -168,6 +168,21 @@ std::optional<uint64_t> RecordGeometry(Frame& frame, const uint8_t* bytes,
 
 }  // namespace
 
+std::optional<std::vector<OrderedFrameOperation>> SnapshotOrderedFrameOperations(
+    uint64_t source_frame) {
+  std::lock_guard lock(capture_mutex);
+  const auto found = captured_frames.find(source_frame);
+  if (found == captured_frames.end() || found->second.rejected ||
+      found->second.events.empty())
+    return std::nullopt;
+  std::vector<OrderedFrameOperation> operations;
+  operations.reserve(found->second.events.size());
+  for (const auto& [sequence, event] : found->second.events)
+    operations.push_back({sequence, event.kind, event.surface, event.color,
+                          event.depth, event.target_bits});
+  return operations;
+}
+
 bool WithOrderedUiFrame(
     uint64_t source_frame,
     const std::function<bool(const std::map<uint64_t, OrderedUiDraw>&)>& use) {

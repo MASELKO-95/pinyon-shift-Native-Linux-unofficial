@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <optional>
 #include <vector>
 
 #include <rex/system/interfaces/graphics.h>
@@ -44,6 +45,15 @@ struct OrderedUiDraw {
   std::array<int32_t, 4> scissor{};
   std::vector<rex::system::GraphicsFinalDrawTextureIdentity> textures;
 };
+
+struct OrderedFrameOperation {
+  uint64_t sequence = 0;
+  char kind = 'D';
+  uint32_t surface = 0, color = 0, depth = 0, target_bits = 0;
+};
+
+std::optional<std::vector<OrderedFrameOperation>> SnapshotOrderedFrameOperations(
+    uint64_t source_frame);
 
 bool WithOrderedUiFrame(
     uint64_t source_frame,

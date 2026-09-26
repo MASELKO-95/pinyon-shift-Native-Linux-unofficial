@@ -118,6 +118,11 @@ selected source-5000 run, and exact texture versions are pinned as immutable
 GPU copies for same-process replay. Intermediate target contents and ordered
 execution remain incomplete. The final-bound shader state is also exported
 per draw, and the installed shader pack covers every sampled variant.
+The [ordered-dispatch pilot](RAYMAN_ORDERED_DISPATCH_PILOT_2026-09-26.md)
+now feeds the selected event order to all 2,124 existing six-family draws in
+source frame 5001 and saves a recognizable scene-plus-HUD shadow image. The
+other 1,989 draws, 97 copies and 21 clears remain counted but unexecuted by
+that pilot; target transitions and original pixel programs remain next.
 
 - [ ] Feed the selected event stream into the existing D3D12 native output,
   retaining draw order, targets, clears, depth, resolves, viewport, scissor,

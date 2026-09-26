@@ -8,6 +8,7 @@
 #include <array>
 #include <bit>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <map>
@@ -22,6 +23,7 @@
 #include <rex/logging.h>
 #include <rex/system/interfaces/graphics.h>
 
+#include "native_renderer/ordered_ui_capture.h"
 #include "native_renderer/snr04_owned_scene_diagnostic.h"
 
 namespace pinyon_shift::native_renderer {
@@ -1683,9 +1685,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         (i && std::get<0>(order[i - 1]) == std::get<0>(order[i])))
       return reject("draw_order");
   }
-  for (size_t i = 0; i < order.size(); ++i) {
-    const auto family = std::get<1>(order[i]);
-    const auto index = std::get<2>(order[i]);
+  const auto issue_draw = [&](uint8_t family, size_t index) {
     switch (family) {
       case 0: draw_track(index); break;
       case 1: draw_item(index); break;
@@ -1694,6 +1694,49 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       case 4: draw_manager(index); break;
       case 5: draw_remainder(index); break;
     }
+  };
+  const auto trace_frame = std::strtoull(
+      rex::cvar::GetFlagByName("pinyon_shift_snr01_trace_source_frame").c_str(),
+      nullptr, 10);
+  // Scene ownership uses output - 1; prepared GPU events keep the output frame.
+  if (trace_frame && scene.source_frame + 1 == trace_frame) {
+    if (order.empty()) return reject("ordered_source_empty");
+    const auto operations = SnapshotOrderedFrameOperations(trace_frame);
+    if (!operations) return reject("ordered_stream");
+    std::map<uint64_t, std::pair<uint8_t, size_t>> supported;
+    for (const auto& [sequence, family, index] : order)
+      supported.emplace(sequence, std::pair{family, index});
+    size_t matched = 0, unsupported = 0, copies = 0, clears = 0;
+    for (const auto& event : *operations) {
+      if (event.kind == 'D') {
+        matched += supported.contains(event.sequence);
+        unsupported += !supported.contains(event.sequence);
+      } else if (event.kind == 'C') {
+        ++copies;
+      } else if (event.kind == 'K') {
+        ++clears;
+      } else {
+        return reject("ordered_event_kind");
+      }
+    }
+    REXGPU_WARN("FH1 RAY01 ordered dispatch frame={} scene_frame={} supported={} "
+                "unsupported={} copies={} clears={} source_draws={} "
+                "source_range={}:{} event_range={}:{}",
+                trace_frame, scene.source_frame, matched, unsupported, copies,
+                clears,
+                order.size(), std::get<0>(order.front()),
+                std::get<0>(order.back()), operations->front().sequence,
+                operations->back().sequence);
+    if (matched != order.size()) return reject("ordered_draw_mismatch");
+    for (const auto& event : *operations) {
+      if (event.kind != 'D') continue;
+      if (const auto found = supported.find(event.sequence);
+          found != supported.end())
+        issue_draw(found->second.first, found->second.second);
+    }
+  } else {
+    for (const auto& entry : order)
+      issue_draw(std::get<1>(entry), std::get<2>(entry));
   }
   barrier.Transition.pResource = scene_color;
   barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
