@@ -33,6 +33,11 @@ using RemainderPipelineKey = std::tuple<uint64_t, uint64_t, uint32_t,
     uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>;
 
 uint32_t TrackMaterialKind(const Snr04TrackDraw& draw) {
+  if (draw.shader == 0x0CBC533419F61E0Dull &&
+      draw.pixel_shader == 0x56D45C45966FD938ull &&
+      draw.pixel_specialization == 0x4000002B003Full &&
+      draw.textures.size() == 5)
+    return 3;
   if (((draw.shader == 0x0CBC533419F61E0Dull &&
         draw.pixel_shader == 0xEFCA69AA2BEE366Bull) ||
        (draw.shader == 0x5DB1ECF39EA11DB0ull &&
@@ -55,6 +60,8 @@ uint32_t TrackMaterialKind(const Snr04TrackDraw& draw) {
 }
 
 std::array<uint32_t, 6> TrackShaderFetches(const Snr04TrackDraw& draw) {
+  if (draw.pixel_shader == 0x56D45C45966FD938ull)
+    return {5, 7, 13, 4, 0};
   if (draw.pixel_shader == 0xB98566FB7CE14699ull)
     return {6, 13, 2, 5, 1, 0};
   return draw.pixel_shader == 0x6508BAC22C4E1720ull
@@ -1276,14 +1283,15 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   for (auto& binding : bindings)
     if (std::get<5>(binding.pipeline) == 3) {
       binding.shader_view_offset = uint32_t(materials.size()) + original_count * 16;
-      binding.shader_sampler_offset = 2 + original_count * 8;
+      binding.shader_sampler_offset = 2;
       ++original_count;
     }
   for (auto& binding : remainder_bindings)
     if (std::get<8>(binding.pipeline) == 3 ||
         std::get<8>(binding.pipeline) == 4) {
       binding.shader_view_offset = uint32_t(materials.size()) + original_count * 16;
-      binding.shader_sampler_offset = 2 + original_count * 8;
+      binding.shader_sampler_offset = std::get<8>(binding.pipeline) == 3
+          ? 34 : 66;
       ++original_count;
     }
   if (!materials.empty()) {
@@ -1384,7 +1392,8 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   {
     D3D12_DESCRIPTOR_HEAP_DESC heap{};
     heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-    heap.NumDescriptors = 2 + original_count * 8;
+    // Bindless translations address samplers at 1, 4, 7, ... 22.
+    heap.NumDescriptors = 2 + 3 * 32;
     heap.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     if (FAILED(device->CreateDescriptorHeap(
             &heap, IID_PPV_ARGS(&frame.samplers))))
@@ -1394,7 +1403,13 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     for (uint32_t i = 0; i < heap.NumDescriptors; ++i) {
       D3D12_SAMPLER_DESC sampler{};
       sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-      const bool clamp = i == 1 || (i >= 2 && (i - 2) % 8 >= 6);
+      const uint32_t block = i >= 2 ? (i - 2) / 32 : 0;
+      const uint32_t sampler_slot = i >= 2 ? (i - 2) % 32 : 0;
+      // ponytail: shared wrap/clamp tables; use per-fetch address modes if
+      // a material proves this approximation visibly wrong.
+      const bool clamp = i == 1 ||
+          (block == 1 && (sampler_slot == 19 || sampler_slot == 22)) ||
+          (block == 2 && (sampler_slot == 7 || sampler_slot == 10));
       sampler.AddressU = clamp ? D3D12_TEXTURE_ADDRESS_MODE_CLAMP
                                : D3D12_TEXTURE_ADDRESS_MODE_WRAP;
       sampler.AddressV = sampler.AddressU;
