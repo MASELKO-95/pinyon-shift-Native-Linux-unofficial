@@ -1190,6 +1190,13 @@ source-frame textures and 48 pixel words in the same path. Its former flat
 purple trackside region becomes textured vegetation and earth in the native
 race frame, with an unresolved dark background beneath the foliage. Evidence:
 `.local/ray-ui-native-promotion-20260925/terrain-original-long-output`.
+The near-frame native/compatibility/native toggle confirmed the expected
+dark soil but exposed missing building, crowd and lighting layers. Replaying
+the original 39-draw `0CBC533419F61E0D`/`56D45C45966FD938` family with
+five pinned textures made the façade neon yellow; that trial was reverted.
+Investigate the family before admission. Evidence:
+`.local/ray-ui-native-promotion-20260925/terrain-title-toggle-output` and
+`facade-title-toggle-output`.
 
 **Final-pass boundary check (2026-09-24):** the existing race RenderDoc
 capture `renderdoc-gatea-full-b_frame5001.rdc` (SHA-256

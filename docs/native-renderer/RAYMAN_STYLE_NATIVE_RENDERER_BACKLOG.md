@@ -190,6 +190,14 @@ purple trackside area with textured vegetation and earth colors, but the
 underlying area is still far too dark. Compare it with a matched compatibility
 view and inspect alpha/depth before marking terrain playable. Evidence:
 `.local/ray-ui-native-promotion-20260925/terrain-original-long-output`.
+A same-run native/compatibility/native toggle at frames 5038, 5044 and 5055
+kept the HUD and full-frame fallback intact. Compatibility confirms dark soil
+is expected, but reveals missing building, crowd and lighting layers in native
+output. A trial of the 39-draw `0CBC533419F61E0D`/`56D45C45966FD938`
+building family produced neon-yellow surfaces and was reverted. Diagnose its
+resource/constant interpretation before readmitting it. Evidence:
+`.local/ray-ui-native-promotion-20260925/terrain-title-toggle-output` and
+`facade-title-toggle-output`.
 
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major
