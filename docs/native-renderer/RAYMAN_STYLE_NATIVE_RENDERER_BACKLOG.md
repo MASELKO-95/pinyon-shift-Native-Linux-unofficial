@@ -264,6 +264,12 @@ snapshot-limit warning. A same-session native/compatibility/native toggle
 shows comparable spectator textures and safe recovery. Background structure,
 lighting, ground and car materials still differ visibly; an unscripted drive
 remains open.
+The [layered material trial](RAYMAN_LAYERED_MATERIAL_TRIAL_2026-09-26.md)
+ran the original one-texture pixel program on 269 procedural draws without
+closing the flat-ground or missing-background gap. The trial was removed.
+Prioritize the ordered target/copy chain and remaining unsupported draws
+before expanding handwritten or original materials for already visible
+geometry.
 
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major
