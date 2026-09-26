@@ -106,6 +106,7 @@ struct ItemDrawBinding {
 struct RemainderDrawBinding {
   RemainderPipelineKey pipeline;
   uint64_t index = 0, b0 = 0, b1 = 0, b3 = 0, b4 = 0;
+  uint64_t pixel_constants = 0;
   uint32_t count = 0, index_bytes = 0, format = 0, primitive = 0;
   uint32_t family = 0;
   uint32_t material_index = UINT32_MAX;
@@ -118,7 +119,7 @@ struct TrackGraphics {
   ComPtr<ID3D12Device> device;
   ComPtr<ID3D12RootSignature> root;
   ComPtr<ID3DBlob> pixel, pixel_textured, pixel_road, pixel_foliage,
-      pixel_car, pixel_car_dark, pixel_car_body;
+      pixel_car, pixel_car_body;
   ComPtr<ID3D12RootSignature> blit_root;
   ComPtr<ID3D12PipelineState> blit_pipeline, scene_blit_pipeline;
   std::map<PipelineKey, ComPtr<ID3D12PipelineState>> pipelines;
@@ -139,7 +140,6 @@ struct TrackGraphics {
       pixel_road.Reset();
       pixel_foliage.Reset();
       pixel_car.Reset();
-      pixel_car_dark.Reset();
       pixel_car_body.Reset();
       blit_root.Reset();
       blit_pipeline.Reset();
@@ -147,7 +147,7 @@ struct TrackGraphics {
       device = current;
     }
     if (root && pixel && pixel_textured && pixel_road && pixel_foliage &&
-        pixel_car && pixel_car_dark && pixel_car_body)
+        pixel_car && pixel_car_body)
       return true;
     constexpr char shader[] =
         "cbuffer Color : register(b2) { float4 flat; };"
@@ -205,14 +205,6 @@ struct TrackGraphics {
                           nullptr, nullptr, nullptr, "main", "ps_5_1", 0, 0,
                           &pixel_car, &errors)))
       return false;
-    constexpr char car_dark_shader[] =
-        "cbuffer Color : register(b2) { float4 flat; };"
-        "float4 main(float4 color : TEXCOORD0) : SV_Target0 {"
-        " return float4(sqrt(abs(color.rgb * flat.rgb)), flat.a); }";
-    if (FAILED(D3DCompile(car_dark_shader, sizeof(car_dark_shader) - 1,
-                          nullptr, nullptr, nullptr, "main", "ps_5_1", 0, 0,
-                          &pixel_car_dark, &errors)))
-      return false;
     constexpr char car_body_shader[] =
         "Texture2D<float4> detail_tex : register(t1);"
         "SamplerState linear_wrap : register(s0);"
@@ -225,7 +217,7 @@ struct TrackGraphics {
                           nullptr, nullptr, nullptr, "main", "ps_5_1", 0, 0,
                           &pixel_car_body, &errors)))
       return false;
-    D3D12_ROOT_PARAMETER parameters[8]{};
+    D3D12_ROOT_PARAMETER parameters[9]{};
     for (uint32_t i = 0; i < 4; ++i) {
       parameters[i].ParameterType = i == 3 ? D3D12_ROOT_PARAMETER_TYPE_SRV
                                            : D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -249,6 +241,10 @@ struct TrackGraphics {
     parameters[7].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     parameters[7].Descriptor.ShaderRegister = 4;
     parameters[7].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    parameters[8].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    parameters[8].Descriptor.ShaderRegister = 1;
+    parameters[8].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     D3D12_STATIC_SAMPLER_DESC samplers[2]{};
     for (uint32_t i = 0; i < 2; ++i) {
       auto& sampler = samplers[i];
@@ -264,7 +260,7 @@ struct TrackGraphics {
       sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
     }
     D3D12_ROOT_SIGNATURE_DESC description{
-        8, parameters, 2, samplers,
+        9, parameters, 2, samplers,
         D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT};
     if (FAILED(D3D12SerializeRootSignature(
             &description, D3D_ROOT_SIGNATURE_VERSION_1, &serialized,
@@ -388,10 +384,20 @@ struct TrackGraphics {
     desc.pRootSignature = root.Get();
     desc.VS = {vertex, size};
     const uint32_t material = RemainderMaterialKind(draw);
-    ID3DBlob* fragment = material == 1 ? pixel_car.Get()
-        : material == 2 ? pixel_car_dark.Get()
-        : material == 3 ? pixel_car_body.Get() : pixel.Get();
-    desc.PS = {fragment->GetBufferPointer(), fragment->GetBufferSize()};
+    if (material == 2) {
+      const uint8_t* pixel_bytecode = nullptr;
+      size_t pixel_size = 0;
+      if (!context.shader(context, 1, draw.pixel_shader,
+                          draw.pixel_specialization, &pixel_bytecode,
+                          &pixel_size) || !pixel_bytecode || pixel_size < 4 ||
+          std::memcmp(pixel_bytecode, "DXBC", 4))
+        return false;
+      desc.PS = {pixel_bytecode, pixel_size};
+    } else {
+      ID3DBlob* fragment = material == 1 ? pixel_car.Get()
+          : material == 3 ? pixel_car_body.Get() : pixel.Get();
+      desc.PS = {fragment->GetBufferPointer(), fragment->GetBufferSize()};
+    }
     if (material == 1) {
       auto& blend = desc.BlendState.RenderTarget[0];
       blend.BlendEnable = TRUE;
@@ -429,6 +435,10 @@ struct TrackGraphics {
     if (FAILED(device->CreateGraphicsPipelineState(&desc,
                                                   IID_PPV_ARGS(&pipeline))))
       return false;
+    if (material == 2)
+      REXGPU_INFO("FH1 native original car pixel shader={:016X} "
+                  "specialization={:X}", draw.pixel_shader,
+                  draw.pixel_specialization);
     remainder_pipelines.emplace(key, std::move(pipeline));
     return true;
   }
@@ -670,9 +680,9 @@ bool PrepareRemainder(
       if (!blend || !multiplier || !alpha ||
           std::bit_cast<float>(blend[3]) != 0.f ||
           draw.system[61] != 0x3F800000u) return false;
-      for (uint32_t channel = 0; channel < 3; ++channel)
-        binding.color[channel] = std::bit_cast<float>(multiplier[channel]);
-      binding.color[3] = std::bit_cast<float>(alpha[0]);
+      if (draw.pixel_packed.size() != 12) return false;
+      binding.pixel_constants = arena.Add(draw.pixel_packed.data(),
+                                          draw.pixel_packed.size() * 4);
     }
     std::array<uint32_t, 120> system{};
     std::copy(draw.system.begin(), draw.system.end(), system.begin());
@@ -1227,6 +1237,9 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     list->D3DSetGraphicsRootConstantBufferView(2, base + binding.b3);
     if (binding.b4)
       list->D3DSetGraphicsRootConstantBufferView(7, base + binding.b4);
+    if (binding.pixel_constants)
+      list->D3DSetGraphicsRootConstantBufferView(8,
+                                                 base + binding.pixel_constants);
     if (binding.material_index != UINT32_MAX) {
       auto handle = material_gpu_start;
       handle.ptr += SIZE_T(binding.material_index) * material_stride;

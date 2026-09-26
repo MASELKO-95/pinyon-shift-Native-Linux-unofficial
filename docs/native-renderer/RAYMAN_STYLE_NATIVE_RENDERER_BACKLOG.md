@@ -158,6 +158,10 @@ output. This is the first usable renderer milestone.
 
 ### RAY-04 — close only visible race gaps
 
+The [first original car pixel program](RAYMAN_ORIGINAL_CAR_PIXEL_2026-09-26.md)
+replaces one bounded no-texture approximation. The main eight-texture body
+remains placeholder shaded and is the next car-material target.
+
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major
   alpha/depth errors; only then secondary scenery/effects. Reuse already
