@@ -910,7 +910,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       if (!texture_identities.emplace(
               std::pair{identity.sequence, identity.fetch_constant},
               &identity).second)
-        return reject("duplicate_vegetation_texture");
+        return reject("duplicate_track_texture");
   }
   std::map<Snr04TrackRange, uint64_t> vertices, indices;
   for (const auto& [range, bytes] : scene.vertices)

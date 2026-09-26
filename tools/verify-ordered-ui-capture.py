@@ -37,12 +37,16 @@ def verify(path: Path, allow_incomplete: bool = False) -> dict:
     shaders = Counter()
     pair_index_types = {}
     pair_texture_fetches = {}
+    pair_texture_identities = {}
     pair_primitives = {}
     pair_endianness = {}
     pair_vertex_fetches = {}
     sequences = []
     vertex_bytes = index_bytes = texture_versions = missing_final = 0
     replay_eligible = 0
+    texture_versions_seen = set()
+    outdated_textures = 0
+    texture_shapes = Counter()
     for _ in range(draw_count):
         sequence, vertex_shader, pixel_shader, vertex_spec, pixel_spec = unpack("5Q")
         (primitive, index_type, index_count, index_base, index_length,
@@ -71,7 +75,9 @@ def verify(path: Path, allow_incomplete: bool = False) -> dict:
         texture_fetches, = unpack("I")
         if texture_fetches > 32:
             raise ValueError(f"draw {sequence}: invalid texture fetch count")
-        take(texture_fetches * 36)
+        for _ in range(texture_fetches):
+            fetch = unpack("9I")
+            texture_shapes[(fetch[4], fetch[6], fetch[7])] += 1
         final_seen, raster, clip, final_depth = unpack("4I")
         if final_seen != 1 and not allow_incomplete:
             raise ValueError(f"draw {sequence}: missing final state")
@@ -100,13 +106,18 @@ def verify(path: Path, allow_incomplete: bool = False) -> dict:
         textures, = unpack("I")
         if textures > 32:
             raise ValueError(f"draw {sequence}: invalid texture identity count")
+        identity_fetches = []
         for _ in range(textures):
             words = unpack("7I4xQQI4x")
+            identity_fetches.append(words[0])
             texture_versions += words[7] != 0 and words[8] != 0
+            texture_versions_seen.add((tuple(words[1:7]), words[7], words[8]))
+            outdated_textures += words[9] != 0
         pair = (vertex_shader, pixel_shader, vertex_spec, pixel_spec)
         shaders[pair] += 1
         pair_index_types.setdefault(pair, set()).add(index_type)
         pair_texture_fetches.setdefault(pair, set()).add(texture_fetches)
+        pair_texture_identities.setdefault(pair, set()).add(tuple(sorted(identity_fetches)))
         pair_primitives.setdefault(pair, set()).add(primitive)
         pair_endianness.setdefault(pair, set()).add(index_endianness)
         pair_vertex_fetches.setdefault(pair, set()).add(vertex_count)
@@ -128,12 +139,19 @@ def verify(path: Path, allow_incomplete: bool = False) -> dict:
              "pixel_spec": f"{pixel_spec:X}", "draws": count,
              "index_types": sorted(pair_index_types[(vertex, pixel, vertex_spec, pixel_spec)]),
              "texture_fetch_counts": sorted(pair_texture_fetches[(vertex, pixel, vertex_spec, pixel_spec)]),
+             "texture_identity_fetches": sorted(pair_texture_identities[(vertex, pixel, vertex_spec, pixel_spec)]),
              "primitives": sorted(pair_primitives[(vertex, pixel, vertex_spec, pixel_spec)]),
              "index_endianness": sorted(pair_endianness[(vertex, pixel, vertex_spec, pixel_spec)]),
              "vertex_fetch_counts": sorted(pair_vertex_fetches[(vertex, pixel, vertex_spec, pixel_spec)])}
             for (vertex, pixel, vertex_spec, pixel_spec), count
             in shaders.most_common(8)],
         "index_bytes": index_bytes, "versioned_textures": texture_versions,
+        "unique_texture_versions": len(texture_versions_seen),
+        "outdated_textures": outdated_textures,
+        "texture_shapes": [
+            {"format": shape[0], "width": shape[1], "height": shape[2],
+             "draws": count}
+            for shape, count in texture_shapes.most_common()],
         "untextured_replay_eligible": replay_eligible,
         "file_bytes": len(data),
     }

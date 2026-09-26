@@ -56,6 +56,10 @@ The [UI replay pilot](RAYMAN_UI_REPLAY_PILOT_2026-09-25.md) presents the owned
 scene plus 116 original untextured HUD draws from source frame 6803. A separate
 run at source frame 6801 again had no UI producer, so the scheduling gap is
 confirmed intermittent; full-frame capture and replay are still open.
+The [textured UI pilot](RAYMAN_TEXTURED_UI_REPLAY_2026-09-25.md) now replays
+all 166 HUD draws with 16 pinned texture versions in one successful frame.
+Two adjacent repeat runs had no UI producer at the selected frame, making
+the scheduling/reuse gap the immediate obstacle to live admission.
 
 - [ ] From one moving-race frame and one known HUD-gap frame, record one
   ordered stream of draw, clear, resolve and output-target events. Each event
@@ -77,10 +81,10 @@ gap frame, record that fact and address its scheduling cause before takeover.
 
 ### RAY-01 — replay one captured frame offline
 
-The first visible pilot has a recognizable native scene and readable text,
-but skips 50 textured UI draws and does not consume the full ordered event
-stream. Its image and constraints are recorded in the
-[UI replay evidence](RAYMAN_UI_REPLAY_PILOT_2026-09-25.md).
+The textured pilot has a recognizable native scene and complete captured
+HUD, but does not consume the full ordered world event stream. Its image and
+constraints are recorded in the
+[textured replay evidence](RAYMAN_TEXTURED_UI_REPLAY_2026-09-25.md).
 
 - [ ] Feed the selected event stream into the existing D3D12 native output,
   retaining draw order, targets, clears, depth, resolves, viewport, scissor,
