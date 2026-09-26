@@ -78,6 +78,9 @@ std::optional<std::vector<OrderedFrameOperation>> SnapshotOrderedFrameOperations
 bool WithOrderedUiFrame(
     uint64_t source_frame,
     const std::function<bool(const std::map<uint64_t, OrderedUiDraw>&)>& use);
+bool WithOrderedFrameDraws(
+    uint64_t source_frame, uint64_t first_sequence, uint64_t last_sequence,
+    const std::function<bool(const std::map<uint64_t, OrderedUiDraw>&)>& use);
 uint64_t ResolveOrderedUiReplayFrame(uint64_t source_frame);
 
 void CaptureOrderedUiDraw(

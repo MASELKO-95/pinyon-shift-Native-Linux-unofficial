@@ -39,7 +39,7 @@ struct Frame {
   std::map<uint64_t, Draw> draws;
   std::map<std::pair<uint64_t, uint32_t>, std::vector<uint8_t>> geometry;
   struct VertexInput {
-    uint32_t fetch = 0, base = 0, length = 0, stride = 0;
+    uint32_t fetch = 0, base = 0, length = 0, stride = 0, type = 0;
     uint32_t snapshot_status = 0, snapshot_length = 0;
     uint64_t snapshot_hash = 0;
     uint64_t blob_hash = 0;
@@ -207,6 +207,94 @@ bool WithOrderedUiFrame(
          use(frame->second.draws);
 }
 
+bool WithOrderedFrameDraws(
+    uint64_t source_frame, uint64_t first_sequence, uint64_t last_sequence,
+    const std::function<bool(const std::map<uint64_t, OrderedUiDraw>&)>& use) {
+  if (!first_sequence || last_sequence < first_sequence ||
+      last_sequence - first_sequence > 32) return false;
+  std::lock_guard lock(capture_mutex);
+  const auto found = captured_frames.find(source_frame);
+  if (found == captured_frames.end() || found->second.rejected ||
+      found->second.geometry_incomplete || found->second.state_incomplete)
+    return false;
+  const auto& frame = found->second;
+  std::map<uint64_t, OrderedUiDraw> draws;
+  for (auto it = frame.events.lower_bound(first_sequence);
+       it != frame.events.end() && it->first <= last_sequence; ++it) {
+    const auto& event = it->second;
+    if (event.kind != 'D') continue;
+    if (!event.state_snapshot_ready || event.final_seen != 1 ||
+        event.constants.size() != 2048 || event.system.size() != 64 ||
+        event.fetch.size() != 192 || event.bool_loop.size() != 40 ||
+        event.texture_fetches != event.textures.size() ||
+        std::any_of(event.textures.begin(), event.textures.end(),
+                    [](const auto& texture) {
+                      return !texture.allocation_id ||
+                          !texture.payload_generation ||
+                          texture.outdated_mask;
+                    }))
+      return false;
+    OrderedUiDraw draw;
+    draw.sequence = it->first;
+    draw.vertex_shader = event.vertex_shader;
+    draw.pixel_shader = event.pixel_shader;
+    draw.vertex_specialization = event.vertex_specialization;
+    draw.pixel_specialization = event.pixel_specialization;
+    draw.primitive = event.primitive;
+    draw.index_type = event.index_type;
+    draw.index_count = event.index_count;
+    draw.index_base = event.index_base;
+    draw.index_length = event.index_length;
+    draw.index_endianness = event.index_endianness;
+    draw.surface = event.surface;
+    draw.color = event.color;
+    draw.depth = event.depth;
+    draw.target_bits = event.target_bits;
+    draw.depth_control = event.prepared_depth;
+    draw.color_mask = event.color_mask;
+    std::copy(event.constants.begin(), event.constants.end(),
+              draw.constants.begin());
+    draw.vertex_bitmap = event.vertex_bitmap;
+    draw.pixel_bitmap = event.pixel_bitmap;
+    if (draw.index_type) {
+      const auto index = frame.geometry.find(
+          {event.index_blob_hash, event.index_blob_length});
+      if (event.index_snapshot_status != 1 ||
+          event.index_blob_length != event.index_length ||
+          index == frame.geometry.end()) return false;
+      draw.index_hash = event.index_blob_hash;
+      draw.indices = index->second;
+    }
+    for (const auto& input : event.vertices) {
+      const auto vertex = frame.geometry.find(
+          {input.blob_hash, input.blob_length});
+      if (input.snapshot_status != 1 || !input.blob_length ||
+          vertex == frame.geometry.end()) return false;
+      OrderedUiVertex v;
+      v.constant = input.fetch;
+      v.stride = input.stride;
+      v.base = input.base;
+      v.length = input.length;
+      v.type = input.type;
+      v.hash = input.blob_hash;
+      v.bytes = vertex->second;
+      draw.vertices.push_back(std::move(v));
+    }
+    draw.final_seen = true;
+    draw.raster = event.raster;
+    draw.clip = event.clip;
+    draw.final_depth = event.final_depth;
+    std::copy(event.system.begin(), event.system.end(), draw.system.begin());
+    std::copy(event.fetch.begin(), event.fetch.end(),
+              draw.fetch_constants.begin());
+    draw.viewport = event.viewport;
+    draw.scissor = event.scissor;
+    draw.textures = event.textures;
+    draws.emplace(it->first, std::move(draw));
+  }
+  return !draws.empty() && use(draws);
+}
+
 uint64_t ResolveOrderedUiReplayFrame(uint64_t source_frame) {
   std::lock_guard lock(capture_mutex);
   const auto current = captured_frames.find(source_frame);
@@ -252,7 +340,7 @@ void CaptureOrderedFrameDraw(
                       observation.vertex_fetch_capacity); ++i) {
       const auto& input = observation.vertex_fetches[i];
       event.vertices.push_back({input.fetch_constant, input.guest_base,
-                                input.length, input.stride_words,
+                                input.length, input.stride_words, input.type,
                                 input.cpu_snapshot_status,
                                 input.cpu_snapshot_length,
                                 input.cpu_snapshot_hash});

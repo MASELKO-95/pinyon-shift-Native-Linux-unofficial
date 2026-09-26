@@ -1891,6 +1891,71 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       }
     }
     if (matched != order.size()) return reject("ordered_draw_mismatch");
+    const auto initial_copy = std::find_if(
+        operations->begin(), operations->end(), [](const auto& event) {
+          return event.kind == 'C' && event.dest_base == 484626432 &&
+              event.copy.source_base_tiles == 720;
+        });
+    if (initial_copy == operations->end())
+      return reject("ordered_initial_color_missing");
+    const auto producer_clear = std::find_if(
+        std::make_reverse_iterator(initial_copy), operations->rend(),
+        [](const auto& event) {
+          return event.kind == 'K' && event.color == 720;
+        });
+    const auto second_copy = std::find_if(
+        std::next(initial_copy), operations->end(), [](const auto& event) {
+          return event.kind == 'C' && event.dest_base == 484626432 &&
+              event.copy.source_base_tiles == 720;
+        });
+    if (producer_clear == operations->rend() ||
+        second_copy == operations->end() ||
+        !WithOrderedFrameDraws(trace_frame,
+            producer_clear->sequence + 1, second_copy->sequence - 1,
+            [&](const auto& draws) {
+              size_t color_draws = 0, feedback_draws = 0;
+              for (const auto& [sequence, draw] : draws) {
+                if (draw.color != 720) continue;
+                const uint8_t *shader = nullptr;
+                size_t shader_size = 0;
+                if (!context.shader ||
+                    !context.shader(context, 0, draw.vertex_shader,
+                                    draw.vertex_specialization, &shader,
+                                    &shader_size) || !shader || shader_size < 4 ||
+                    std::memcmp(shader, "DXBC", 4))
+                  return false;
+                if (draw.pixel_shader &&
+                    (!context.shader(context, 1, draw.pixel_shader,
+                                     draw.pixel_specialization, &shader,
+                                     &shader_size) || !shader ||
+                     shader_size < 4 || std::memcmp(shader, "DXBC", 4)))
+                  return false;
+                for (const auto& texture : draw.textures) {
+                  void* resource = nullptr;
+                  D3D12_SHADER_RESOURCE_VIEW_DESC view{};
+                  bool immutable = false;
+                  if (!context.texture ||
+                      !context.texture(context, texture.fetch_words,
+                                       texture.allocation_id,
+                                       texture.payload_generation, &resource,
+                                       &view, &immutable) || !resource ||
+                      !immutable)
+                    return false;
+                }
+                if (sequence < initial_copy->sequence && draw.index_type == 1 &&
+                    draw.primitive == 13 && draw.textures.size() == 2)
+                  ++color_draws;
+                if (sequence > initial_copy->sequence &&
+                    draw.index_type == 0 && draw.primitive == 13 &&
+                    draw.textures.size() == 1)
+                  ++feedback_draws;
+              }
+              REXGPU_WARN("FH1 RAY01 initial producer frame={} draws={} "
+                          "color={} feedback={}", trace_frame, draws.size(),
+                          color_draws, feedback_draws);
+              return color_draws == 11 && feedback_draws == 1;
+            }))
+      return reject("ordered_initial_producer_inputs");
     const auto first_draw = std::lower_bound(
         operations->begin(), operations->end(), std::get<0>(order.front()),
         [](const OrderedFrameOperation& event, uint64_t sequence) {

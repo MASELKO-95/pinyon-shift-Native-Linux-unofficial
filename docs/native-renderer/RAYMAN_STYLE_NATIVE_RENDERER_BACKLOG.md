@@ -146,6 +146,11 @@ The [initial color-version pilot](RAYMAN_INITIAL_COLOR_VERSIONS_2026-09-26.md)
 now snapshots two full-size native color versions at their captured copy
 ordinals, around the feedback draw. They are not bound to consumers yet:
 the offscreen producer and feedback draw still need native replay.
+The [producer-input pilot](RAYMAN_INITIAL_COLOR_PRODUCER_INPUTS_2026-09-26.md)
+now exposes the bounded post-clear draw payload to the live replay. All 13
+draws have owned geometry/final state, and the native backend retrieves their
+original shader bytecode and immutable textures. Issuing the draws into an
+offscreen target remains the next step.
 
 - [ ] Feed the selected event stream into the existing D3D12 native output,
   retaining draw order, targets, clears, depth, resolves, viewport, scissor,
