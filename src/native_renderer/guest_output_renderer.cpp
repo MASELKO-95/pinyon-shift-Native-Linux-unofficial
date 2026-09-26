@@ -123,8 +123,13 @@ bool DrawShadow(const rex::system::NativeGuestOutputRenderContext& context,
   auto scene = pinyon_shift::native_renderer::SnapshotSnr04LiveScene(
       context.frame_sequence);
   const uint64_t source_frame = context.frame_sequence - 1;
-  const uint64_t ui_frame =
-      pinyon_shift::native_renderer::ResolveOrderedUiReplayFrame(source_frame);
+  const auto trace_frame = std::strtoull(
+      rex::cvar::GetFlagByName("pinyon_shift_snr01_trace_source_frame").c_str(),
+      nullptr, 10);
+  const bool ordered_pilot = trace_frame == context.frame_sequence;
+  const uint64_t ui_frame = pinyon_shift::native_renderer::ResolveOrderedUiReplayFrame(
+      ordered_pilot ? context.frame_sequence : source_frame);
+  if (ordered_pilot && ui_frame != context.frame_sequence) return false;
   if (!scene || !ui_frame)
     return false;
   ShadowFrame frame;

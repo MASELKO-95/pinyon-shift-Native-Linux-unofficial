@@ -10,17 +10,19 @@ existing whole-frame compatibility fallback when native race is off.
 The scene snapshot's `source_frame` names `output_frame - 1`, while prepared
 GPU events retain `output_frame`. Joining both records on the same numeric
 frame gave zero matching ordinals; joining event frame 5001 to scene frame
-5000 matched all 2,124 captured six-family draws. The remaining stream has
-1,989 draws outside those families, 97 copies, and 21 clears. Its 4,113 draws
-have complete owned geometry, final-bound state, and 431/431 exact pinned
-texture versions. The same run captured 180 UI draws.
+5000 matched all 2,477 captured six-family draws in the final run. The
+remaining stream has 1,796 draws outside those families, 94 copies, and 20
+clears. Its 4,273 draws have complete owned geometry, final-bound state, and
+482/482 exact pinned texture versions. The same run captured 166 UI draws.
+The selected-frame shadow replay takes its UI from frame 5001 too and rejects
+the pilot if that same-frame UI capture is unavailable.
 
 The saved `native-shadow-5001.ppm` is a recognizable race frame with road,
 car, scenery, lap/place HUD and speedometer. It still has the known approximate
 materials and missing world effects. This proves the ordered dispatch join;
 it does not establish full ordered target/copy replay or original shader
 execution. The image and strict capture artifact are under
-`.local/ray-ui-native-promotion-20260925/ordered-dispatch-correct-output/`.
+`.local/ray-ui-native-promotion-20260925/ordered-dispatch-same-frame-output/`.
 
 Reproduce with the **RelWithDebInfo** preview binary; the default Release
 binary can be older and will silently skip this pilot. Use
@@ -37,7 +39,7 @@ save root, and these game arguments:
 ```
 
 Validation: `tools/verify-ordered-frame.py ordered-frame-5001.csv
---require-owned-inputs` passed (4,113/4,113 geometry and state; 431/431
+--require-owned-inputs` passed (4,273/4,273 geometry and state; 482/482
 textures; zero missing final draws). `tools/verify-ordered-ui-capture.py
 ordered-ui-5001.bin` passed. The render test exited normally and the shadow
 image was visually inspected.
