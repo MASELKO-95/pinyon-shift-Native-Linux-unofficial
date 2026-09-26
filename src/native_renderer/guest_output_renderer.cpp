@@ -130,6 +130,30 @@ bool DrawShadow(const rex::system::NativeGuestOutputRenderContext& context,
   const uint64_t ui_frame = pinyon_shift::native_renderer::ResolveOrderedUiReplayFrame(
       ordered_pilot ? context.frame_sequence : source_frame);
   if (ordered_pilot && ui_frame != context.frame_sequence) return false;
+  if (ordered_pilot) {
+    const auto operations = pinyon_shift::native_renderer::
+        SnapshotOrderedFrameOperations(context.frame_sequence);
+    if (!operations || !pinyon_shift::native_renderer::WithOrderedUiFrame(
+            context.frame_sequence, [&](const auto& draws) {
+              auto next = draws.begin();
+              bool started = false;
+              for (const auto& event : *operations) {
+                if (next != draws.end() && event.sequence == next->first) {
+                  const auto& draw = next->second;
+                  if (event.kind != 'D' || event.surface != draw.surface ||
+                      event.color != draw.color || event.depth != draw.depth ||
+                      event.target_bits != draw.target_bits)
+                    return false;
+                  started = true;
+                  ++next;
+                } else if (started && (event.kind == 'D' ||
+                           next != draws.end())) {
+                  return false;
+                }
+              }
+              return started && next == draws.end();
+            })) return false;
+  }
   if (!scene || !ui_frame)
     return false;
   ShadowFrame frame;

@@ -50,6 +50,16 @@ Its output-5001 log recorded `ui_frame=5001` and `promoted=true`; the saved
 That checks selected-frame presentation, not continuous complete-stream
 replay.
 
+The selected-frame path now verifies that every captured UI draw has the same
+ordinal and target as its event-stream draw, with no other draws or target
+operations interleaved before the UI suffix ends. A repeat opt-in route under
+`.local/ray-ui-native-promotion-20260925/ordered-ui-suffix-output/` promoted
+frame 5001 and exited normally. Its strict capture verified 2,903/2,903
+owned geometry/state draws and 410/410 texture pins; all 170 UI draws were
+in the same event stream. This ties the existing separate UI draw routine to
+the authoritative order for this selected frame; intermediate targets and
+copies are still absent from native execution.
+
 Next: execute target changes, clears and copies in the same event loop, then
 bring the remaining draws and UI into that loop. Keep the pilot in shadow
 until a complete saved frame is coherent.
