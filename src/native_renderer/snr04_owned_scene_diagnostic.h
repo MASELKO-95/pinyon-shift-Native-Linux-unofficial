@@ -59,6 +59,7 @@ struct Snr04ProceduralScene {
   std::string sha;
   std::vector<Snr04ProceduralItem> items;
 };
+Snr04ProceduralScene ParseSnr04CharacterScene(std::span<const char> fixture);
 
 using Snr04TrackRange = std::pair<uint32_t, uint32_t>;
 struct Snr04TrackDraw {

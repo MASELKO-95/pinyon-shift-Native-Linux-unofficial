@@ -198,6 +198,13 @@ building family produced neon-yellow surfaces and was reverted. Diagnose its
 resource/constant interpretation before readmitting it. Evidence:
 `.local/ray-ui-native-promotion-20260925/terrain-title-toggle-output` and
 `facade-title-toggle-output`.
+The live draw now consumes the captured procedural-character fixture and
+uses its recorded tiled viewport/scissor. A same-run native/compatibility/
+native toggle exited normally, but the visible spectator crowd remains absent.
+That fixture contains about ten draws; the separate character-manager family
+has hundreds of draws and is not yet rendered live. Replay that larger family
+with source order and depth before calling the crowd gap closed. Evidence:
+`.local/ray-ui-native-promotion-20260925/crowd-title-toggle-output`.
 
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major

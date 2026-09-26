@@ -2220,6 +2220,12 @@ uint32_t pinyon_shift::native_renderer::RunSnr04ProceduralDiagnosticFromBytes(
       shader_directory, output_directory, device, samples, segment);
 }
 
+pinyon_shift::native_renderer::Snr04ProceduralScene
+pinyon_shift::native_renderer::ParseSnr04CharacterScene(
+    std::span<const char> fixture) {
+  return load_character(fixture);
+}
+
 pinyon_shift::native_renderer::Snr04TrackScene pinyon_shift::native_renderer::ParseSnr04TrackScene(
     std::span<const char> fixture) {
   const auto source = fixture;

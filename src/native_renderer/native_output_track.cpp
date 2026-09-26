@@ -129,6 +129,8 @@ struct ItemDrawBinding {
   uint64_t vertex = 0, b0 = 0, b1 = 0, b3 = 0;
   uint32_t material_index = UINT32_MAX;
   bool alpha = false;
+  D3D12_VIEWPORT viewport{};
+  D3D12_RECT scissor{};
 };
 
 struct RemainderDrawBinding {
@@ -555,7 +557,7 @@ bool PrepareItems(const rex::system::NativeGuestOutputRenderContext& context,
                   const Snr04ProceduralScene& scene, TrackGraphics& graphics,
                   UploadArena& arena, std::vector<ItemDrawBinding>& bindings,
                   uint64_t& index_offset, uint32_t& index_bytes) {
-  if (scene.character || scene.items.empty() || scene.items.size() > 512)
+  if (scene.items.empty() || scene.items.size() > 512)
     return false;
   uint32_t max_vertices = 0;
   for (const auto& item : scene.items)
@@ -582,25 +584,41 @@ bool PrepareItems(const rex::system::NativeGuestOutputRenderContext& context,
     const auto b3 = arena.Add(fetch.data(), sizeof(fetch));
     for (const auto& draw : item.draws) {
       const bool known_shader =
+          (scene.character &&
+           draw.vertex_shader == 0xAC345DADF2F24AE4ull) ||
+          (!scene.character && (
           draw.vertex_shader == 0x3BC346726C1C2535ull ||
           draw.vertex_shader == 0xBDFD2AD68464101Aull ||
           draw.vertex_shader == 0xCB8AC98467C0C283ull ||
-          draw.vertex_shader == 0xA715C815EDB8EEE8ull;
+          draw.vertex_shader == 0xA715C815EDB8EEE8ull));
       const uint64_t specialization =
           draw.vertex_shader == 0xCB8AC98467C0C283ull ||
           draw.vertex_shader == 0xA715C815EDB8EEE8ull ? 127 : 15;
       if (!known_shader || !draw.sequence || !draw.vertex_count ||
           draw.vertex_count % 4 ||
-          draw.vertex_count * 10 != item.vertices.size() ||
+          draw.vertex_count * (scene.character ? 4 : 10) != item.vertices.size() ||
           !graphics.ItemPipeline(context, draw.vertex_shader, specialization))
         return false;
       std::array<uint32_t, 120> system{};
       std::copy(draw.system.begin(), draw.system.end(), system.begin());
-      system[33] = std::bit_cast<uint32_t>(1.f);
-      system[37] = std::bit_cast<uint32_t>(-1.f / 720.f);
+      if (!scene.character) {
+        system[33] = std::bit_cast<uint32_t>(1.f);
+        system[37] = std::bit_cast<uint32_t>(-1.f / 720.f);
+      }
       bindings.push_back({draw.sequence, draw.vertex_shader, specialization,
                           draw.vertex_count / 4 * 6, vertex,
                           arena.Add(system.data(), sizeof(system)), b1, b3});
+      if (scene.character) {
+        auto& binding = bindings.back();
+        const float tile_offset = 720.f - draw.viewport[3];
+        binding.viewport = {draw.viewport[0], tile_offset,
+                            draw.viewport[2], draw.viewport[3],
+                            draw.viewport[4], draw.viewport[5]};
+        binding.scissor = {draw.scissor[0],
+                           LONG(draw.scissor[1] + tile_offset),
+                           draw.scissor[2],
+                           LONG(draw.scissor[3] + tile_offset)};
+      }
     }
   }
   std::sort(bindings.begin(), bindings.end(),
@@ -923,10 +941,14 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     return reject("input_or_pipeline");
   auto scene = ParseSnr04TrackScene(*live.track);
   auto remainder = ParseSnr04RemainderScene(*live.remainder);
+  Snr04ProceduralScene characters;
+  if (live.characters)
+    characters = ParseSnr04CharacterScene(*live.characters);
   if (scene.source_frame != live.source_frame || !scene.raster_captured ||
       scene.draws.empty() || live.items->frame != live.source_frame ||
       live.vegetation->source_frame != live.source_frame ||
-      remainder.source_frame != live.source_frame)
+      remainder.source_frame != live.source_frame ||
+      (live.characters && characters.frame != live.source_frame))
     return reject("scene_parse");
   while (!graphics.submitted.empty() &&
          graphics.submitted.front().first <= context.completed_submission)
@@ -1081,6 +1103,14 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   if (!PrepareItems(context, *live.items, graphics, arena, item_bindings,
                     item_index, item_index_bytes))
     return reject("prepare_items");
+  std::vector<ItemDrawBinding> character_bindings;
+  uint64_t character_index = 0;
+  uint32_t character_index_bytes = 0;
+  if (live.characters &&
+      !PrepareItems(context, characters, graphics, arena,
+                    character_bindings, character_index,
+                    character_index_bytes))
+    return reject("prepare_characters");
   std::vector<ItemDrawBinding> vegetation_bindings;
   uint64_t vegetation_index = 0;
   uint32_t vegetation_index_bytes = 0;
@@ -1295,6 +1325,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   }
   list->ReserveAdditionalBytes(
       (scene.draws.size() + item_bindings.size() +
+       character_bindings.size() +
        vegetation_bindings.size() + remainder_bindings.size() +
        materials.size()) * 512 + 8192);
   const auto base = frame.upload->GetGPUVirtualAddress();
@@ -1443,6 +1474,24 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     const float color[]{0.18f, 0.36f, 0.19f, 1.f};
     list->D3DSetGraphicsRoot32BitConstants(4, 4, color, 0);
     list->D3DDrawIndexedInstanced(binding.count, 1, 0, 0, 0);
+  }
+  if (!character_bindings.empty()) {
+    D3D12_INDEX_BUFFER_VIEW character_view{
+        base + character_index, character_index_bytes, DXGI_FORMAT_R16_UINT};
+    list->D3DIASetIndexBuffer(&character_view);
+    for (const auto& binding : character_bindings) {
+      list->RSSetViewport(binding.viewport);
+      list->RSSetScissorRect(binding.scissor);
+      list->D3DSetPipelineState(graphics.item_pipelines.at(
+          {binding.shader, binding.specialization, false}).Get());
+      list->D3DSetGraphicsRootConstantBufferView(0, base + binding.b0);
+      list->D3DSetGraphicsRootConstantBufferView(1, base + binding.b1);
+      list->D3DSetGraphicsRootConstantBufferView(2, base + binding.b3);
+      list->D3DSetGraphicsRootShaderResourceView(3, base + binding.vertex);
+      const float color[]{0.36f, 0.32f, 0.28f, 1.f};
+      list->D3DSetGraphicsRoot32BitConstants(4, 4, color, 0);
+      list->D3DDrawIndexedInstanced(binding.count, 1, 0, 0, 0);
+    }
   }
   list->D3DSetGraphicsRootShaderResourceView(3, base + remainder_vertex);
   for (const auto& binding : remainder_bindings) {

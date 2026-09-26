@@ -1197,6 +1197,12 @@ five pinned textures made the façade neon yellow; that trial was reverted.
 Investigate the family before admission. Evidence:
 `.local/ray-ui-native-promotion-20260925/terrain-title-toggle-output` and
 `facade-title-toggle-output`.
+The live output now parses and draws the small `SNR03C1` procedural-character
+fixture with its captured tiled viewport/scissor. The same-run toggle reached
+native and compatibility output normally, but no visible crowd was restored.
+The larger `SNR03M1` character-manager family remains outside live replay;
+it is the next scene-coverage target. Evidence:
+`.local/ray-ui-native-promotion-20260925/crowd-title-toggle-output`.
 
 **Final-pass boundary check (2026-09-24):** the existing race RenderDoc
 capture `renderdoc-gatea-full-b_frame5001.rdc` (SHA-256
