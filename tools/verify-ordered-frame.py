@@ -27,6 +27,18 @@ def verify(path: Path) -> dict:
     draws = [row for row in rows if row["kind"] == "D"]
     copies = [row for row in rows if row["kind"] == "C"]
     clears = [row for row in rows if row["kind"] == "K"]
+    frame = path.stem.rsplit("-", 1)[-1]
+    support_path = path.parent / f"ordered-native-support-{frame}.csv"
+    support = Counter()
+    if support_path.is_file():
+        with support_path.open(newline="") as file:
+            entries = list(csv.DictReader(file))
+        if [int(row["sequence"]) for row in entries] != [
+                int(row["sequence"]) for row in draws]:
+            raise ValueError("native support manifest does not match draw order")
+        support = Counter(int(row["family"]) for row in entries)
+        if set(support) - set(range(-1, 6)):
+            raise ValueError("unknown native draw family")
     for row in clears:
         count = int(row["rectangle_count"])
         if count not in (1, 2) or int(row["clear_mode"]) > 2 or not int(row["clear_flags"]) & 7:
@@ -72,7 +84,6 @@ def verify(path: Path) -> dict:
             outdated_texture_keys += sum(key[9] != 0 for key in keys)
             requested_texture_versions.update(tuple(key[1:9]) for key in keys
                                               if key[7] and key[8] and not key[9])
-    frame = path.stem.rsplit("-", 1)[-1]
     pin_path = path.parent / f"ordered-texture-pins-{frame}.csv"
     pinned_texture_versions = set()
     if pin_path.is_file():
@@ -221,6 +232,9 @@ def verify(path: Path) -> dict:
         "events": len(rows), "draws": len(draws), "copies": len(copies),
         "clears": len(clears),
         "ui_draws": len(ui), "missing_final": len(missing_final),
+        "native_support_manifest_present": support_path.is_file(),
+        "native_support_draws": len(draws) - support[-1] if support else 0,
+        "native_unsupported_draws": support[-1],
         "ui_replay_source_frame": ui_replay_source,
         "missing_final_ordinals": missing_final[:32],
         "failed_copies": sum(int(row["succeeded"]) != 1 for row in copies),

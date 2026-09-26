@@ -267,9 +267,14 @@ remains open.
 The [layered material trial](RAYMAN_LAYERED_MATERIAL_TRIAL_2026-09-26.md)
 ran the original one-texture pixel program on 269 procedural draws without
 closing the flat-ground or missing-background gap. The trial was removed.
-Prioritize the ordered target/copy chain and remaining unsupported draws
-before expanding handwritten or original materials for already visible
-geometry.
+The [ordered support census](RAYMAN_ORDERED_SUPPORT_CENSUS_2026-09-26.md)
+joins every selected-frame draw to its native family. Of 1,377 unsupported
+draws, 1,049 precede the main scene, 63 target the main scene, and 265 follow
+it (including 166 HUD draws currently replayed separately). The first
+1280×720 copy writes guest base `497831936`, which 11 offscreen draws and
+six tiled main-scene draws sample across three pinned texture generations.
+Prioritize that intermediate target/version chain before expanding materials
+for already visible geometry.
 
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major
@@ -304,10 +309,11 @@ not a prerequisite for the first usable renderer.
 
 Use the continuous opt-in run as the RAY-03 test bed. The isolated
 track-texture resolution miss did not recur on the next route and is covered
-by whole-frame fallback. Use the selected RAY-00 stream's owned geometry and
-pinned texture versions and final-bound state to replay draw/clear/resolve
-order in the existing D3D12 output; capture or reconstruct intermediate
-target versions where that replay needs them. Save the resulting full-frame
-image.
+by whole-frame fallback. Reconstruct the guest base `497831936` target
+version and its ordered copies/clears in the
+existing D3D12 output, then use the stream's owned geometry, pinned textures
+and final state to issue remaining visible main-scene draws. Save the
+resulting full-frame image and integrate the same-frame HUD at its ordered
+suffix.
 Perform the longer unscripted drive required by
 RAY-04 before profiling duplicate work.

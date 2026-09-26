@@ -11,6 +11,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <filesystem>
+#include <fstream>
 #include <iterator>
 #include <map>
 #include <stdexcept>
@@ -1833,6 +1835,20 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
                 order.size(), std::get<0>(order.front()),
                 std::get<0>(order.back()), operations->front().sequence,
                 operations->back().sequence);
+    if (const char* root = std::getenv("PINYON_SHIFT_FH1_RENDER_TEST_OUTPUT");
+        root && *root) {
+      std::ofstream manifest(std::filesystem::path(root) /
+          ("ordered-native-support-" + std::to_string(trace_frame) + ".csv"));
+      if (manifest) {
+        manifest << "sequence,family\n";
+        for (const auto& event : *operations)
+          if (event.kind == 'D') {
+            const auto found = supported.find(event.sequence);
+            manifest << event.sequence << ',' << (found == supported.end()
+                ? -1 : int(found->second.first)) << '\n';
+          }
+      }
+    }
     if (matched != order.size()) return reject("ordered_draw_mismatch");
     const auto first_draw = std::lower_bound(
         operations->begin(), operations->end(), std::get<0>(order.front()),
