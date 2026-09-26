@@ -17,6 +17,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <numeric>
 #include <set>
 #include <span>
 #include <string>
@@ -157,6 +158,8 @@ struct Snr04LiveFixture {
   std::shared_ptr<const std::vector<char>> bytes;
   std::shared_ptr<const std::vector<
       pinyon_shift::native_renderer::Snr04TrackTextureIdentity>> textures;
+  std::shared_ptr<const std::vector<
+      pinyon_shift::native_renderer::Snr04ManagerMaterial>> manager_materials;
   std::shared_ptr<const Snr03OwnedScene> vegetation;
   std::shared_ptr<const pinyon_shift::native_renderer::Snr04ProceduralScene> procedural;
   std::vector<uint64_t> sequences;
@@ -180,7 +183,10 @@ void CollectSnr04LiveFixture(uint64_t frame, Snr04LiveFamily family,
                              std::vector<uint64_t>&& sequences,
                              std::shared_ptr<const std::vector<
                                  pinyon_shift::native_renderer::Snr04TrackTextureIdentity>>
-                                 textures = {}) {
+                                 textures = {},
+                             std::shared_ptr<const std::vector<
+                                 pinyon_shift::native_renderer::Snr04ManagerMaterial>>
+                                 manager_materials = {}) {
   if (!Snr04LiveCaptureEnabled()) return;
   if (bytes.size() < 16 || bytes.size() > 32 * 1024 * 1024 ||
       sequences.empty() || sequences.size() > 4096) {
@@ -203,6 +209,7 @@ void CollectSnr04LiveFixture(uint64_t frame, Snr04LiveFamily family,
   slot.bytes = std::make_shared<const std::vector<char>>(std::move(bytes));
   slot.sequences = std::move(sequences);
   slot.textures = std::move(textures);
+  slot.manager_materials = std::move(manager_materials);
 }
 void CollectSnr04LiveVegetation(
     uint64_t frame, std::shared_ptr<const Snr03OwnedScene> scene,
@@ -885,12 +892,16 @@ void Snr02RejectTrackPayload(Snr02TrackPayload& payload, uint64_t sequence,
 }
 struct Snr03ManagerDraw {
   uint64_t sequence = 0, shader = 0, pixel_shader = 0;
-  uint64_t specialization = 0, dynamic = 0;
+  uint64_t specialization = 0, pixel_specialization = 0, dynamic = 0;
   uint32_t packet = 0, count = 0, host_index_format = 0, index_endianness = 0;
   std::array<Snr02TrackRange, 3> ranges{};
   std::array<rex::system::GraphicsPreparedDrawTextureFetch, 2> textures{};
   std::array<uint64_t, 4> bitmap{};
+  std::array<uint64_t, 4> pixel_bitmap{};
   std::vector<uint32_t> packed;
+  std::vector<uint32_t> pixel_packed;
+  std::array<uint32_t, 40> bool_loop{};
+  std::array<rex::system::GraphicsFinalDrawTextureIdentity, 2> final_textures{};
   std::array<uint32_t, 64> system{};
   std::array<uint32_t, 4> fetch{};
   uint32_t raster_mode = 0, clip_control = 0, depth_control = 0;
@@ -1888,8 +1899,10 @@ void ObserveSnr03ManagerPayload(
       fetch[1].length > 3 * 1024 * 1024 ||
       observation.texture_fetch_count != 2 || !observation.texture_fetches ||
       !observation.vertex_float_constant_bitmap ||
+      !observation.pixel_float_constant_bitmap ||
       !observation.vertex_float_constant_words ||
       observation.vertex_float_constant_count > 256 ||
+      observation.pixel_float_constant_count > 256 ||
       payload.draws.size() >= 2048) {
     if (NativeRaceCaptureEnabled())
       REXGPU_WARN("FH1 native manager rejected frame={} sequence={} "
@@ -1909,6 +1922,7 @@ void ObserveSnr03ManagerPayload(
   draw.shader = observation.vertex_shader_hash;
   draw.pixel_shader = observation.pixel_shader_hash;
   draw.specialization = observation.vertex_specialization_mask;
+  draw.pixel_specialization = observation.pixel_specialization_mask;
   draw.packet = backend_only ? observation.draw_packet_physical_address
                              : title->packet;
   draw.count = observation.index_count;
@@ -1950,14 +1964,23 @@ void ObserveSnr03ManagerPayload(
   }
   std::copy_n(observation.texture_fetches, 2, draw.textures.begin());
   std::copy_n(observation.vertex_float_constant_bitmap, 4, draw.bitmap.begin());
+  std::copy_n(observation.pixel_float_constant_bitmap, 4,
+              draw.pixel_bitmap.begin());
   draw.packed.reserve(observation.vertex_float_constant_count * 4);
   for (uint32_t reg = 0; reg < 256; ++reg) {
     if (draw.bitmap[reg / 64] & (uint64_t(1) << (reg % 64))) {
       const auto* words = observation.vertex_float_constant_words + reg * 4;
       draw.packed.insert(draw.packed.end(), words, words + 4);
     }
+    if (draw.pixel_bitmap[reg / 64] & (uint64_t(1) << (reg % 64))) {
+      const auto* words = observation.vertex_float_constant_words +
+          (256 + reg) * 4;
+      draw.pixel_packed.insert(draw.pixel_packed.end(), words, words + 4);
+    }
   }
   if (draw.packed.size() != observation.vertex_float_constant_count * 4 ||
+      draw.pixel_packed.size() !=
+          observation.pixel_float_constant_count * 4 ||
       std::any_of(payload.draws.begin(), payload.draws.end(),
                   [&](const auto& row) { return row.sequence == draw.sequence; })) {
     payload.rejected = true;
@@ -2308,6 +2331,10 @@ void ObserveSnr03FinalDrawState(
           observation.system_constant_word_count < 64 ||
           !observation.fetch_47_words || !observation.viewport ||
           !observation.scissor ||
+          !observation.vertex_float_constant_words ||
+          !observation.bool_loop_constant_words ||
+          observation.bool_loop_constant_word_count < 40 ||
+          observation.texture_count != 2 || !observation.textures ||
           !observation.bound_vertex_float_constant_words ||
           observation.bound_vertex_float_constant_count * 4 !=
               found->packed.size() ||
@@ -2317,6 +2344,31 @@ void ObserveSnr03FinalDrawState(
         return;
       }
       auto& draw = *found;
+      uint32_t pixel_word = 0;
+      for (uint32_t reg = 0; reg < 256; ++reg)
+        if (draw.pixel_bitmap[reg / 64] & (uint64_t(1) << (reg % 64))) {
+          if (!std::equal(draw.pixel_packed.begin() + pixel_word,
+                          draw.pixel_packed.begin() + pixel_word + 4,
+                          observation.vertex_float_constant_words +
+                              (256 + reg) * 4)) {
+            payload.rejected = true;
+            return;
+          }
+          pixel_word += 4;
+        }
+      for (uint32_t i = 0; i < 2; ++i) {
+        if (observation.textures[i].fetch_constant !=
+                draw.textures[i].fetch_constant ||
+            !observation.textures[i].allocation_id ||
+            !observation.textures[i].payload_generation ||
+            observation.textures[i].outdated_mask) {
+          payload.rejected = true;
+          return;
+        }
+        draw.final_textures[i] = observation.textures[i];
+      }
+      std::copy_n(observation.bool_loop_constant_words, 40,
+                  draw.bool_loop.begin());
       draw.dynamic = observation.dynamic_state;
       std::copy_n(observation.system_constant_words, 64, draw.system.begin());
       std::copy_n(observation.fetch_47_words, 4, draw.fetch.begin());
@@ -3731,10 +3783,42 @@ void ObserveSnr03ManagerOutputFrame(uint64_t output_frame) {
 #if defined(_WIN32)
   if (live && valid) {
     std::vector<uint64_t> sequences;
+    std::vector<Snr04ManagerMaterial> materials;
     sequences.reserve(payload.draws.size());
-    for (const auto& draw : payload.draws) sequences.push_back(draw.sequence);
+    materials.reserve(payload.draws.size());
+    for (const auto& draw : payload.draws) {
+      sequences.push_back(draw.sequence);
+      Snr04ManagerMaterial material{};
+      material.sequence = draw.sequence;
+      material.pixel_specialization = draw.pixel_specialization;
+      material.pixel_bitmap = draw.pixel_bitmap;
+      material.pixel_packed = draw.pixel_packed;
+      material.bool_loop = draw.bool_loop;
+      for (uint32_t i = 0; i < 2; ++i) {
+        const auto& source = draw.final_textures[i];
+        auto& target = material.textures[i];
+        target.sequence = draw.sequence;
+        target.fetch_constant = source.fetch_constant;
+        std::copy_n(source.fetch_words, 6, target.fetch_words.begin());
+        target.allocation_id = source.allocation_id;
+        target.payload_generation = source.payload_generation;
+        target.outdated_mask = source.outdated_mask;
+      }
+      materials.push_back(std::move(material));
+    }
+    if (REXCVAR_GET(pinyon_shift_snr01_trace_source_frame) ==
+        int32_t(scene->source_frame + 1))
+      REXGPU_WARN("FH1 RAY04 manager material frame={} draws={} "
+                  "pixel_words={} texture_versions={}", scene->source_frame,
+                  materials.size(),
+                  std::accumulate(materials.begin(), materials.end(), size_t(0),
+                      [](size_t sum, const auto& material) {
+                        return sum + material.pixel_packed.size();
+                      }), materials.size() * 2);
     CollectSnr04LiveFixture(scene->source_frame, Snr04LiveFamily::manager,
-                            std::move(encoded), std::move(sequences));
+                            std::move(encoded), std::move(sequences), {},
+                            std::make_shared<const std::vector<Snr04ManagerMaterial>>(
+                                std::move(materials)));
   }
 #endif
 }
@@ -4249,6 +4333,8 @@ std::shared_ptr<const Snr04LiveScene> SnapshotSnr04LiveScene(
     scene->vegetation_textures = vegetation.textures;
     scene->characters = families[size_t(Snr04LiveFamily::characters)].bytes;
     scene->manager = families[size_t(Snr04LiveFamily::manager)].bytes;
+    scene->manager_materials =
+        families[size_t(Snr04LiveFamily::manager)].manager_materials;
     scene->remainder = families[size_t(Snr04LiveFamily::remainder)].bytes;
     scene->remainder_textures =
         families[size_t(Snr04LiveFamily::remainder)].textures;

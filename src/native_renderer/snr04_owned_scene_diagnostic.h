@@ -115,6 +115,14 @@ struct Snr04TrackTextureIdentity {
   uint32_t outdated_mask = 0;
 };
 
+struct Snr04ManagerMaterial {
+  uint64_t sequence = 0, pixel_specialization = 0;
+  std::array<uint64_t, 4> pixel_bitmap{};
+  std::vector<uint32_t> pixel_packed;
+  std::array<uint32_t, 40> bool_loop{};
+  std::array<Snr04TrackTextureIdentity, 2> textures{};
+};
+
 struct Snr04RemainderRange {
   uint32_t first = 0, second = 0;
   uint64_t version = 0;
@@ -161,6 +169,7 @@ Snr04RemainderScene ParseSnr04RemainderScene(std::span<const char> fixture);
 struct Snr04LiveScene {
   uint64_t source_frame = 0;
   std::shared_ptr<const std::vector<char>> track, characters, manager, remainder;
+  std::shared_ptr<const std::vector<Snr04ManagerMaterial>> manager_materials;
   std::shared_ptr<const Snr04ProceduralScene> items;
   std::shared_ptr<const Snr04VegetationScene> vegetation;
   std::shared_ptr<const std::vector<Snr04TrackTextureIdentity>> track_textures;

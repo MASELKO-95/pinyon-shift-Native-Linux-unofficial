@@ -253,6 +253,12 @@ admitted and spectator silhouettes are visible. This closes the missing
 crowd *geometry* gap on the scripted route; material color and whole-frame
 ordering still need a matched comparison. See
 [manager live evidence](RAYMAN_MANAGER_LIVE_2026-09-26.md).
+The [manager material capture](RAYMAN_MANAGER_MATERIAL_CAPTURE_2026-09-26.md)
+now owns per-draw pixel constants, bool/loop words and two final texture
+versions. A trial of the original pixel shader made most spectators disappear
+even after correcting its descriptor slots; adjacent frames also exposed an
+unpinned or non-2D texture view. The trial was removed from presentation.
+Resolve that material binding and keep flat fallback per unsupported draw.
 
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major
