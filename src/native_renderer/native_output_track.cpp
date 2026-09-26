@@ -33,8 +33,10 @@ using RemainderPipelineKey = std::tuple<uint64_t, uint64_t, uint32_t,
     uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>;
 
 uint32_t TrackMaterialKind(const Snr04TrackDraw& draw) {
-  if (draw.shader == 0x0CBC533419F61E0Dull &&
-      draw.pixel_shader == 0xEFCA69AA2BEE366Bull &&
+  if (((draw.shader == 0x0CBC533419F61E0Dull &&
+        draw.pixel_shader == 0xEFCA69AA2BEE366Bull) ||
+       (draw.shader == 0x5DB1ECF39EA11DB0ull &&
+        draw.pixel_shader == 0x6508BAC22C4E1720ull)) &&
       draw.pixel_specialization == 0x4000002B003Full &&
       draw.textures.size() == 3)
     return 3;
@@ -45,6 +47,12 @@ uint32_t TrackMaterialKind(const Snr04TrackDraw& draw) {
       draw.shader == 0x1193B16753866698ull &&
       draw.specialization == 0x3FFull) return 2;
   return 0;
+}
+
+std::array<uint32_t, 3> TrackShaderFetches(const Snr04TrackDraw& draw) {
+  return draw.pixel_shader == 0x6508BAC22C4E1720ull
+      ? std::array<uint32_t, 3>{13, 3, 0}
+      : std::array<uint32_t, 3>{5, 13, 0};
 }
 
 uint32_t RemainderMaterialKind(const Snr04RemainderDraw& draw) {
@@ -1002,7 +1010,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       }
     }
     if (material == 3) {
-      constexpr uint32_t fetches[]{5, 13, 0};
+      const auto fetches = TrackShaderFetches(draw);
       for (uint32_t j = 0; j < 3; ++j) {
         const auto found = texture_identities.find({draw.sequence, fetches[j]});
         if (found == texture_identities.end() ||
@@ -1037,7 +1045,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     std::copy(draw.fetch.begin(), draw.fetch.end(), fetch.begin() + 188);
     fetch[190] &= 3;
     if (material == 3) {
-      for (uint32_t texture : {5u, 13u, 0u}) {
+      for (uint32_t texture : TrackShaderFetches(draw)) {
         const auto* identity = texture_identities.at({draw.sequence, texture});
         std::copy(identity->fetch_words.begin(), identity->fetch_words.end(),
                   fetch.begin() + texture * 6);

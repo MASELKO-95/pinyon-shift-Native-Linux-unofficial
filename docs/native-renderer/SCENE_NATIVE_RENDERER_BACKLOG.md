@@ -1178,8 +1178,13 @@ resolve record for address `0x1CE2D000`.
 source-frame-pinned fetches 0, 5 and 13, the original pixel program, captured
 pixel constants and bool word 7. The corrected title-to-race route reached
 native output at frame 5020; the formerly flat-purple block shows a truck and
-support detail. The separate gray panel is still unresolved. Keep fetch-13
+support detail. At that checkpoint, the separate gray panel remained. Keep fetch-13
 source-frame pinning and whole-frame fallback as admission requirements.
+The seven-draw `5DB1ECF39EA11DB0`/`6508BAC22C4E1720` pair now shares that
+pixel path with fetches 13, 3 and 0 and its 48 captured pixel words. A full
+race route exited normally and showed the formerly flat roadside arrow sign
+textured yellow and black in native output. Evidence:
+`.local/ray-ui-native-promotion-20260925/panel-original-long-output`.
 
 **Final-pass boundary check (2026-09-24):** the existing race RenderDoc
 capture `renderdoc-gatea-full-b_frame5001.rdc` (SHA-256

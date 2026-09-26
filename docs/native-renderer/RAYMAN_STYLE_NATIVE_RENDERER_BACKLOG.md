@@ -176,11 +176,14 @@ The first original track structure program now uses its three pinned
 source-frame textures, pixel constants and bool word. In the corrected
 title-to-race route, the former flat-purple structure gains truck and support
 detail in the native frame at output 5020. A large gray panel and nearby
-purple terrain remain; the next bounded material target is the seven-draw
-`5DB1ECF39EA11DB0`/`6508BAC22C4E1720` pair. Evidence is in
+purple terrain remained. The seven-draw
+`5DB1ECF39EA11DB0`/`6508BAC22C4E1720` pair now uses the same original
+pixel path with its own fetch order and 48 pixel words; a subsequent full
+route shows the large roadside arrow sign textured yellow and black.
+Nearby terrain and structures remain visibly rough. Evidence is in
 `.local/ray-ui-native-promotion-20260925/structure-title-entry-long-output`
-and the earlier `original-glass-long-output` capture. This visual result is
-one scene improvement, not a claim that race quality is complete.
+and `panel-original-long-output`. These visual gains do not establish race
+quality or performance completion.
 
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major

@@ -2190,8 +2190,10 @@ void ObserveSnr02TrackFinalDrawState(
   }
   draw.texture_identities.assign(observation.textures,
                                  observation.textures + observation.texture_count);
-  if (draw.vertex_shader == 0x0CBC533419F61E0Dull &&
-      draw.pixel_shader == 0xEFCA69AA2BEE366Bull) {
+  if ((draw.vertex_shader == 0x0CBC533419F61E0Dull &&
+       draw.pixel_shader == 0xEFCA69AA2BEE366Bull) ||
+      (draw.vertex_shader == 0x5DB1ECF39EA11DB0ull &&
+       draw.pixel_shader == 0x6508BAC22C4E1720ull)) {
     if (!observation.bool_loop_constant_words ||
         observation.bool_loop_constant_word_count < 8) {
       Snr02RejectTrackPayload(payload, draw.sequence, draw.packet,
