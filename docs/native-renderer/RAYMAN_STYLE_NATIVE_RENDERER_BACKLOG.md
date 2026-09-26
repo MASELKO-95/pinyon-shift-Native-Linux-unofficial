@@ -135,6 +135,12 @@ Frame 5001 promoted with readable HUD and a normal continuous-race exit.
 The copy remains approximate: native source is single-sample UNORM, while
 the guest source is 4× MSAA float; initial color, depth and later texture
 versions still depend on compatibility work.
+The [ordered depth-version pilot](RAYMAN_ORDERED_DEPTH_VERSIONS_2026-09-26.md)
+now snapshots the full native depth surface at each paired depth-copy
+ordinal, preserving three owned versions because D3D12 cannot partially
+copy a depth/stencil subresource. The selected frame again promoted with
+readable HUD and a normal race exit. The initial depth texture and later
+shader reads remain compatibility-backed.
 
 - [ ] Feed the selected event stream into the existing D3D12 native output,
   retaining draw order, targets, clears, depth, resolves, viewport, scissor,
@@ -333,9 +339,9 @@ Use the continuous opt-in run as the RAY-03 test bed. The isolated
 track-texture resolution miss did not recur on the next route and is covered
 by whole-frame fallback. Use the new ordered color-tile replay as the
 target-copy pilot. Reconstruct the heavily reused initial color texture at
-guest base `484626432`, then the paired tile depth versions at `497831936`
-in the existing D3D12 output. Preserve the tiled color texture's retained
-starting version and route produced native versions to their later consumers.
+guest base `484626432` in the existing D3D12 output. Preserve the tiled
+color texture's retained starting version; replace the initial guest depth
+texture and route the owned color/depth versions to their later consumers.
 Then use the stream's owned geometry, pinned textures
 and final state to issue remaining visible main-scene draws. Save the
 resulting full-frame image and integrate the same-frame HUD at its ordered

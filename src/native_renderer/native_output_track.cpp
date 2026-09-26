@@ -119,6 +119,7 @@ struct UploadArena {
 
 struct TrackFrame {
   ComPtr<ID3D12Resource> upload, depth, color, color_tiles, hud;
+  std::array<ComPtr<ID3D12Resource>, 3> depth_versions;
   ComPtr<ID3D12DescriptorHeap> rtv, dsv, srv, materials, samplers;
   std::vector<ComPtr<ID3D12Resource>> material_resources;
 };
@@ -951,6 +952,13 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
           D3D12_RESOURCE_STATE_DEPTH_WRITE, &clear,
           IID_PPV_ARGS(&frame.depth))))
     return false;
+  if (ordered_tiles)
+    for (auto& version : frame.depth_versions)
+      if (FAILED(device->CreateCommittedResource(
+              &depth_heap, D3D12_HEAP_FLAG_NONE, &depth_desc,
+              D3D12_RESOURCE_STATE_COPY_DEST, &clear,
+              IID_PPV_ARGS(&version))))
+        return false;
 
   D3D12_DESCRIPTOR_HEAP_DESC heap_desc{};
   heap_desc.NumDescriptors = 2;
@@ -1546,7 +1554,11 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
   const auto dsv = frame.dsv->GetCPUDescriptorHandleForHeapStart();
   auto* scene_color = frame.color.Get();
+  auto* scene_depth = frame.depth.Get();
   auto* color_tiles = frame.color_tiles.Get();
+  std::array<ID3D12Resource*, 3> depth_versions{};
+  for (size_t i = 0; i < depth_versions.size(); ++i)
+    depth_versions[i] = frame.depth_versions[i].Get();
   auto* hud = frame.hud.Get();
   auto* scene_srv = frame.srv.Get();
   auto* material_heap = frame.materials.Get();
@@ -1894,6 +1906,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         main_clear = &clear;
     }
     uint32_t copied_height = 0, tile_copies = 0, tile_base = 0;
+    uint32_t depth_height = 0, depth_copies = 0, depth_base = 0;
     for (const auto& event : *operations) {
       if (main_clear && event.sequence == main_clear->sequence) {
         const auto& bounds = event.bounds[0];
@@ -1905,6 +1918,38 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         REXGPU_WARN("FH1 RAY01 ordered main clear frame={} sequence={} "
                     "height={}", trace_frame, event.sequence, bounds[3]);
       }
+      if (event.kind == 'C' && event.copy.source_format == 1 &&
+          (event.copy.control & 7) == 4 &&
+          event.copy.source_base_tiles == 1024 &&
+          event.resolve_width == 1280 && event.resolve_height) {
+        const auto height = event.resolve_height;
+        if (!event.succeeded || !event.copy.info_valid ||
+            !event.copy.source_available || depth_copies >= 3 ||
+            height != (depth_copies == 2 ? 208u : 256u) ||
+            event.copy.physical_x || event.copy.physical_y ||
+            event.copy.physical_width != 1280 ||
+            event.copy.physical_height != height ||
+            event.copy.dest_x || event.copy.dest_y ||
+            event.copy.dest_pitch != 1280)
+          return reject("ordered_depth_tile_shape");
+        if (!depth_copies) depth_base = event.dest_base;
+        if (uint64_t(event.dest_base) !=
+            uint64_t(depth_base) + uint64_t(depth_height) * 1280 * 4)
+          return reject("ordered_depth_tile_address");
+        barrier.Transition.pResource = scene_depth;
+        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        list->D3DResourceBarrier(1, &barrier);
+        list->D3DCopyResource(depth_versions[depth_copies], scene_depth);
+        std::swap(barrier.Transition.StateBefore,
+                  barrier.Transition.StateAfter);
+        list->D3DResourceBarrier(1, &barrier);
+        depth_height += height;
+        ++depth_copies;
+        REXGPU_WARN("FH1 RAY01 ordered depth tile frame={} sequence={} "
+                    "height={} total={}", trace_frame, event.sequence,
+                    height, depth_height);
+      }
       if (event.kind == 'C' && event.copy.source_format == 3 &&
           (event.copy.control & 7) == 0 &&
           event.copy.source_base_tiles == 0 &&
@@ -1912,6 +1957,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         const auto height = event.resolve_height;
         if (!event.succeeded || !event.copy.info_valid ||
             !event.copy.source_available || tile_copies >= 3 ||
+            depth_copies != tile_copies + 1 ||
             height != (tile_copies == 2 ? 208u : 256u) ||
             event.copy.physical_x || event.copy.physical_y ||
             event.copy.physical_width != 1280 ||
@@ -1950,8 +1996,9 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
           found != supported.end())
         issue_draw(found->second.first, found->second.second);
     }
-    if (tile_copies != 3 || copied_height != 720)
-      return reject("ordered_color_tiles_incomplete");
+    if (tile_copies != 3 || copied_height != 720 ||
+        depth_copies != 3 || depth_height != 720)
+      return reject("ordered_tiles_incomplete");
   } else {
     for (const auto& entry : order)
       issue_draw(std::get<1>(entry), std::get<2>(entry));
