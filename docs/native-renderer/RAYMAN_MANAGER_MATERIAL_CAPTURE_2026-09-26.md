@@ -15,14 +15,16 @@ one run. The selected ordered stream still dispatched 1,654 supported draws.
 
 An experimental original pixel replay used
 `68150A8E959006CD/0x15001f`. The installed shader pack declares fetch 13
-at texture descriptors 2–3 and fetch 0 at 5–6. After correcting those slots,
-the saved native image still lost most visible spectators. Nearby frames also
-failed the existing pinned-2D-view check for a manager texture, so a full
-original-material takeover would intermittently fall back to compatibility.
-That replay was removed; the visible flat manager material remains active.
+at texture descriptors 2–3 and fetch 0 at 5–6. The first trial still lost
+most visible spectators because it uploaded a sparse 256-register buffer.
+Shader disassembly shows a compact seven-float4 buffer and reads fetch 13
+before fetch 0 in its two descriptor triplets. With packed constants and the
+correct triplets, the saved native frame shows textured spectators. Nearby
+frames contain an unpinned or non-2D manager texture; those individual draws
+now retain the flat material instead of rejecting the whole native frame.
+The short route exited normally and promoted output frames 5001–5006,
+including frame 5004 where the earlier all-original trial fell back.
 
-Next, identify which fetch/version fails the 2D-view check and compare the
-pixel program's descriptor and alpha/depth behavior with one matched Xenos
-frame. Admit original-material draws only after they remain visible across a
-short continuous route. Keep the current flat material for draws that cannot
-use an exact texture version.
+Next, run a longer continuous route and compare one matched Xenos frame.
+Identify why the remaining manager texture versions cannot be pinned as 2D
+views before removing the flat fallback.
