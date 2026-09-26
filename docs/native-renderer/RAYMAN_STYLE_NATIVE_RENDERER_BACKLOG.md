@@ -157,6 +157,11 @@ owned RGBA target and makes both ordered copies from it. The guest first
 version is a full scene image; a diagnostic view of the native version shows
 large flat regions instead. It remains detached from consumers while target
 history, depth and binding differences are resolved.
+The [main-scene original draw pilot](RAYMAN_MAIN_SCENE_ORIGINAL_DRAW_2026-09-26.md)
+also issues one captured textured strip in each of the three color tiles at
+its stream ordinal. A short native race passed with readable HUD, but the
+saved image shows no clear visual gain; 36 draws from that unsupported
+main-color census remain. Prioritize a visibly missing layer next.
 
 - [ ] Feed the selected event stream into the existing D3D12 native output,
   retaining draw order, targets, clears, depth, resolves, viewport, scissor,
@@ -363,6 +368,9 @@ Preserve the tiled color texture's retained starting version, replace the
 initial guest depth texture when its producer is ready, and route owned
 color/depth versions to later consumers. Use the stream's owned geometry,
 pinned textures and final state to issue remaining visible main-scene draws.
+Choose the next draw family by visible missing coverage, not merely by a
+small input shape: the first three-draw textured strip ran successfully but
+did not visibly change the saved race image.
 Save the resulting full-frame image and integrate the same-frame HUD at its ordered
 suffix.
 Treat `0x00030000` and `0x000C0000` as format aliases over one EDRAM base,

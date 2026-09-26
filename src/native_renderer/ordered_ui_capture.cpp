@@ -179,8 +179,17 @@ std::optional<std::vector<OrderedFrameOperation>> SnapshotOrderedFrameOperations
   std::vector<OrderedFrameOperation> operations;
   operations.reserve(found->second.events.size());
   for (const auto& [sequence, event] : found->second.events) {
-    OrderedFrameOperation operation{sequence, event.kind, event.surface,
-                                    event.color, event.depth, event.target_bits};
+    OrderedFrameOperation operation;
+    operation.sequence = sequence;
+    operation.kind = event.kind;
+    operation.vertex_shader = event.vertex_shader;
+    operation.pixel_shader = event.pixel_shader;
+    operation.vertex_specialization = event.vertex_specialization;
+    operation.pixel_specialization = event.pixel_specialization;
+    operation.surface = event.surface;
+    operation.color = event.color;
+    operation.depth = event.depth;
+    operation.target_bits = event.target_bits;
     operation.dest_base = event.dest_base;
     operation.dest_pitch = event.dest_pitch;
     operation.resolve_width = event.resolve_width;

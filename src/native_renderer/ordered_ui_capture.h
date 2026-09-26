@@ -63,6 +63,8 @@ struct OrderedCopyInputs {
 struct OrderedFrameOperation {
   uint64_t sequence = 0;
   char kind = 'D';
+  uint64_t vertex_shader = 0, pixel_shader = 0;
+  uint64_t vertex_specialization = 0, pixel_specialization = 0;
   uint32_t surface = 0, color = 0, depth = 0, target_bits = 0;
   uint32_t dest_base = 0, dest_pitch = 0;
   uint32_t resolve_width = 0, resolve_height = 0, succeeded = 0;
