@@ -965,6 +965,7 @@ struct Snr03RemainderDraw {
   std::vector<uint32_t> pixel_packed;
   std::array<uint32_t, 64> system{};
   std::array<uint32_t, 192> bound_fetch{};
+  uint32_t bool_word4 = 0;
   uint32_t raster_mode = 0, clip_control = 0, depth_control = 0;
   std::array<float, 6> viewport{};
   std::array<int32_t, 4> scissor{};
@@ -2333,6 +2334,15 @@ void ObserveSnr03FinalDrawState(
       std::copy_n(observation.system_constant_words, 64, draw.system.begin());
       std::copy_n(observation.fetch_constant_words, 192,
                   draw.bound_fetch.begin());
+      if (draw.shader == 0xD34A83D9E6B3A399ull &&
+          draw.pixel_shader == 0xE9CD565D9C61D037ull) {
+        if (!observation.bool_loop_constant_words ||
+            observation.bool_loop_constant_word_count < 5) {
+          payload.rejected = true;
+          return;
+        }
+        draw.bool_word4 = observation.bool_loop_constant_words[4];
+      }
       draw.raster_mode = observation.raster_mode_control;
       draw.clip_control = observation.clip_control;
       draw.depth_control = observation.normalized_depth_control;
@@ -3724,7 +3734,7 @@ void ObserveSnr03RemainderOutputFrame(uint64_t output_frame) {
       encoded.insert(encoded.end(), bytes, bytes + sizeof(value));
     };
     const std::array<char, 8> magic = native_capture
-        ? std::array<char, 8>{'S','N','R','0','3','R','5','\0'}
+        ? std::array<char, 8>{'S','N','R','0','3','R','6','\0'}
         : std::array<char, 8>{'S','N','R','0','3','R','3','\0'};
     write(magic);
     write(car->source_frame);
@@ -3788,6 +3798,7 @@ void ObserveSnr03RemainderOutputFrame(uint64_t output_frame) {
         write(draw.pixel_specialization); write(draw.pixel_bitmap);
         write(uint32_t(draw.pixel_packed.size()));
         for (uint32_t word : draw.pixel_packed) write(word);
+        write(draw.bool_word4);
       }
     }
   }

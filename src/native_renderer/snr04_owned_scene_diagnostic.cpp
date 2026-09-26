@@ -3301,7 +3301,9 @@ pinyon_shift::native_renderer::ParseSnr04RemainderScene(
   const auto source = fixture;
   Reader reader{source};
   const auto magic = reader.take<std::array<char, 8>>();
-  const bool pixel_constants = magic ==
+  const bool body_bool = magic ==
+      (std::array<char, 8>{'S','N','R','0','3','R','6','\0'});
+  const bool pixel_constants = body_bool || magic ==
       (std::array<char, 8>{'S','N','R','0','3','R','5','\0'});
   const bool fast_hash = magic ==
       (std::array<char, 8>{'S','N','R','0','3','R','4','\0'}) || pixel_constants;
@@ -3441,6 +3443,7 @@ pinyon_shift::native_renderer::ParseSnr04RemainderScene(
       draw.pixel_packed.reserve(pixel_words);
       for (uint32_t word = 0; word < pixel_words; ++word)
         draw.pixel_packed.push_back(reader.take<uint32_t>());
+      if (body_bool) draw.bool_word4 = reader.take<uint32_t>();
     }
     require(draw.sequence && (!i || draw.sequence > draws.back().sequence) &&
                 draw.packet && draw.shader && draw.count && draw.count <= 32768 &&
@@ -4095,7 +4098,8 @@ pinyon_shift::native_renderer::RunSnr04BatchDiagnosticFromBytes(
       covered = RunSnr04ManagerDiagnosticFromBytes(fixture, shader, output,
                                           borrowed_device, samples, &segment);
     else if (kind == "SNR03R2" || kind == "SNR03R3" ||
-             kind == "SNR03R4" || kind == "SNR03R5")
+             kind == "SNR03R4" || kind == "SNR03R5" ||
+             kind == "SNR03R6")
       covered = RunSnr04RemainderDiagnosticFromBytes(fixture, shader, output,
                                             borrowed_device, samples, &segment);
     else if (entry.vegetation)

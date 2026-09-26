@@ -119,6 +119,7 @@ struct Snr04RemainderDraw {
   std::vector<uint32_t> pixel_packed;
   std::array<uint32_t, 64> system{};
   std::array<uint32_t, 192> bound_fetch{};
+  uint32_t bool_word4 = 0;
   uint32_t raster = 0, clip = 0, depth = 0;
   std::array<float, 6> viewport{};
   std::array<int32_t, 4> scissor{};

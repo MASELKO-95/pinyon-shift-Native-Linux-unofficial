@@ -20,8 +20,11 @@ The respective snapshot allocations were 1,441,792; 1,441,792; 65,536;
 by fetch number. Native scene and HUD promotion continued through output
 frame 5031. The diagnostic logging was removed after this check.
 
-The next body-program slice must carry the sampled bool/loop constant word,
-bind its 2D/cube descriptor tables and samplers, and use the captured pixel
-constants. The current remainder draw record lacks that bool/loop word, so
-merely loading the bytecode would be incomplete. These snapshots add capture
-cost; measure it only after the original body program is visibly useful.
+The remainder scene now carries the body program's one sampled bool/loop word
+in `SNR03R6`; older fixture versions remain readable. The updated live race
+route exited normally and promoted complete native frames through output
+frame 5031, exercising the R6 writer and parser. The next body-program slice
+must bind 2D/cube descriptor tables and samplers alongside the captured pixel
+constants. Merely loading its bytecode without those bindings is incomplete.
+These snapshots add capture cost; measure it after the original body program
+is visibly useful.
