@@ -783,7 +783,6 @@ bool PrepareRemainder(
       const auto* multiplier = RemainderPixelConstant(draw, 157);
       const auto* alpha = RemainderPixelConstant(draw, 57);
       if (!blend || !multiplier || !alpha ||
-          std::bit_cast<float>(blend[3]) != 0.f ||
           draw.system[61] != 0x3F800000u) return false;
       if (draw.pixel_packed.size() != 12) return false;
       binding.pixel_constants = arena.Add(draw.pixel_packed.data(),
