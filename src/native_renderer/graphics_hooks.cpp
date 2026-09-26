@@ -3058,7 +3058,7 @@ void ObserveCopy(const rex::system::GraphicsCopyObservation& observation) {
     return;
   }
   REXGPU_INFO(
-      "FH1 SNR01 copy {{\"frame\":{},\"ordinal\":{},"
+      "FH1 SNR01 copy {{\"frame\":{},\"ordinal\":{},\"sequence\":{},"
       "\"copy_sequence\":{},\"attachment_state\":{},"
       "\"surface_info\":{},\"color_info\":[{},{},{},{}],"
       "\"depth_info\":{},\"copy_control\":{},"
@@ -3067,7 +3067,8 @@ void ObserveCopy(const rex::system::GraphicsCopyObservation& observation) {
       "\"dest_base\":{},\"dest_pitch\":{},"
       "\"written_address\":{},\"written_length\":{},"
       "\"succeeded\":{}}}",
-      observation.frame_sequence, logged_copies, observation.copy_sequence,
+      observation.frame_sequence, logged_copies, observation.draw_sequence,
+      observation.copy_sequence,
       observation.fh1_execution_key.attachment_state,
       observation.surface_info, observation.color_info[0],
       observation.color_info[1], observation.color_info[2],

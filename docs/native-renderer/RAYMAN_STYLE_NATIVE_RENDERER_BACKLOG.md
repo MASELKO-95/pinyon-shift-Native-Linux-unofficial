@@ -43,17 +43,21 @@ architectural reference, not code to copy into this BSD repository.
 
 ### RAY-00 — choose the complete-frame capture seam
 
+The first bounded pair selected the consumed GPU command seam and reproduced
+the missing guest UI pass; see the [evidence](RAYMAN_FRAME_STREAM_SEAM_2026-09-25.md).
+Payload and 48 unobserved draw ordinals per sampled frame remain open.
+
 - [ ] From one moving-race frame and one known HUD-gap frame, record one
   ordered stream of draw, clear, resolve and output-target events. Each event
   identifies its source/output frame, target, shaders, state and immutable
   inputs or an exact existing resource version. Account for indirect and
   deferred draws as well as UI/font draws.
-- [ ] Compare the candidate title-level D3D hooks with the actual consumed
+- [x] Compare the candidate title-level D3D hooks with the actual consumed
   GPU work. If they do not cover the frame, use the existing prepared/final
   draw observation boundary and add only the missing ordered target/clear/
   resolve events there. The earlier wrapper census found 132,568 candidate
   matches were EDRAM copies, so do not repeat a broad wrapper hunt.
-- [ ] Save a compact event-count/target-order report for those two frames,
+- [x] Save a compact event-count/target-order report for those two frames,
   including UI present/absent. Decide the seam from this bounded check and
   move to replay. Do not make complete game-wide coverage a prerequisite.
 
