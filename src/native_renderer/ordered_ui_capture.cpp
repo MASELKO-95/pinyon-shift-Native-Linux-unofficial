@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <map>
 #include <mutex>
 #include <string>
@@ -38,7 +39,15 @@ struct Frame {
     char kind = 'D';
     uint32_t surface = 0, color = 0, depth = 0, target_bits = 0;
     uint64_t vertex_shader = 0, pixel_shader = 0;
+    uint64_t vertex_specialization = 0, pixel_specialization = 0;
     uint32_t index_count = 0, vertex_fetches = 0, texture_fetches = 0;
+    uint32_t primitive = 0, index_type = 0, index_base = 0;
+    uint32_t index_length = 0, index_endianness = 0;
+    uint32_t prepared_depth = 0, color_mask = 0;
+    uint32_t raster = 0, clip = 0, final_depth = 0;
+    std::array<float, 6> viewport{};
+    std::array<int32_t, 4> scissor{};
+    std::vector<rex::system::GraphicsFinalDrawTextureIdentity> textures;
     uint32_t final_seen = 0, versioned_textures = 0;
     uint32_t dest_base = 0, dest_pitch = 0;
     uint32_t resolve_width = 0, resolve_height = 0, succeeded = 0;
@@ -145,7 +154,16 @@ void CaptureOrderedFrameDraw(
   event.target_bits = observation.bound_render_target_bits;
   event.vertex_shader = observation.vertex_shader_hash;
   event.pixel_shader = observation.pixel_shader_hash;
+  event.vertex_specialization = observation.vertex_specialization_mask;
+  event.pixel_specialization = observation.pixel_specialization_mask;
   event.index_count = observation.index_count;
+  event.primitive = observation.guest_primitive_type;
+  event.index_type = observation.index_buffer_type;
+  event.index_base = observation.index_buffer_guest_base;
+  event.index_length = observation.index_buffer_length;
+  event.index_endianness = observation.index_buffer_guest_endianness;
+  event.prepared_depth = observation.normalized_depth_control;
+  event.color_mask = observation.normalized_color_mask;
   event.vertex_fetches = observation.vertex_fetch_count;
   event.texture_fetches = observation.texture_fetch_count;
   std::lock_guard lock(capture_mutex);
@@ -306,13 +324,24 @@ void CaptureOrderedUiFinalState(
       event != frame.events.end()) {
     event->second.final_seen++;
     if (observation.texture_count > 32 ||
-        (observation.texture_count && !observation.textures))
+        (observation.texture_count && !observation.textures) ||
+        !observation.viewport || !observation.scissor)
       frame.rejected = true;
-    else
+    else {
+      event->second.raster = observation.raster_mode_control;
+      event->second.clip = observation.clip_control;
+      event->second.final_depth = observation.normalized_depth_control;
+      std::copy_n(observation.viewport, 6, event->second.viewport.begin());
+      std::copy_n(observation.scissor, 4, event->second.scissor.begin());
+      if (observation.texture_count)
+        event->second.textures.assign(
+            observation.textures,
+            observation.textures + observation.texture_count);
       for (uint32_t i = 0; i < observation.texture_count; ++i)
         event->second.versioned_textures +=
             observation.textures[i].allocation_id != 0 &&
             observation.textures[i].payload_generation != 0;
+    }
   }
   const auto found = frame.draws.find(observation.draw_sequence);
   if (found == frame.draws.end()) return;
@@ -350,10 +379,13 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
       rex::cvar::GetFlagByName("pinyon_shift_native_ui_shadow_start_frame").c_str(),
       nullptr, 10);
   const uint64_t source_frame = output_frame + 1;
+  const uint64_t ui_replay_source_frame = source_frame == trace_frame
+      ? ResolveOrderedUiReplayFrame(source_frame) : 0;
   const bool shadow = shadow_start && source_frame >= shadow_start &&
       source_frame - shadow_start < 24;
   if (!shadow && source_frame != trace_frame) return;
   Frame frame;
+  Frame ui_frame;
   size_t draws = 0;
   uint64_t payload_bytes = 0;
   bool complete = false;
@@ -365,6 +397,11 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
       payload_bytes = captured->second.payload_bytes;
       complete = CompleteUi(captured->second);
       if (source_frame == trace_frame) frame = captured->second;
+    }
+    if (ui_replay_source_frame) {
+      if (const auto retained = captured_frames.find(ui_replay_source_frame);
+          retained != captured_frames.end() && CompleteUi(retained->second))
+        ui_frame = retained->second;
     }
   }
   if (shadow)
@@ -382,12 +419,17 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
         ("ordered-frame-" + std::to_string(frame.source_frame) + ".csv");
     std::ofstream events(path, std::ios::trunc);
     if (events) {
+      events << std::setprecision(9);
       events << "kind,sequence,surface,color,depth,target_bits,vertex_shader,"
                 "pixel_shader,index_count,vertex_fetches,texture_fetches,"
                 "final_seen,versioned_textures,dest_base,dest_pitch,"
                 "resolve_width,resolve_height,succeeded,clear_mode,clear_flags,"
                 "stencil_reference,rectangle_count,bounds0,depth0,color0,"
-                "bounds1,depth1,color1,capture_rejected\n";
+                "bounds1,depth1,color1,capture_rejected,ui_replay_source_frame,"
+                "vertex_specialization,pixel_specialization,primitive,"
+                "index_type,index_base,index_length,index_endianness,"
+                "prepared_depth,color_mask,raster,clip,final_depth,"
+                "viewport,scissor,texture_versions\n";
       for (const auto& [sequence, event] : frame.events) {
         events << event.kind << ',' << sequence << ',' << event.surface << ','
                << event.color << ',' << event.depth << ',' << event.target_bits
@@ -407,7 +449,29 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
           for (size_t j = 0; j < 4; ++j)
             events << (j ? ":" : "") << event.clear_color[i][j];
         }
-        events << ',' << uint32_t(frame.rejected) << '\n';
+        events << ',' << uint32_t(frame.rejected) << ','
+               << ui_frame.source_frame << ','
+               << event.vertex_specialization << ','
+               << event.pixel_specialization << ',' << event.primitive << ','
+               << event.index_type << ',' << event.index_base << ','
+               << event.index_length << ',' << event.index_endianness << ','
+               << event.prepared_depth << ',' << event.color_mask << ','
+               << event.raster << ',' << event.clip << ','
+               << event.final_depth << ',';
+        for (size_t i = 0; i < event.viewport.size(); ++i)
+          events << (i ? ":" : "") << event.viewport[i];
+        events << ',';
+        for (size_t i = 0; i < event.scissor.size(); ++i)
+          events << (i ? ":" : "") << event.scissor[i];
+        events << ',';
+        for (size_t i = 0; i < event.textures.size(); ++i) {
+          const auto& texture = event.textures[i];
+          events << (i ? ";" : "") << texture.fetch_constant;
+          for (uint32_t word : texture.fetch_words) events << ':' << word;
+          events << ':' << texture.allocation_id << ':'
+                 << texture.payload_generation << ':' << texture.outdated_mask;
+        }
+        events << '\n';
       }
       events.close();
       REXGPU_INFO("FH1 RAY00 frame source={} events={} rejected={} "
@@ -416,16 +480,16 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
                   path.string());
     }
   }
-  if (frame.draws.empty()) return;
+  if (ui_frame.draws.empty()) return;
   const auto path = *output /
-      ("ordered-ui-" + std::to_string(frame.source_frame) + ".bin");
+      ("ordered-ui-" + std::to_string(ui_frame.source_frame) + ".bin");
   std::ofstream stream(path, std::ios::binary | std::ios::trunc);
   if (!stream) return;
   stream.write("RAYUI002", 8);
-  Write(stream, frame.source_frame);
-  Write(stream, uint32_t(frame.draws.size()));
-  Write(stream, uint32_t(complete));
-  for (const auto& [sequence, draw] : frame.draws) {
+  Write(stream, ui_frame.source_frame);
+  Write(stream, uint32_t(ui_frame.draws.size()));
+  Write(stream, uint32_t(CompleteUi(ui_frame)));
+  for (const auto& [sequence, draw] : ui_frame.draws) {
     Write(stream, sequence);
     Write(stream, draw.vertex_shader);
     Write(stream, draw.pixel_shader);
@@ -468,8 +532,9 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
   }
   stream.close();
   REXGPU_INFO("FH1 RAY00 UI frame source={} draws={} payload_bytes={} "
-              "complete={} written={} path={}", frame.source_frame,
-              frame.draws.size(), frame.payload_bytes, complete, bool(stream),
+              "complete={} written={} path={}", ui_frame.source_frame,
+              ui_frame.draws.size(), ui_frame.payload_bytes,
+              CompleteUi(ui_frame), bool(stream),
               path.string());
 }
 

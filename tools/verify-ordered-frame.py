@@ -2,6 +2,7 @@
 
 import csv
 import json
+import math
 import sys
 from collections import Counter
 from pathlib import Path
@@ -35,10 +36,37 @@ def verify(path: Path) -> dict:
             float(row[f"depth{index}"])
     missing_final = [int(row["sequence"]) for row in draws
                      if int(row["final_seen"]) != 1]
+    state_draws = 0
+    texture_keys = 0
+    outdated_texture_keys = 0
+    if "texture_versions" in rows[0]:
+        for row in draws:
+            viewport = [float(value) for value in row["viewport"].split(":")]
+            scissor = [int(value) for value in row["scissor"].split(":")]
+            if len(viewport) != 6 or not all(map(math.isfinite, viewport)) or len(scissor) != 4:
+                raise ValueError(f"invalid draw state at ordinal {row['sequence']}")
+            versions = row["texture_versions"].split(";") if row["texture_versions"] else []
+            keys = [[int(value) for value in version.split(":")] for version in versions]
+            if (any(len(key) != 10 for key in keys) or len(keys) > 32
+                    or len(keys) != int(row["texture_fetches"])):
+                raise ValueError(f"invalid texture keys at ordinal {row['sequence']}")
+            if sum(key[7] != 0 and key[8] != 0 for key in keys) != int(row["versioned_textures"]):
+                raise ValueError(f"texture count mismatch at ordinal {row['sequence']}")
+            state_draws += 1
+            texture_keys += len(keys)
+            outdated_texture_keys += sum(key[9] != 0 for key in keys)
     ui = [row for row in draws
           if int(row["surface"]) == 0x14000500
           and int(row["color"]) == 0xA0000
           and int(row["target_bits"]) == 2]
+    ui_replay_source = 0
+    if "ui_replay_source_frame" in rows[0]:
+        sources = {int(row["ui_replay_source_frame"]) for row in rows}
+        if len(sources) != 1:
+            raise ValueError("inconsistent retained UI source")
+        ui_replay_source = sources.pop()
+        if ui_replay_source and not (path.parent / f"ordered-ui-{ui_replay_source}.bin").is_file():
+            raise ValueError(f"missing retained UI fixture for frame {ui_replay_source}")
     gaps = [(left + 1, right - 1) for left, right in zip(sequences, sequences[1:])
             if right > left + 1]
     targets = Counter((row["surface"], row["color"], row["depth"],
@@ -47,6 +75,7 @@ def verify(path: Path) -> dict:
         "events": len(rows), "draws": len(draws), "copies": len(copies),
         "clears": len(clears),
         "ui_draws": len(ui), "missing_final": len(missing_final),
+        "ui_replay_source_frame": ui_replay_source,
         "missing_final_ordinals": missing_final[:32],
         "failed_copies": sum(int(row["succeeded"]) != 1 for row in copies),
         "first_ordinal": sequences[0], "last_ordinal": sequences[-1],
@@ -57,6 +86,8 @@ def verify(path: Path) -> dict:
                         for target, count in targets.most_common(8)],
         "versioned_texture_bindings": sum(int(row["versioned_textures"])
                                            for row in draws),
+        "state_draws": state_draws, "texture_keys": texture_keys,
+        "outdated_texture_keys": outdated_texture_keys,
     }
 
 
