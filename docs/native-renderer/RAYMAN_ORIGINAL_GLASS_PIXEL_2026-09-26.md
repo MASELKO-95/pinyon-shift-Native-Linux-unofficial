@@ -25,6 +25,11 @@ flat window; it does not prove exact glass blending, reflection or lighting
 parity. As with the body shader, signed descriptor slots currently reuse the
 unsigned resource view and samplers use linear filtering.
 
+The `fh1-native-race-mode-boundary.fh1test` route also exited normally on this
+build. `verify-native-race-mode-boundary.py` found native race output and
+complete compatibility output in the pause, free-roam and settled-title
+captures.
+
 The next visible targets are the dark rear paint, flat road/terrain and
 opaque trackside scenery. An unscripted drive is still needed before calling
 the opt-in native race playable.
