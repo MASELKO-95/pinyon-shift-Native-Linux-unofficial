@@ -45,7 +45,10 @@ architectural reference, not code to copy into this BSD repository.
 
 The first bounded pair selected the consumed GPU command seam and reproduced
 the missing guest UI pass; see the [evidence](RAYMAN_FRAME_STREAM_SEAM_2026-09-25.md).
-Payload and 48 unobserved draw ordinals per sampled frame remain open.
+The [ordered event capture](RAYMAN_ORDERED_FRAME_EVENTS_2026-09-25.md) now
+records regular draws, optimized clears and copies/resolves at that seam.
+The 48 internal ordinal gaps in its sampled frames are confirmed mip skips;
+full immutable resource inputs and offline replay remain open.
 An opt-in [owned UI draw capture](RAYMAN_UI_FRAME_CAPTURE_2026-09-25.md)
 now preserves one HUD-visible frame's ordered UI draws and CPU inputs. It
 does not yet capture texture pixels, clears, resolves, or the full race frame.

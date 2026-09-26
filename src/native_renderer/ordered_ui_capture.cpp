@@ -57,6 +57,21 @@ struct Frame {
   uint64_t source_frame = 0, payload_bytes = 0;
   bool rejected = false;
   std::map<uint64_t, Draw> draws;
+  struct Event {
+    char kind = 'D';
+    uint32_t surface = 0, color = 0, depth = 0, target_bits = 0;
+    uint64_t vertex_shader = 0, pixel_shader = 0;
+    uint32_t index_count = 0, vertex_fetches = 0, texture_fetches = 0;
+    uint32_t final_seen = 0, versioned_textures = 0;
+    uint32_t dest_base = 0, dest_pitch = 0;
+    uint32_t resolve_width = 0, resolve_height = 0, succeeded = 0;
+    uint32_t clear_mode = 0, clear_flags = 0;
+    uint32_t stencil_reference = 0, rectangle_count = 0;
+    std::array<std::array<int32_t, 4>, 2> bounds{};
+    std::array<float, 2> clear_depth{};
+    std::array<std::array<float, 4>, 2> clear_color{};
+  };
+  std::map<uint64_t, Event> events;
 };
 
 std::mutex capture_mutex;
@@ -84,7 +99,95 @@ void WriteBytes(std::ofstream& stream, const std::vector<uint8_t>& bytes) {
     stream.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
 }
 
+uint64_t ArtifactHash(const std::vector<uint8_t>& bytes) {
+  uint64_t hash = 14695981039346656037ull;
+  for (uint8_t byte : bytes) hash = (hash ^ byte) * 1099511628211ull;
+  return hash;
+}
+
 }  // namespace
+
+void CaptureOrderedFrameDraw(
+    const rex::system::GraphicsPreparedDrawObservation& observation) {
+  if (!observation.draw_sequence) return;
+  Frame::Event event;
+  event.surface = observation.surface_info;
+  event.color = observation.color_info[0];
+  event.depth = observation.depth_info;
+  event.target_bits = observation.bound_render_target_bits;
+  event.vertex_shader = observation.vertex_shader_hash;
+  event.pixel_shader = observation.pixel_shader_hash;
+  event.index_count = observation.index_count;
+  event.vertex_fetches = observation.vertex_fetch_count;
+  event.texture_fetches = observation.texture_fetch_count;
+  std::lock_guard lock(capture_mutex);
+  if (captured.source_frame &&
+      captured.source_frame != observation.frame_sequence)
+    captured = {};
+  captured.source_frame = observation.frame_sequence;
+  if (captured.events.size() >= 8192 ||
+      !captured.events.emplace(observation.draw_sequence, event).second)
+    captured.rejected = true;
+}
+
+void CaptureOrderedFrameCopy(
+    const rex::system::GraphicsCopyObservation& observation) {
+  if (!observation.draw_sequence) return;
+  Frame::Event event;
+  event.kind = 'C';
+  event.surface = observation.surface_info;
+  event.color = observation.color_info[0];
+  event.depth = observation.depth_info;
+  event.dest_base = observation.rb_copy_dest_base;
+  event.dest_pitch = observation.rb_copy_dest_pitch;
+  event.resolve_width = observation.resolve_guest_width;
+  event.resolve_height = observation.resolve_guest_height;
+  event.succeeded = observation.succeeded;
+  std::lock_guard lock(capture_mutex);
+  if (captured.source_frame &&
+      captured.source_frame != observation.frame_sequence)
+    captured = {};
+  captured.source_frame = observation.frame_sequence;
+  if (captured.events.size() >= 8192 ||
+      !captured.events.emplace(observation.draw_sequence, event).second)
+    captured.rejected = true;
+}
+
+void CaptureOrderedFrameClear(
+    const rex::system::GraphicsFh1ClearObservation& observation) {
+  if (!observation.draw_sequence || !observation.rectangle_count ||
+      observation.rectangle_count > 2 || observation.mode > 2 ||
+      !(observation.flags & 7)) {
+    Reject(observation.frame_sequence);
+    return;
+  }
+  std::lock_guard lock(capture_mutex);
+  if (captured.source_frame &&
+      captured.source_frame != observation.frame_sequence)
+    captured = {};
+  captured.source_frame = observation.frame_sequence;
+  auto [it, inserted] = captured.events.try_emplace(observation.draw_sequence);
+  auto& event = it->second;
+  if ((!inserted && event.kind != 'D') || event.final_seen ||
+      captured.events.size() > 8192) {
+    captured.rejected = true;
+    return;
+  }
+  event.kind = 'K';
+  event.surface = observation.surface_info;
+  event.color = observation.color_info;
+  event.depth = observation.depth_info;
+  event.clear_mode = observation.mode;
+  event.clear_flags = observation.flags;
+  event.stencil_reference = observation.stencil_reference;
+  event.rectangle_count = observation.rectangle_count;
+  event.succeeded = 1;
+  for (uint32_t i = 0; i < observation.rectangle_count; ++i) {
+    std::copy_n(observation.bounds[i], 4, event.bounds[i].begin());
+    event.clear_depth[i] = observation.depth[i];
+    std::copy_n(observation.colors[i], 4, event.clear_color[i].begin());
+  }
+}
 
 void CaptureOrderedUiDraw(
     const rex::system::GraphicsPreparedDrawObservation& observation) {
@@ -138,9 +241,9 @@ void CaptureOrderedUiDraw(
     vertex.base = input.guest_base;
     vertex.length = input.length;
     vertex.type = input.type;
-    vertex.hash = input.cpu_snapshot_hash;
     vertex.bytes.assign(input.cpu_snapshot_bytes,
                         input.cpu_snapshot_bytes + input.length);
+    vertex.hash = ArtifactHash(vertex.bytes);
     payload_bytes += vertex.bytes.size();
     draw.vertices.push_back(std::move(vertex));
   }
@@ -150,9 +253,9 @@ void CaptureOrderedUiDraw(
       Reject(observation.frame_sequence);
       return;
     }
-    draw.index_hash = observation.index_cpu_snapshot_hash;
     draw.indices.assign(observation.index_cpu_snapshot_bytes,
                         observation.index_cpu_snapshot_bytes + draw.index_length);
+    draw.index_hash = ArtifactHash(draw.indices);
     payload_bytes += draw.indices.size();
   }
   if (observation.texture_fetch_count)
@@ -179,6 +282,18 @@ void CaptureOrderedUiFinalState(
     const rex::system::GraphicsFinalDrawStateObservation& observation) {
   std::lock_guard lock(capture_mutex);
   if (captured.source_frame != observation.frame_sequence) return;
+  if (const auto event = captured.events.find(observation.draw_sequence);
+      event != captured.events.end()) {
+    event->second.final_seen++;
+    if (observation.texture_count > 32 ||
+        (observation.texture_count && !observation.textures))
+      captured.rejected = true;
+    else
+      for (uint32_t i = 0; i < observation.texture_count; ++i)
+        event->second.versioned_textures +=
+            observation.textures[i].allocation_id != 0 &&
+            observation.textures[i].payload_generation != 0;
+  }
   const auto found = captured.draws.find(observation.draw_sequence);
   if (found == captured.draws.end()) return;
   auto& draw = found->second;
@@ -227,6 +342,46 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
   std::error_code error;
   std::filesystem::create_directories(*output, error);
   if (error) return;
+  if (!frame.events.empty()) {
+    const auto path = *output /
+        ("ordered-frame-" + std::to_string(frame.source_frame) + ".csv");
+    std::ofstream events(path, std::ios::trunc);
+    if (events) {
+      events << "kind,sequence,surface,color,depth,target_bits,vertex_shader,"
+                "pixel_shader,index_count,vertex_fetches,texture_fetches,"
+                "final_seen,versioned_textures,dest_base,dest_pitch,"
+                "resolve_width,resolve_height,succeeded,clear_mode,clear_flags,"
+                "stencil_reference,rectangle_count,bounds0,depth0,color0,"
+                "bounds1,depth1,color1,capture_rejected\n";
+      for (const auto& [sequence, event] : frame.events) {
+        events << event.kind << ',' << sequence << ',' << event.surface << ','
+               << event.color << ',' << event.depth << ',' << event.target_bits
+               << ',' << event.vertex_shader << ',' << event.pixel_shader << ','
+               << event.index_count << ',' << event.vertex_fetches << ','
+               << event.texture_fetches << ',' << event.final_seen << ','
+               << event.versioned_textures << ',' << event.dest_base << ','
+               << event.dest_pitch << ',' << event.resolve_width << ','
+               << event.resolve_height << ',' << event.succeeded << ','
+               << event.clear_mode << ',' << event.clear_flags << ','
+               << event.stencil_reference << ',' << event.rectangle_count;
+        for (size_t i = 0; i < 2; ++i) {
+          events << ',';
+          for (size_t j = 0; j < 4; ++j)
+            events << (j ? ":" : "") << event.bounds[i][j];
+          events << ',' << event.clear_depth[i] << ',';
+          for (size_t j = 0; j < 4; ++j)
+            events << (j ? ":" : "") << event.clear_color[i][j];
+        }
+        events << ',' << uint32_t(frame.rejected) << '\n';
+      }
+      events.close();
+      REXGPU_INFO("FH1 RAY00 frame source={} events={} rejected={} "
+                  "written={} path={}", frame.source_frame,
+                  frame.events.size(), frame.rejected, bool(events),
+                  path.string());
+    }
+  }
+  if (frame.draws.empty()) return;
   const auto path = *output /
       ("ordered-ui-" + std::to_string(frame.source_frame) + ".bin");
   std::ofstream stream(path, std::ios::binary | std::ios::trunc);

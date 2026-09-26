@@ -2574,6 +2574,10 @@ void ObservePreparedDraw(
   const auto ui_capture_frame =
       REXCVAR_GET(pinyon_shift_snr01_trace_source_frame);
   if (ui_capture_frame > 0 &&
+      observation.frame_sequence == uint64_t(ui_capture_frame)) {
+    pinyon_shift::native_renderer::CaptureOrderedFrameDraw(observation);
+  }
+  if (ui_capture_frame > 0 &&
       observation.frame_sequence == uint64_t(ui_capture_frame) &&
       observation.surface_info == 0x14000500 &&
       observation.color_info[0] == 0x000A0000 &&
@@ -3054,6 +3058,8 @@ void ObserveIndirectBuffer(
 void ObserveCopy(const rex::system::GraphicsCopyObservation& observation) {
   RecordFh1GpuCopy(observation);
   static const int32_t target = REXCVAR_GET(pinyon_shift_snr01_trace_source_frame);
+  if (target > 0 && observation.frame_sequence == uint64_t(target))
+    pinyon_shift::native_renderer::CaptureOrderedFrameCopy(observation);
   if (target <= 0 || observation.frame_sequence + 1 < uint64_t(target) ||
       observation.frame_sequence > uint64_t(target) +
           (REXCVAR_GET(pinyon_shift_snr03_probe_following_frame) ? 2 : 1)) {
@@ -3089,6 +3095,13 @@ void ObserveCopy(const rex::system::GraphicsCopyObservation& observation) {
       observation.resolve_guest_height, observation.rb_copy_dest_base,
       observation.rb_copy_dest_pitch, observation.written_address,
       observation.written_length, observation.succeeded);
+}
+
+void ObserveFh1Clear(
+    const rex::system::GraphicsFh1ClearObservation& observation) {
+  const auto target = REXCVAR_GET(pinyon_shift_snr01_trace_source_frame);
+  if (target > 0 && observation.frame_sequence == uint64_t(target))
+    pinyon_shift::native_renderer::CaptureOrderedFrameClear(observation);
 }
 
 }  // namespace
@@ -3163,6 +3176,9 @@ void InstallGraphicsCensus(rex::system::IGraphicsSystem* graphics_system,
       enabled || REXCVAR_GET(pinyon_shift_snr01_trace_source_frame) > 0
           ? &ObserveCopy
           : nullptr);
+  graphics_system->SetFh1ClearObserver(
+      REXCVAR_GET(pinyon_shift_snr01_trace_source_frame) > 0
+          ? &ObserveFh1Clear : nullptr);
 }
 
 void UninstallGraphicsCensus(rex::system::IGraphicsSystem* graphics_system) {
@@ -3173,6 +3189,7 @@ void UninstallGraphicsCensus(rex::system::IGraphicsSystem* graphics_system) {
     graphics_system->SetFinalDrawStateObserver(nullptr);
     graphics_system->SetIndirectBufferObserver(nullptr);
     graphics_system->SetCopyObserver(nullptr);
+    graphics_system->SetFh1ClearObserver(nullptr);
   }
   prepared_draw_diagnostic_enabled.store(false, std::memory_order_release);
   auto* memory = snr01_memory.exchange(nullptr, std::memory_order_acq_rel);

@@ -42,7 +42,9 @@ ordinals have neither a prepared-draw nor copy observation. These may be
 nonrendering early exits: `IssueDraw` increments the ordinal before the
 `fh1_mip_replacement_active_` fast return, which is the only top-level return
 that bypasses both observers and the common return path. A per-frame count
-has not yet verified that all 48 gaps take this branch. The prepared
+had not yet verified that all 48 gaps take this branch. The later
+[ordered event capture](RAYMAN_ORDERED_FRAME_EVENTS_2026-09-25.md) confirms
+these 48 are mip skips and records optimized clears explicitly. The prepared
 observer does not provide immutable vertex/index inputs for every draw, and
 final draw state and texture identities are currently sampled only for known
 families. UI payload, clear-as-draw state, and resolve dependencies therefore
