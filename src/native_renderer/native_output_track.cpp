@@ -134,6 +134,7 @@ struct ItemDrawBinding {
 };
 
 struct ManagerDrawBinding {
+  uint64_t sequence = 0;
   uint32_t count = 0, index_bytes = 0;
   uint64_t index = 0, b0 = 0, b1 = 0, b3 = 0;
   D3D12_VIEWPORT viewport{};
@@ -142,6 +143,7 @@ struct ManagerDrawBinding {
 
 struct RemainderDrawBinding {
   RemainderPipelineKey pipeline;
+  uint64_t sequence = 0;
   uint64_t index = 0, b0 = 0, b1 = 0, b3 = 0, b4 = 0;
   uint64_t pixel_constants = 0, shader_bool = 0;
   uint32_t count = 0, index_bytes = 0, format = 0, primitive = 0;
@@ -755,6 +757,7 @@ bool PrepareRemainder(
         draw.endian, draw.reset_index};
     const auto& bytes = scene.host_indices.at(index_key);
     RemainderDrawBinding binding;
+    binding.sequence = draw.sequence;
     binding.pipeline = {draw.shader, draw.specialization, draw.raster,
                         draw.clip, draw.depth, draw.primitive, draw.format,
                         draw.restart, RemainderMaterialKind(draw),
@@ -1181,7 +1184,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       std::copy(draw.fetch.begin(), draw.fetch.end(), fetch.begin() + 188);
       const float tile_offset = 720.f - draw.viewport[3];
       manager_bindings.push_back({
-          draw.count, draw.ranges[2].second,
+          draw.sequence, draw.count, draw.ranges[2].second,
           manager_indices.at(draw.ranges[2]),
           arena.Add(system.data(), sizeof(system)),
           arena.Add(draw.packed.data(), draw.packed.size() * 4),
@@ -1478,7 +1481,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   list->SetDescriptorHeaps(material_heap, sampler_heap);
   list->D3DSetGraphicsRootSignature(graphics.root.Get());
   list->D3DSetGraphicsRootDescriptorTable(10, sampler_gpu_start);
-  for (size_t i = 0; i < scene.draws.size(); ++i) {
+  auto draw_track = [&](size_t i) {
     const auto& draw = scene.draws[i];
     const auto& binding = bindings[i];
     list->RSSetViewport(binding.viewport);
@@ -1520,14 +1523,15 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     list->D3DDrawIndexedInstanced(draw.count, 1, 0, 0, 0);
     if (binding.pixel_constants)
       list->D3DSetGraphicsRootDescriptorTable(10, sampler_gpu_start);
-  }
-  list->RSSetViewport({0, 0, 1280, 720, 0, 0.5f});
-  list->RSSetScissorRect({0, 0, 1280, 720});
-  list->D3DIASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  };
   D3D12_INDEX_BUFFER_VIEW item_view{base + item_index, item_index_bytes,
                                      DXGI_FORMAT_R16_UINT};
-  list->D3DIASetIndexBuffer(&item_view);
-  for (const auto& binding : item_bindings) {
+  auto draw_item = [&](size_t i) {
+    const auto& binding = item_bindings[i];
+    list->RSSetViewport({0, 0, 1280, 720, 0, 0.5f});
+    list->RSSetScissorRect({0, 0, 1280, 720});
+    list->D3DIASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    list->D3DIASetIndexBuffer(&item_view);
     list->D3DSetPipelineState(graphics.item_pipelines.at(
         {binding.shader, binding.specialization, false}).Get());
     list->D3DSetGraphicsRootConstantBufferView(0, base + binding.b0);
@@ -1537,11 +1541,15 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     const float color[]{0.47f, 0.40f, 0.31f, 1.f};
     list->D3DSetGraphicsRoot32BitConstants(4, 4, color, 0);
     list->D3DDrawIndexedInstanced(binding.count, 1, 0, 0, 0);
-  }
+  };
   D3D12_INDEX_BUFFER_VIEW vegetation_view{
       base + vegetation_index, vegetation_index_bytes, DXGI_FORMAT_R16_UINT};
-  list->D3DIASetIndexBuffer(&vegetation_view);
-  for (const auto& binding : vegetation_bindings) {
+  auto draw_vegetation = [&](size_t i) {
+    const auto& binding = vegetation_bindings[i];
+    list->RSSetViewport({0, 0, 1280, 720, 0, 0.5f});
+    list->RSSetScissorRect({0, 0, 1280, 720});
+    list->D3DIASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    list->D3DIASetIndexBuffer(&vegetation_view);
     list->D3DSetPipelineState(graphics.item_pipelines.at(
         {binding.shader, binding.specialization, binding.alpha}).Get());
     list->D3DSetGraphicsRootConstantBufferView(0, base + binding.b0);
@@ -1556,46 +1564,46 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     const float color[]{0.18f, 0.36f, 0.19f, 1.f};
     list->D3DSetGraphicsRoot32BitConstants(4, 4, color, 0);
     list->D3DDrawIndexedInstanced(binding.count, 1, 0, 0, 0);
-  }
-  if (!character_bindings.empty()) {
-    D3D12_INDEX_BUFFER_VIEW character_view{
-        base + character_index, character_index_bytes, DXGI_FORMAT_R16_UINT};
+  };
+  D3D12_INDEX_BUFFER_VIEW character_view{
+      base + character_index, character_index_bytes, DXGI_FORMAT_R16_UINT};
+  auto draw_character = [&](size_t i) {
+    const auto& binding = character_bindings[i];
     list->D3DIASetIndexBuffer(&character_view);
-    for (const auto& binding : character_bindings) {
-      list->RSSetViewport(binding.viewport);
-      list->RSSetScissorRect(binding.scissor);
-      list->D3DSetPipelineState(graphics.item_pipelines.at(
-          {binding.shader, binding.specialization, false}).Get());
-      list->D3DSetGraphicsRootConstantBufferView(0, base + binding.b0);
-      list->D3DSetGraphicsRootConstantBufferView(1, base + binding.b1);
-      list->D3DSetGraphicsRootConstantBufferView(2, base + binding.b3);
-      list->D3DSetGraphicsRootShaderResourceView(3, base + binding.vertex);
-      const float color[]{0.36f, 0.32f, 0.28f, 1.f};
-      list->D3DSetGraphicsRoot32BitConstants(4, 4, color, 0);
-      list->D3DDrawIndexedInstanced(binding.count, 1, 0, 0, 0);
-    }
-  }
-  if (!manager_bindings.empty()) {
+    list->D3DIASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    list->RSSetViewport(binding.viewport);
+    list->RSSetScissorRect(binding.scissor);
+    list->D3DSetPipelineState(graphics.item_pipelines.at(
+        {binding.shader, binding.specialization, false}).Get());
+    list->D3DSetGraphicsRootConstantBufferView(0, base + binding.b0);
+    list->D3DSetGraphicsRootConstantBufferView(1, base + binding.b1);
+    list->D3DSetGraphicsRootConstantBufferView(2, base + binding.b3);
+    list->D3DSetGraphicsRootShaderResourceView(3, base + binding.vertex);
+    const float color[]{0.36f, 0.32f, 0.28f, 1.f};
+    list->D3DSetGraphicsRoot32BitConstants(4, 4, color, 0);
+    list->D3DDrawIndexedInstanced(binding.count, 1, 0, 0, 0);
+  };
+  auto draw_manager = [&](size_t i) {
+    const auto& binding = manager_bindings[i];
     list->D3DSetGraphicsRootShaderResourceView(3, base + manager_vertex);
     list->D3DIASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     list->D3DSetPipelineState(graphics.manager_pipeline.Get());
-    for (const auto& binding : manager_bindings) {
-      list->RSSetViewport(binding.viewport);
-      list->RSSetScissorRect(binding.scissor);
-      D3D12_INDEX_BUFFER_VIEW index{base + binding.index,
-                                    binding.index_bytes,
-                                    DXGI_FORMAT_R16_UINT};
-      list->D3DIASetIndexBuffer(&index);
-      list->D3DSetGraphicsRootConstantBufferView(0, base + binding.b0);
-      list->D3DSetGraphicsRootConstantBufferView(1, base + binding.b1);
-      list->D3DSetGraphicsRootConstantBufferView(2, base + binding.b3);
-      const float color[]{0.32f, 0.29f, 0.27f, 1.f};
-      list->D3DSetGraphicsRoot32BitConstants(4, 4, color, 0);
-      list->D3DDrawIndexedInstanced(binding.count, 1, 0, 0, 0);
-    }
-  }
-  list->D3DSetGraphicsRootShaderResourceView(3, base + remainder_vertex);
-  for (const auto& binding : remainder_bindings) {
+    list->RSSetViewport(binding.viewport);
+    list->RSSetScissorRect(binding.scissor);
+    D3D12_INDEX_BUFFER_VIEW index{base + binding.index,
+                                  binding.index_bytes,
+                                  DXGI_FORMAT_R16_UINT};
+    list->D3DIASetIndexBuffer(&index);
+    list->D3DSetGraphicsRootConstantBufferView(0, base + binding.b0);
+    list->D3DSetGraphicsRootConstantBufferView(1, base + binding.b1);
+    list->D3DSetGraphicsRootConstantBufferView(2, base + binding.b3);
+    const float color[]{0.32f, 0.29f, 0.27f, 1.f};
+    list->D3DSetGraphicsRoot32BitConstants(4, 4, color, 0);
+    list->D3DDrawIndexedInstanced(binding.count, 1, 0, 0, 0);
+  };
+  auto draw_remainder = [&](size_t i) {
+    const auto& binding = remainder_bindings[i];
+    list->D3DSetGraphicsRootShaderResourceView(3, base + remainder_vertex);
     list->RSSetViewport(binding.viewport);
     list->RSSetScissorRect(binding.scissor);
     list->D3DIASetPrimitiveTopology(binding.primitive == 4
@@ -1636,6 +1644,42 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     list->D3DDrawIndexedInstanced(binding.count, 1, 0, 0, 0);
     if (binding.shader_bool)
       list->D3DSetGraphicsRootDescriptorTable(10, sampler_gpu_start);
+  };
+  using OrderedDraw = std::tuple<uint64_t, uint8_t, size_t>;
+  std::vector<OrderedDraw> order;
+  order.reserve(scene.draws.size() + item_bindings.size() +
+                vegetation_bindings.size() + character_bindings.size() +
+                manager_bindings.size() + remainder_bindings.size());
+  for (size_t i = 0; i < scene.draws.size(); ++i)
+    order.emplace_back(scene.draws[i].sequence, 0, i);
+  for (size_t i = 0; i < item_bindings.size(); ++i)
+    order.emplace_back(item_bindings[i].sequence, 1, i);
+  for (size_t i = 0; i < vegetation_bindings.size(); ++i)
+    order.emplace_back(vegetation_bindings[i].sequence, 2, i);
+  for (size_t i = 0; i < character_bindings.size(); ++i)
+    order.emplace_back(character_bindings[i].sequence, 3, i);
+  for (size_t i = 0; i < manager_bindings.size(); ++i)
+    order.emplace_back(manager_bindings[i].sequence, 4, i);
+  for (size_t i = 0; i < remainder_bindings.size(); ++i)
+    order.emplace_back(remainder_bindings[i].sequence, 5, i);
+  if (order.size() > 8192) return reject("draw_order_size");
+  std::sort(order.begin(), order.end());
+  for (size_t i = 0; i < order.size(); ++i) {
+    if (!std::get<0>(order[i]) ||
+        (i && std::get<0>(order[i - 1]) == std::get<0>(order[i])))
+      return reject("draw_order");
+  }
+  for (size_t i = 0; i < order.size(); ++i) {
+    const auto family = std::get<1>(order[i]);
+    const auto index = std::get<2>(order[i]);
+    switch (family) {
+      case 0: draw_track(index); break;
+      case 1: draw_item(index); break;
+      case 2: draw_vegetation(index); break;
+      case 3: draw_character(index); break;
+      case 4: draw_manager(index); break;
+      case 5: draw_remainder(index); break;
+    }
   }
   barrier.Transition.pResource = scene_color;
   barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
