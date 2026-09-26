@@ -70,6 +70,7 @@ struct Frame {
     uint32_t final_seen = 0, versioned_textures = 0;
     uint32_t dest_base = 0, dest_pitch = 0;
     uint32_t resolve_width = 0, resolve_height = 0, succeeded = 0;
+    OrderedCopyInputs copy;
     uint32_t clear_mode = 0, clear_flags = 0;
     uint32_t stencil_reference = 0, rectangle_count = 0;
     std::array<std::array<int32_t, 4>, 2> bounds{};
@@ -185,6 +186,7 @@ std::optional<std::vector<OrderedFrameOperation>> SnapshotOrderedFrameOperations
     operation.resolve_width = event.resolve_width;
     operation.resolve_height = event.resolve_height;
     operation.succeeded = event.succeeded;
+    operation.copy = event.copy;
     operation.clear_mode = event.clear_mode;
     operation.clear_flags = event.clear_flags;
     operation.rectangle_count = event.rectangle_count;
@@ -316,6 +318,29 @@ void CaptureOrderedFrameCopy(
   event.resolve_width = observation.resolve_guest_width;
   event.resolve_height = observation.resolve_guest_height;
   event.succeeded = observation.succeeded;
+  event.copy = {
+      observation.rb_copy_control,
+      observation.rb_copy_dest_info,
+      observation.resolve_source_base_tiles,
+      observation.resolve_source_pitch_tiles,
+      observation.resolve_source_format,
+      observation.resolve_source_guest_msaa_samples,
+      observation.source_resource_width,
+      observation.source_resource_height,
+      observation.source_resource_format,
+      observation.resolve_guest_offset_x,
+      observation.resolve_guest_offset_y,
+      observation.resolve_physical_offset_x,
+      observation.resolve_physical_offset_y,
+      observation.resolve_physical_width,
+      observation.resolve_physical_height,
+      observation.resolve_dest_offset_x,
+      observation.resolve_dest_offset_y,
+      observation.resolve_dest_pitch,
+      observation.resolve_dest_height,
+      observation.resolve_sample_select,
+      uint32_t(observation.resolve_info_valid),
+      uint32_t(observation.source_target_available)};
   std::lock_guard lock(capture_mutex);
   auto& frame = CaptureFrame(observation.frame_sequence);
   if (frame.events.size() >= 8192 ||
@@ -589,7 +614,15 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
                 "viewport,scissor,texture_versions,index_snapshot_status,"
                 "index_snapshot_hash,vertex_inputs,geometry_incomplete,"
                 "index_blob_hash,index_blob_length,vertex_blobs,"
-                "state_snapshot_ready,state_incomplete\n";
+                "state_snapshot_ready,state_incomplete,copy_control,"
+                "copy_dest_info,copy_source_base_tiles,"
+                "copy_source_pitch_tiles,copy_source_format,copy_source_msaa,"
+                "copy_source_resource_width,copy_source_resource_height,"
+                "copy_source_resource_format,copy_source_x,copy_source_y,"
+                "copy_physical_x,copy_physical_y,copy_physical_width,"
+                "copy_physical_height,copy_dest_x,copy_dest_y,"
+                "copy_dest_pitch,copy_dest_height,copy_sample_select,"
+                "copy_info_valid,copy_source_available\n";
       for (const auto& [sequence, event] : frame.events) {
         events << event.kind << ',' << sequence << ',' << event.surface << ','
                << event.color << ',' << event.depth << ',' << event.target_bits
@@ -647,7 +680,22 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
           events << (i ? ";" : "") << event.vertices[i].blob_hash << ':'
                  << event.vertices[i].blob_length;
         events << ',' << uint32_t(event.state_snapshot_ready) << ','
-               << uint32_t(frame.state_incomplete);
+               << uint32_t(frame.state_incomplete) << ','
+               << event.copy.control << ',' << event.copy.dest_info << ','
+               << event.copy.source_base_tiles << ','
+               << event.copy.source_pitch_tiles << ','
+               << event.copy.source_format << ',' << event.copy.source_msaa
+               << ',' << event.copy.source_resource_width << ','
+               << event.copy.source_resource_height << ','
+               << event.copy.source_resource_format << ','
+               << event.copy.source_x << ',' << event.copy.source_y << ','
+               << event.copy.physical_x << ',' << event.copy.physical_y << ','
+               << event.copy.physical_width << ','
+               << event.copy.physical_height << ',' << event.copy.dest_x
+               << ',' << event.copy.dest_y << ',' << event.copy.dest_pitch
+               << ',' << event.copy.dest_height << ','
+               << event.copy.sample_select << ',' << event.copy.info_valid
+               << ',' << event.copy.source_available;
         events << '\n';
       }
       events.close();

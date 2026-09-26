@@ -281,6 +281,13 @@ at the **same** EDRAM base. Isolating their draws removed complementary
 parts of the car/crowd and structures/ground. A float-scratch-only trial did
 not improve the saved image and was removed. Preserve that alias and include
 the resolve/output conversion in any later format change.
+The [ordered copy-input capture](RAYMAN_ORDERED_COPY_INPUTS_2026-09-26.md)
+now records source selection, EDRAM address/format, source and destination
+rectangles, and validity for every copy. It proves the 1280×720 copy to
+`497831936` and the three main tile updates are **depth** resolves; the
+terminal full-frame copy selects color. All 91 nonzero-size copies in the
+sample have complete in-bounds inputs. Native execution of these resolves
+is still open.
 
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major
@@ -315,9 +322,9 @@ not a prerequisite for the first usable renderer.
 
 Use the continuous opt-in run as the RAY-03 test bed. The isolated
 track-texture resolution miss did not recur on the next route and is covered
-by whole-frame fallback. Reconstruct the guest base `497831936` target
-version and its ordered copies/clears in the
-existing D3D12 output, then use the stream's owned geometry, pinned textures
+by whole-frame fallback. Reconstruct the guest depth texture at base
+`497831936` from the ordered depth targets and resolves in the existing
+D3D12 output, then use the stream's owned geometry, pinned textures
 and final state to issue remaining visible main-scene draws. Save the
 resulting full-frame image and integrate the same-frame HUD at its ordered
 suffix.

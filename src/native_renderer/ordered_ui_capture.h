@@ -46,12 +46,26 @@ struct OrderedUiDraw {
   std::vector<rex::system::GraphicsFinalDrawTextureIdentity> textures;
 };
 
+struct OrderedCopyInputs {
+  uint32_t control = 0, dest_info = 0;
+  uint32_t source_base_tiles = 0, source_pitch_tiles = 0;
+  uint32_t source_format = 0, source_msaa = 0;
+  uint32_t source_resource_width = 0, source_resource_height = 0;
+  uint32_t source_resource_format = 0;
+  uint32_t source_x = 0, source_y = 0;
+  uint32_t physical_x = 0, physical_y = 0;
+  uint32_t physical_width = 0, physical_height = 0;
+  uint32_t dest_x = 0, dest_y = 0, dest_pitch = 0, dest_height = 0;
+  uint32_t sample_select = 0, info_valid = 0, source_available = 0;
+};
+
 struct OrderedFrameOperation {
   uint64_t sequence = 0;
   char kind = 'D';
   uint32_t surface = 0, color = 0, depth = 0, target_bits = 0;
   uint32_t dest_base = 0, dest_pitch = 0;
   uint32_t resolve_width = 0, resolve_height = 0, succeeded = 0;
+  OrderedCopyInputs copy;
   uint32_t clear_mode = 0, clear_flags = 0, rectangle_count = 0;
   std::array<std::array<int32_t, 4>, 2> bounds{};
   std::array<float, 2> clear_depth{};

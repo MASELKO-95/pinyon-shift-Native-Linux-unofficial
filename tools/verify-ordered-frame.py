@@ -27,6 +27,26 @@ def verify(path: Path) -> dict:
     draws = [row for row in rows if row["kind"] == "D"]
     copies = [row for row in rows if row["kind"] == "C"]
     clears = [row for row in rows if row["kind"] == "K"]
+    copy_inputs_ready = 0
+    if "copy_info_valid" in rows[0]:
+        for row in copies:
+            get = lambda key: int(row[key])
+            if not get("resolve_width") or not get("resolve_height"):
+                continue  # Mip-skip events still have an ordinal.
+            if (not get("copy_info_valid") or
+                    not get("copy_source_available") or
+                    not get("copy_physical_width") or
+                    not get("copy_physical_height") or
+                    get("copy_physical_x") + get("copy_physical_width") >
+                    get("copy_source_resource_width") or
+                    get("copy_physical_y") + get("copy_physical_height") >
+                    get("copy_source_resource_height") or
+                    get("copy_dest_x") + get("resolve_width") >
+                    get("copy_dest_pitch") or
+                    get("copy_dest_y") + get("resolve_height") >
+                    get("copy_dest_height")):
+                raise ValueError(f"incomplete copy source at ordinal {row['sequence']}")
+            copy_inputs_ready += 1
     frame = path.stem.rsplit("-", 1)[-1]
     support_path = path.parent / f"ordered-native-support-{frame}.csv"
     support = Counter()
@@ -231,6 +251,8 @@ def verify(path: Path) -> dict:
     return {
         "events": len(rows), "draws": len(draws), "copies": len(copies),
         "clears": len(clears),
+        "copy_inputs_present": "copy_info_valid" in rows[0],
+        "copy_inputs_ready": copy_inputs_ready,
         "ui_draws": len(ui), "missing_final": len(missing_final),
         "native_support_manifest_present": support_path.is_file(),
         "native_support_draws": len(draws) - support[-1] if support else 0,

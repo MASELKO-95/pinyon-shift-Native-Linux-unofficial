@@ -27,7 +27,10 @@ its event loop. The first successful 1280×720 copy targets guest base
 draws and two draws in each of the three main-scene tiles. The first tile
 copy overwrites that base; the next two write adjacent offsets, and the
 main-scene consumers use generations `7908` and `7909` respectively. This
-is a concrete target-version dependency. The selected native path currently
+is a concrete target-version dependency. A later
+[copy-input capture](RAYMAN_ORDERED_COPY_INPUTS_2026-09-26.md) confirms the
+same destination and tile pattern selects a **depth** source. The selected
+native path currently
 executes one main clear and uses the terminal full-size copy as its
 presentation guard; it does not reconstruct the intervening target contents.
 
