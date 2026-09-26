@@ -218,8 +218,13 @@ bool Prepare(const std::map<uint64_t, OrderedUiDraw>& draws,
         draw.scissor[0] < 0 || draw.scissor[1] < 0 ||
         draw.scissor[0] > draw.scissor[2] ||
         draw.scissor[1] > draw.scissor[3] ||
-        draw.scissor[2] > 1280 || draw.scissor[3] > 720)
+        draw.scissor[2] > 1280 || draw.scissor[3] > 720) {
+      REXGPU_WARN("FH1 UI prepare rejected sequence={} stage=shape "
+                  "vertex={} textures={} fetches={} kind={} viewport_y={}",
+                  sequence, draw.vertices.size(), draw.textures.size(),
+                  draw.texture_fetches.size(), kind, draw.viewport[3]);
       return false;
+    }
     Binding binding{};
     binding.count = draw.index_count;
     binding.kind = uint32_t(kind);
@@ -229,18 +234,29 @@ bool Prepare(const std::map<uint64_t, OrderedUiDraw>& draws,
                                         return texture.fetch_constant == fetch;
                                       });
       if (found == draw.textures.end() || found->outdated_mask ||
-          !found->allocation_id || !found->payload_generation) return false;
+          !found->allocation_id || !found->payload_generation) {
+        REXGPU_WARN("FH1 UI prepare rejected sequence={} stage=texture "
+                    "fetch={}", sequence, fetch);
+        return false;
+      }
       binding.textures[fetch] = *found;
     }
     // The original VS applies the guest index endianness from b0 itself.
     const auto& index = draw.indices;
     const uint32_t vertex_bytes = draw.vertices[0].stride * 4;
-    if (!vertex_bytes || draw.vertices[0].bytes.size() < vertex_bytes)
+    if (!vertex_bytes || draw.vertices[0].bytes.size() < vertex_bytes) {
+      REXGPU_WARN("FH1 UI prepare rejected sequence={} stage=vertex_size",
+                  sequence);
       return false;
+    }
     for (size_t i = 0; i < size_t(draw.index_count) * 2; i += 2) {
       const uint32_t vertex = (uint32_t(index[i]) << 8) | index[i + 1];
       if (uint64_t(vertex + 1) * vertex_bytes >
-          draw.vertices[0].bytes.size()) return false;
+          draw.vertices[0].bytes.size()) {
+        REXGPU_WARN("FH1 UI prepare rejected sequence={} stage=index_bounds",
+                    sequence);
+        return false;
+      }
     }
     if (!upload.Add(index.data(), size_t(draw.index_count) * 2,
                     binding.index) ||
@@ -267,8 +283,11 @@ bool Prepare(const std::map<uint64_t, OrderedUiDraw>& draws,
     const size_t slot = draw.vertices[0].constant * 2;
     if ((fetch[slot] & 0x1FFFFFFC) !=
             (draw.vertices[0].base & 0x1FFFFFFC) ||
-        (fetch[slot + 1] & 0x03FFFFFC) != draw.vertices[0].length)
+        (fetch[slot + 1] & 0x03FFFFFC) != draw.vertices[0].length) {
+      REXGPU_WARN("FH1 UI prepare rejected sequence={} stage=fetch",
+                  sequence);
       return false;
+    }
     fetch[slot] &= 3;  // Root SRV already points at this draw's vertex bytes.
     if (!upload.Add(system.data(), sizeof(system), binding.system) ||
         !upload.Add(vertex_constants.data(), sizeof(vertex_constants),

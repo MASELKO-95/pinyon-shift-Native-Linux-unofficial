@@ -101,6 +101,10 @@ REXCVAR_DEFINE_INT32(pinyon_shift_native_race_capture_start_frame, 0,
                      "Pinyon Shift",
                      "Prepare exact-frame native race scenes from this source frame")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+REXCVAR_DEFINE_INT32(pinyon_shift_native_ui_shadow_start_frame, 0,
+                     "Pinyon Shift",
+                     "Capture 24 adjacent race UI frames for native shadow replay")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 namespace {
 
@@ -113,6 +117,12 @@ int32_t NativeRaceCaptureStartFrame() {
 
 bool NativeRaceCaptureEnabled() {
   return NativeRaceCaptureStartFrame() > 0;
+}
+
+bool UiShadowFrame(uint64_t frame) {
+  const auto start = REXCVAR_GET(pinyon_shift_native_ui_shadow_start_frame);
+  return start > 0 && frame >= uint64_t(start) &&
+         frame - uint64_t(start) < 24;
 }
 
 bool Snr04LiveCaptureEnabled() {
@@ -2577,8 +2587,9 @@ void ObservePreparedDraw(
       observation.frame_sequence == uint64_t(ui_capture_frame)) {
     pinyon_shift::native_renderer::CaptureOrderedFrameDraw(observation);
   }
-  if (ui_capture_frame > 0 &&
-      observation.frame_sequence == uint64_t(ui_capture_frame) &&
+  if (((ui_capture_frame > 0 &&
+        observation.frame_sequence == uint64_t(ui_capture_frame)) ||
+       UiShadowFrame(observation.frame_sequence)) &&
       observation.surface_info == 0x14000500 &&
       observation.color_info[0] == 0x000A0000 &&
       observation.bound_render_target_bits == 2) {
@@ -3123,6 +3134,7 @@ bool NativeRaceAdmittedForOutput(uint64_t output_frame) {
 }
 
 bool NativeRaceCaptureEligibleForOutput(uint64_t output_frame) {
+  if (UiShadowFrame(output_frame)) return true;
   if (prepared_draw_diagnostic_enabled.load(std::memory_order_acquire))
     return true;
   // Draw preparation can race with title-state updates for its own frame.

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -13,6 +14,7 @@
 #include <vector>
 
 #include <rex/logging.h>
+#include <rex/cvar.h>
 #include <rex/system/interfaces/graphics.h>
 
 #include "pinyon_shift_diagnostics.h"
@@ -50,24 +52,36 @@ struct Frame {
 };
 
 std::mutex capture_mutex;
-Frame captured;
-// ponytail: keep one selected diagnostic frame; live shadow replay needs
-// shared resource ownership instead of repeating these large CPU snapshots.
-Frame completed_ui;
+std::map<uint64_t, Frame> captured_frames;
+
+Frame& CaptureFrame(uint64_t source_frame) {
+  auto& frame = captured_frames[source_frame];
+  frame.source_frame = source_frame;
+  while (captured_frames.size() > 8) captured_frames.erase(captured_frames.begin());
+  return frame;
+}
 
 bool CompleteUi(const Frame& frame) {
   return !frame.rejected && !frame.draws.empty() &&
       std::all_of(frame.draws.begin(), frame.draws.end(),
-                  [](const auto& entry) { return entry.second.final_seen; }) &&
+                  [](const auto& entry) {
+                    const auto& draw = entry.second;
+                    return draw.final_seen &&
+                        draw.texture_fetches.size() == draw.textures.size() &&
+                        std::all_of(draw.textures.begin(), draw.textures.end(),
+                                    [](const auto& texture) {
+                                      return texture.allocation_id &&
+                                          texture.payload_generation &&
+                                          !texture.outdated_mask;
+                                    });
+                  }) &&
       frame.draws.rbegin()->first - frame.draws.begin()->first + 1 ==
           frame.draws.size();
 }
 
 void Reject(uint64_t frame) {
   std::lock_guard lock(capture_mutex);
-  if (captured.source_frame != frame) captured = {};
-  captured.source_frame = frame;
-  captured.rejected = true;
+  CaptureFrame(frame).rejected = true;
 }
 
 template <typename T>
@@ -97,10 +111,9 @@ bool WithOrderedUiFrame(
     uint64_t source_frame,
     const std::function<bool(const std::map<uint64_t, OrderedUiDraw>&)>& use) {
   std::lock_guard lock(capture_mutex);
-  const Frame& frame = completed_ui.source_frame == source_frame
-      ? completed_ui : captured;
-  return frame.source_frame == source_frame && CompleteUi(frame) &&
-         use(frame.draws);
+  const auto frame = captured_frames.find(source_frame);
+  return frame != captured_frames.end() && CompleteUi(frame->second) &&
+         use(frame->second.draws);
 }
 
 void CaptureOrderedFrameDraw(
@@ -117,13 +130,10 @@ void CaptureOrderedFrameDraw(
   event.vertex_fetches = observation.vertex_fetch_count;
   event.texture_fetches = observation.texture_fetch_count;
   std::lock_guard lock(capture_mutex);
-  if (captured.source_frame &&
-      captured.source_frame != observation.frame_sequence)
-    captured = {};
-  captured.source_frame = observation.frame_sequence;
-  if (captured.events.size() >= 8192 ||
-      !captured.events.emplace(observation.draw_sequence, event).second)
-    captured.rejected = true;
+  auto& frame = CaptureFrame(observation.frame_sequence);
+  if (frame.events.size() >= 8192 ||
+      !frame.events.emplace(observation.draw_sequence, event).second)
+    frame.rejected = true;
 }
 
 void CaptureOrderedFrameCopy(
@@ -140,13 +150,10 @@ void CaptureOrderedFrameCopy(
   event.resolve_height = observation.resolve_guest_height;
   event.succeeded = observation.succeeded;
   std::lock_guard lock(capture_mutex);
-  if (captured.source_frame &&
-      captured.source_frame != observation.frame_sequence)
-    captured = {};
-  captured.source_frame = observation.frame_sequence;
-  if (captured.events.size() >= 8192 ||
-      !captured.events.emplace(observation.draw_sequence, event).second)
-    captured.rejected = true;
+  auto& frame = CaptureFrame(observation.frame_sequence);
+  if (frame.events.size() >= 8192 ||
+      !frame.events.emplace(observation.draw_sequence, event).second)
+    frame.rejected = true;
 }
 
 void CaptureOrderedFrameClear(
@@ -158,15 +165,12 @@ void CaptureOrderedFrameClear(
     return;
   }
   std::lock_guard lock(capture_mutex);
-  if (captured.source_frame &&
-      captured.source_frame != observation.frame_sequence)
-    captured = {};
-  captured.source_frame = observation.frame_sequence;
-  auto [it, inserted] = captured.events.try_emplace(observation.draw_sequence);
+  auto& frame = CaptureFrame(observation.frame_sequence);
+  auto [it, inserted] = frame.events.try_emplace(observation.draw_sequence);
   auto& event = it->second;
   if ((!inserted && event.kind != 'D') || event.final_seen ||
-      captured.events.size() > 8192) {
-    captured.rejected = true;
+      frame.events.size() > 8192) {
+    frame.rejected = true;
     return;
   }
   event.kind = 'K';
@@ -262,38 +266,37 @@ void CaptureOrderedUiDraw(
                                     observation.texture_fetch_count);
 
   std::lock_guard lock(capture_mutex);
-  if (captured.source_frame &&
-      captured.source_frame != observation.frame_sequence)
-    captured = {};
-  captured.source_frame = observation.frame_sequence;
-  if (captured.draws.size() >= kMaximumDraws ||
+  auto& frame = CaptureFrame(observation.frame_sequence);
+  if (frame.draws.size() >= kMaximumDraws ||
       payload_bytes > kMaximumPayloadBytes -
-                          std::min(captured.payload_bytes, kMaximumPayloadBytes) ||
-      !captured.draws.emplace(draw.sequence, std::move(draw)).second) {
-    captured.rejected = true;
+                          std::min(frame.payload_bytes, kMaximumPayloadBytes) ||
+      !frame.draws.emplace(draw.sequence, std::move(draw)).second) {
+    frame.rejected = true;
     return;
   }
-  captured.payload_bytes += payload_bytes;
+  frame.payload_bytes += payload_bytes;
 }
 
 void CaptureOrderedUiFinalState(
     const rex::system::GraphicsFinalDrawStateObservation& observation) {
   std::lock_guard lock(capture_mutex);
-  if (captured.source_frame != observation.frame_sequence) return;
-  if (const auto event = captured.events.find(observation.draw_sequence);
-      event != captured.events.end()) {
+  const auto existing = captured_frames.find(observation.frame_sequence);
+  if (existing == captured_frames.end()) return;
+  auto& frame = existing->second;
+  if (const auto event = frame.events.find(observation.draw_sequence);
+      event != frame.events.end()) {
     event->second.final_seen++;
     if (observation.texture_count > 32 ||
         (observation.texture_count && !observation.textures))
-      captured.rejected = true;
+      frame.rejected = true;
     else
       for (uint32_t i = 0; i < observation.texture_count; ++i)
         event->second.versioned_textures +=
             observation.textures[i].allocation_id != 0 &&
             observation.textures[i].payload_generation != 0;
   }
-  const auto found = captured.draws.find(observation.draw_sequence);
-  if (found == captured.draws.end()) return;
+  const auto found = frame.draws.find(observation.draw_sequence);
+  if (found == frame.draws.end()) return;
   auto& draw = found->second;
   if (draw.final_seen || !observation.system_constant_words ||
       observation.system_constant_word_count < draw.system.size() ||
@@ -302,7 +305,7 @@ void CaptureOrderedUiFinalState(
       !observation.viewport || !observation.scissor ||
       observation.texture_count > 32 ||
       (observation.texture_count && !observation.textures)) {
-    captured.rejected = true;
+    frame.rejected = true;
     return;
   }
   draw.final_seen = true;
@@ -321,15 +324,34 @@ void CaptureOrderedUiFinalState(
 }
 
 void FlushOrderedUiFrame(uint64_t output_frame) {
+  static const uint64_t trace_frame = std::strtoull(
+      rex::cvar::GetFlagByName("pinyon_shift_snr01_trace_source_frame").c_str(),
+      nullptr, 10);
+  static const uint64_t shadow_start = std::strtoull(
+      rex::cvar::GetFlagByName("pinyon_shift_native_ui_shadow_start_frame").c_str(),
+      nullptr, 10);
+  const uint64_t source_frame = output_frame + 1;
+  const bool shadow = shadow_start && source_frame >= shadow_start &&
+      source_frame - shadow_start < 24;
+  if (!shadow && source_frame != trace_frame) return;
   Frame frame;
+  size_t draws = 0;
+  uint64_t payload_bytes = 0;
+  bool complete = false;
   {
     std::lock_guard lock(capture_mutex);
-    if (!captured.source_frame || captured.source_frame != output_frame + 1)
-      return;
-    frame = std::move(captured);
-    captured = {};
+    if (const auto captured = captured_frames.find(source_frame);
+        captured != captured_frames.end()) {
+      draws = captured->second.draws.size();
+      payload_bytes = captured->second.payload_bytes;
+      complete = CompleteUi(captured->second);
+      if (source_frame == trace_frame) frame = captured->second;
+    }
   }
-  const bool complete = CompleteUi(frame);
+  if (shadow)
+    REXGPU_WARN("FH1 UI shadow source_frame={} draws={} complete={} bytes={}",
+                source_frame, draws, complete, payload_bytes);
+  if (source_frame != trace_frame || !frame.source_frame) return;
   const auto output = diagnostics::EnvironmentPath(
       "PINYON_SHIFT_FH1_RENDER_TEST_OUTPUT");
   if (!output) return;
@@ -430,10 +452,6 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
               "complete={} written={} path={}", frame.source_frame,
               frame.draws.size(), frame.payload_bytes, complete, bool(stream),
               path.string());
-  if (complete && stream) {
-    std::lock_guard lock(capture_mutex);
-    completed_ui = std::move(frame);
-  }
 }
 
 }  // namespace pinyon_shift::native_renderer

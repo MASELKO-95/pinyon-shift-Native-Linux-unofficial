@@ -107,11 +107,18 @@ byte match or 90% score is required.
 
 ### RAY-02 — replay live in shadow
 
-- [ ] Use the same replay path on continuously captured race frames while the
+The [first live shadow segment](RAYMAN_LIVE_SHADOW_2026-09-25.md) has six
+consecutive saved native images with updating world and readable HUD while
+compatibility remains displayed. One no-producer UI frame correctly stays
+on compatibility. The official moving and UI stress routes also exited
+normally with distinct shadow images. Retained UI state across producer gaps
+remains RAY-03 work.
+
+- [x] Use the same replay path on continuously captured race frames while the
   compatibility image remains the displayed output. Reuse current-frame
   resource pinning, admission and route automation. Avoid the old full-fixture
   serialization, stage waits and readback in the live feed.
-- [ ] Run the moving-race and UI-admission stress routes. Inspect adjacent
+- [x] Run the moving-race and UI-admission stress routes. Inspect adjacent
   frames for world/HUD alignment, missing UI producers, changing resources and
   gross capture overhead. Fix only failures that prevent coherent continuous
   replay; keep a short list of visible gaps for RAY-04.
