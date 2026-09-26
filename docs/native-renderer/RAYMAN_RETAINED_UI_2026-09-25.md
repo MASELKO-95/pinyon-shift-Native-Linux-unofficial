@@ -29,3 +29,11 @@ version model. It does not cover consecutive no-producer frames, unobserved
 target writes, longer drives, or UI draws from another target. The replay
 window still ends after 24 source frames, and the native world needs visual
 work before RAY-03 can be called playable.
+
+Follow-up: the live window now records consumed draw, copy and clear events
+that name this exact HUD surface. The guard checks those events before
+reusing the previous draw set. A further UI-admission stress run exited
+normally; source frame 6791 again had no HUD producer and output 6792
+promoted the retained HUD. This narrows the inference to a frame with no
+observed HUD-target writes. It still does not prove every possible guest
+write or identify the final resolve/target version.

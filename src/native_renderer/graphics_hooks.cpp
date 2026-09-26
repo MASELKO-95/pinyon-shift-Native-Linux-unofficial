@@ -2583,13 +2583,15 @@ void ObservePreparedDraw(
     const rex::system::GraphicsPreparedDrawObservation& observation) {
   const auto ui_capture_frame =
       REXCVAR_GET(pinyon_shift_snr01_trace_source_frame);
-  if (ui_capture_frame > 0 &&
-      observation.frame_sequence == uint64_t(ui_capture_frame)) {
+  const bool trace = ui_capture_frame > 0 &&
+      observation.frame_sequence == uint64_t(ui_capture_frame);
+  const bool shadow_ui_target = UiShadowFrame(observation.frame_sequence) &&
+      observation.surface_info == 0x14000500 &&
+      observation.color_info[0] == 0x000A0000;
+  if (trace || shadow_ui_target) {
     pinyon_shift::native_renderer::CaptureOrderedFrameDraw(observation);
   }
-  if (((ui_capture_frame > 0 &&
-        observation.frame_sequence == uint64_t(ui_capture_frame)) ||
-       UiShadowFrame(observation.frame_sequence)) &&
+  if ((trace || shadow_ui_target) &&
       observation.surface_info == 0x14000500 &&
       observation.color_info[0] == 0x000A0000 &&
       observation.bound_render_target_bits == 2) {
@@ -3069,7 +3071,10 @@ void ObserveIndirectBuffer(
 void ObserveCopy(const rex::system::GraphicsCopyObservation& observation) {
   RecordFh1GpuCopy(observation);
   static const int32_t target = REXCVAR_GET(pinyon_shift_snr01_trace_source_frame);
-  if (target > 0 && observation.frame_sequence == uint64_t(target))
+  if ((target > 0 && observation.frame_sequence == uint64_t(target)) ||
+      (UiShadowFrame(observation.frame_sequence) &&
+       observation.surface_info == 0x14000500 &&
+       observation.color_info[0] == 0x000A0000))
     pinyon_shift::native_renderer::CaptureOrderedFrameCopy(observation);
   if (target <= 0 || observation.frame_sequence + 1 < uint64_t(target) ||
       observation.frame_sequence > uint64_t(target) +
@@ -3111,7 +3116,10 @@ void ObserveCopy(const rex::system::GraphicsCopyObservation& observation) {
 void ObserveFh1Clear(
     const rex::system::GraphicsFh1ClearObservation& observation) {
   const auto target = REXCVAR_GET(pinyon_shift_snr01_trace_source_frame);
-  if (target > 0 && observation.frame_sequence == uint64_t(target))
+  if ((target > 0 && observation.frame_sequence == uint64_t(target)) ||
+      (UiShadowFrame(observation.frame_sequence) &&
+       observation.surface_info == 0x14000500 &&
+       observation.color_info == 0x000A0000))
     pinyon_shift::native_renderer::CaptureOrderedFrameClear(observation);
 }
 
@@ -3186,10 +3194,12 @@ void InstallGraphicsCensus(rex::system::IGraphicsSystem* graphics_system,
           : nullptr);
   graphics_system->SetCopyObserver(
       enabled || REXCVAR_GET(pinyon_shift_snr01_trace_source_frame) > 0
+          || REXCVAR_GET(pinyon_shift_native_ui_shadow_start_frame) > 0
           ? &ObserveCopy
           : nullptr);
   graphics_system->SetFh1ClearObserver(
-      REXCVAR_GET(pinyon_shift_snr01_trace_source_frame) > 0
+      REXCVAR_GET(pinyon_shift_snr01_trace_source_frame) > 0 ||
+          REXCVAR_GET(pinyon_shift_native_ui_shadow_start_frame) > 0
           ? &ObserveFh1Clear : nullptr);
 }
 
