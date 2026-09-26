@@ -15,6 +15,7 @@
 #include "native_renderer/native_output_triangle.h"
 #endif
 #include "native_renderer/snr04_owned_scene_diagnostic.h"
+#include "native_renderer/ordered_ui_capture.h"
 
 REXCVAR_DEFINE_BOOL(pinyon_shift_native_output_clear_probe, false,
                     "Pinyon Shift",
@@ -180,6 +181,7 @@ bool ObserveRenderTestOutput(
   pinyon_shift::native_renderer::ObserveSnr04BatchOutputFrame(
       context.frame_sequence, context.device,
       captured_frame == context.frame_sequence ? capture_us : 0);
+  pinyon_shift::native_renderer::FlushOrderedUiFrame(context.frame_sequence);
   return false;
 }
 

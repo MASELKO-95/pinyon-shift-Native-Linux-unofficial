@@ -42,6 +42,7 @@
 
 #include "native_renderer/fh1_gpu_corpus.h"
 #include "native_renderer/guest_output_renderer.h"
+#include "native_renderer/ordered_ui_capture.h"
 #include "fh1_render_test.h"
 #include "pinyon_shift_diagnostics.h"
 #if defined(_WIN32)
@@ -2205,6 +2206,7 @@ void ObserveSnr02TrackFinalDrawState(
 
 void ObserveSnr03FinalDrawState(
     const rex::system::GraphicsFinalDrawStateObservation& observation) {
+  pinyon_shift::native_renderer::CaptureOrderedUiFinalState(observation);
   ObserveSnr02TrackFinalDrawState(observation);
   ObserveSnr02ItemFinalDrawState(observation);
   if (!Snr03ProbeOutputFrame(observation.frame_sequence)) return;
@@ -2569,6 +2571,15 @@ void ObserveSnr02ItemVertexPayload(
 
 void ObservePreparedDraw(
     const rex::system::GraphicsPreparedDrawObservation& observation) {
+  const auto ui_capture_frame =
+      REXCVAR_GET(pinyon_shift_snr01_trace_source_frame);
+  if (ui_capture_frame > 0 &&
+      observation.frame_sequence == uint64_t(ui_capture_frame) &&
+      observation.surface_info == 0x14000500 &&
+      observation.color_info[0] == 0x000A0000 &&
+      observation.bound_render_target_bits == 2) {
+    pinyon_shift::native_renderer::CaptureOrderedUiDraw(observation);
+  }
   ObserveSnr02ItemVertexPayload(observation);
   ObserveSnr03VertexPayload(observation);
   ObserveSnr03CharacterPayload(observation);
