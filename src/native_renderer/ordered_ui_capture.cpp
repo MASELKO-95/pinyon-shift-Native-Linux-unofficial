@@ -287,6 +287,8 @@ bool WithOrderedFrameDraws(
     std::copy(event.system.begin(), event.system.end(), draw.system.begin());
     std::copy(event.fetch.begin(), event.fetch.end(),
               draw.fetch_constants.begin());
+    std::copy(event.bool_loop.begin(), event.bool_loop.end(),
+              draw.bool_loop.begin());
     draw.viewport = event.viewport;
     draw.scissor = event.scissor;
     draw.textures = event.textures;

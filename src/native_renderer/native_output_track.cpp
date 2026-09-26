@@ -15,6 +15,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -36,6 +37,8 @@ using PipelineKey = std::tuple<uint64_t, uint64_t, uint32_t, uint32_t, uint32_t,
     uint32_t>;
 using RemainderPipelineKey = std::tuple<uint64_t, uint64_t, uint32_t,
     uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>;
+using ProducerPipelineKey = std::tuple<uint64_t, uint64_t, uint64_t,
+    uint64_t, uint32_t>;
 
 uint32_t TrackMaterialKind(const Snr04TrackDraw& draw) {
   if (draw.shader == 0x0CBC533419F61E0Dull &&
@@ -118,7 +121,7 @@ struct UploadArena {
 };
 
 struct TrackFrame {
-  ComPtr<ID3D12Resource> upload, depth, color, color_tiles, hud;
+  ComPtr<ID3D12Resource> upload, depth, color, color_tiles, offscreen, hud;
   std::array<ComPtr<ID3D12Resource>, 2> initial_color_versions;
   std::array<ComPtr<ID3D12Resource>, 3> depth_versions;
   ComPtr<ID3D12DescriptorHeap> rtv, dsv, srv, materials, samplers;
@@ -173,6 +176,18 @@ struct RemainderDrawBinding {
   D3D12_RECT scissor{};
 };
 
+struct ProducerDrawBinding {
+  uint64_t sequence = 0;
+  ProducerPipelineKey pipeline;
+  uint64_t index = 0, vertex = 0, b0 = 0, b1 = 0, b3 = 0;
+  uint64_t descriptors = 0, pixel_constants = 0, bool_loop = 0;
+  uint32_t count = 0, material_count = 0, view_offset = 0;
+  std::array<uint32_t, 2> materials{};
+  bool feedback = false;
+  D3D12_VIEWPORT viewport{};
+  D3D12_RECT scissor{};
+};
+
 struct TrackGraphics {
   ComPtr<ID3D12Device> device;
   ComPtr<ID3D12RootSignature> root;
@@ -185,6 +200,7 @@ struct TrackGraphics {
   std::map<std::tuple<uint64_t, uint64_t, bool>,
            ComPtr<ID3D12PipelineState>> item_pipelines;
   std::map<RemainderPipelineKey, ComPtr<ID3D12PipelineState>> remainder_pipelines;
+  std::map<ProducerPipelineKey, ComPtr<ID3D12PipelineState>> producer_pipelines;
   std::deque<std::pair<uint64_t, TrackFrame>> submitted;
 
   bool Ready(ID3D12Device* current) {
@@ -193,6 +209,7 @@ struct TrackGraphics {
       pipelines.clear();
       item_pipelines.clear();
       remainder_pipelines.clear();
+      producer_pipelines.clear();
       root.Reset();
       pixel.Reset();
       pixel_textured.Reset();
@@ -550,6 +567,51 @@ struct TrackGraphics {
                   "specialization={:X}", draw.pixel_shader,
                   draw.pixel_specialization);
     remainder_pipelines.emplace(key, std::move(pipeline));
+    return true;
+  }
+
+  bool ProducerPipeline(
+      const rex::system::NativeGuestOutputRenderContext& context,
+      const OrderedUiDraw& draw) {
+    const ProducerPipelineKey key{draw.vertex_shader,
+                                  draw.vertex_specialization,
+                                  draw.pixel_shader,
+                                  draw.pixel_specialization, draw.raster};
+    if (producer_pipelines.contains(key)) return true;
+    const uint8_t *vertex = nullptr, *pixel_bytecode = nullptr;
+    size_t vertex_size = 0, pixel_size = 0;
+    if (!context.shader || !draw.pixel_shader ||
+        !context.shader(context, 0, draw.vertex_shader,
+                        draw.vertex_specialization, &vertex, &vertex_size) ||
+        !context.shader(context, 1, draw.pixel_shader,
+                        draw.pixel_specialization, &pixel_bytecode,
+                        &pixel_size) || !vertex || !pixel_bytecode ||
+        vertex_size < 4 || pixel_size < 4 ||
+        std::memcmp(vertex, "DXBC", 4) ||
+        std::memcmp(pixel_bytecode, "DXBC", 4)) return false;
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
+    desc.pRootSignature = root.Get();
+    desc.VS = {vertex, vertex_size};
+    desc.PS = {pixel_bytecode, pixel_size};
+    desc.BlendState.RenderTarget[0].RenderTargetWriteMask =
+        D3D12_COLOR_WRITE_ENABLE_ALL;
+    desc.SampleMask = UINT_MAX;
+    desc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+    desc.RasterizerState.CullMode = (draw.raster & 2)
+        ? D3D12_CULL_MODE_BACK : D3D12_CULL_MODE_NONE;
+    desc.RasterizerState.FrontCounterClockwise = (draw.raster & 4) == 0;
+    desc.RasterizerState.DepthClipEnable = TRUE;
+    // ponytail: skip depth until its earlier EDRAM producer is replayed;
+    // this target is diagnostic and must not replace the guest texture yet.
+    desc.DepthStencilState.DepthEnable = FALSE;
+    desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    desc.NumRenderTargets = 1;
+    desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    ComPtr<ID3D12PipelineState> pipeline;
+    if (FAILED(device->CreateGraphicsPipelineState(
+            &desc, IID_PPV_ARGS(&pipeline)))) return false;
+    producer_pipelines.emplace(key, std::move(pipeline));
     return true;
   }
 
@@ -925,13 +987,21 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
           D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
           IID_PPV_ARGS(&frame.color_tiles))))
     return false;
-  if (ordered_tiles)
+  if (ordered_tiles) {
+    auto producer_desc = color_desc;
+    producer_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    if (FAILED(device->CreateCommittedResource(
+            &default_heap, D3D12_HEAP_FLAG_NONE, &producer_desc,
+            D3D12_RESOURCE_STATE_RENDER_TARGET, nullptr,
+            IID_PPV_ARGS(&frame.offscreen))))
+      return false;
     for (auto& version : frame.initial_color_versions)
       if (FAILED(device->CreateCommittedResource(
-              &default_heap, D3D12_HEAP_FLAG_NONE, &color_desc,
+              &default_heap, D3D12_HEAP_FLAG_NONE, &producer_desc,
               D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
               IID_PPV_ARGS(&version))))
         return false;
+  }
   if (!scene_only) {
     color_desc.Flags = D3D12_RESOURCE_FLAG_NONE;
     if (FAILED(device->CreateCommittedResource(
@@ -969,7 +1039,7 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
         return false;
 
   D3D12_DESCRIPTOR_HEAP_DESC heap_desc{};
-  heap_desc.NumDescriptors = 2;
+  heap_desc.NumDescriptors = ordered_tiles ? 3 : 2;
   heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
   if (FAILED(device->CreateDescriptorHeap(&heap_desc,
                                           IID_PPV_ARGS(&frame.rtv))))
@@ -981,6 +1051,11 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
   output_rtv.ptr += device->GetDescriptorHandleIncrementSize(
       D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
   device->CreateRenderTargetView(output, nullptr, output_rtv);
+  if (ordered_tiles) {
+    output_rtv.ptr += device->GetDescriptorHandleIncrementSize(
+        D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    device->CreateRenderTargetView(frame.offscreen.Get(), nullptr, output_rtv);
+  }
   heap_desc.NumDescriptors = 1;
   heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
   if (FAILED(device->CreateDescriptorHeap(&heap_desc,
@@ -1373,6 +1448,130 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       rex::cvar::GetFlagByName("pinyon_shift_snr01_trace_source_frame").c_str(),
       nullptr, 10);
   const bool ordered_tiles = trace_frame && live.source_frame + 1 == trace_frame;
+  std::optional<std::vector<OrderedFrameOperation>> ordered_operations;
+  std::vector<ProducerDrawBinding> producer_bindings;
+  uint64_t producer_clear_sequence = 0;
+  if (ordered_tiles) {
+    ordered_operations = SnapshotOrderedFrameOperations(trace_frame);
+    if (!ordered_operations) return reject("ordered_stream");
+    const auto first_copy = std::find_if(
+        ordered_operations->begin(), ordered_operations->end(),
+        [](const auto& event) {
+          return event.kind == 'C' && event.dest_base == 484626432 &&
+              event.copy.source_base_tiles == 720;
+        });
+    if (first_copy == ordered_operations->end())
+      return reject("ordered_initial_color_missing");
+    const auto clear = std::find_if(
+        std::make_reverse_iterator(first_copy), ordered_operations->rend(),
+        [](const auto& event) {
+          return event.kind == 'K' && event.color == 720;
+        });
+    const auto second_copy = std::find_if(
+        std::next(first_copy), ordered_operations->end(),
+        [](const auto& event) {
+          return event.kind == 'C' && event.dest_base == 484626432 &&
+              event.copy.source_base_tiles == 720;
+        });
+    if (clear == ordered_operations->rend() ||
+        second_copy == ordered_operations->end())
+      return reject("ordered_initial_producer_range");
+    producer_clear_sequence = clear->sequence;
+    if (!WithOrderedFrameDraws(trace_frame, clear->sequence + 1,
+                              second_copy->sequence - 1,
+                              [&](const auto& draws) {
+      for (const auto& [sequence, draw] : draws) {
+        if (draw.color != 720 || !draw.pixel_shader) continue;
+        const bool feedback = sequence > first_copy->sequence;
+        if (draw.primitive != 13 || draw.vertices.size() != 1 ||
+            draw.index_count != (feedback ? 4u : 24u) ||
+            draw.index_type != (feedback ? 0u : 1u) ||
+            draw.textures.size() != (feedback ? 1u : 2u) ||
+            draw.vertices[0].constant >= 96 ||
+            draw.vertices[0].bytes.empty() ||
+            draw.viewport[0] != 0 || draw.viewport[1] != 0 ||
+            draw.viewport[2] != 1280 || draw.viewport[3] != 720 ||
+            draw.scissor != std::array<int32_t, 4>{0, 0, 1280, 720} ||
+            !graphics.ProducerPipeline(context, draw)) return false;
+        ProducerDrawBinding binding;
+        binding.sequence = sequence;
+        binding.pipeline = {draw.vertex_shader, draw.vertex_specialization,
+                            draw.pixel_shader, draw.pixel_specialization,
+                            draw.raster};
+        binding.feedback = feedback;
+        binding.count = draw.index_count;
+        binding.vertex = arena.Add(draw.vertices[0].bytes.data(),
+                                   draw.vertices[0].bytes.size());
+        if (!feedback) {
+          if (draw.indices.size() != draw.index_length ||
+              draw.index_length < draw.index_count * 2) return false;
+          binding.index = arena.Add(draw.indices.data(), draw.indices.size());
+        }
+        std::array<uint32_t, 120> system{};
+        std::copy(draw.system.begin(), draw.system.end(), system.begin());
+        binding.b0 = arena.Add(system.data(), sizeof(system));
+        std::array<uint32_t, 1024> vertex_constants{}, pixel_constants{};
+        uint32_t vertex_words = 0, pixel_words = 0;
+        for (uint32_t reg = 0; reg < 256; ++reg) {
+          if (draw.vertex_bitmap[reg / 64] &
+              (uint64_t(1) << (reg % 64))) {
+            std::copy_n(draw.constants.data() + reg * 4, 4,
+                        vertex_constants.data() + vertex_words);
+            vertex_words += 4;
+          }
+          if (draw.pixel_bitmap[reg / 64] &
+              (uint64_t(1) << (reg % 64))) {
+            std::copy_n(draw.constants.data() + (256 + reg) * 4, 4,
+                        pixel_constants.data() + pixel_words);
+            pixel_words += 4;
+          }
+        }
+        binding.b1 = arena.Add(vertex_constants.data(),
+                               sizeof(vertex_constants));
+        binding.pixel_constants = arena.Add(pixel_constants.data(),
+                                            sizeof(pixel_constants));
+        auto fetch = draw.fetch_constants;
+        const uint32_t slot = draw.vertices[0].constant * 2;
+        if ((fetch[slot] & 0x1FFFFFFC) !=
+                (draw.vertices[0].base & 0x1FFFFFFC) ||
+            (fetch[slot + 1] & 0x03FFFFFC) != draw.vertices[0].length)
+          return false;
+        fetch[slot] &= 3;
+        binding.b3 = arena.Add(fetch.data(), sizeof(fetch));
+        binding.bool_loop = arena.Add(draw.bool_loop.data(),
+                                      sizeof(draw.bool_loop));
+        std::array<uint32_t, 12> descriptors{};
+        for (uint32_t j = 0; j < draw.textures.size(); ++j) {
+          const auto& texture = draw.textures[j];
+          Snr04TrackTextureIdentity identity;
+          identity.sequence = sequence;
+          identity.fetch_constant = texture.fetch_constant;
+          std::copy_n(texture.fetch_words, 6,
+                      identity.fetch_words.begin());
+          identity.allocation_id = texture.allocation_id;
+          identity.payload_generation = texture.payload_generation;
+          identity.outdated_mask = texture.outdated_mask;
+          if (!resolve_material(identity, binding.materials[j], true))
+            return false;
+          descriptors[j * 3 + 1] = j;
+          descriptors[j * 3 + 2] = j * 2;
+          descriptors[j * 3 + 3] = j * 2 + 1;
+        }
+        binding.material_count = uint32_t(draw.textures.size());
+        binding.descriptors = arena.Add(descriptors.data(),
+                                        sizeof(descriptors));
+        binding.viewport = {0, 0, 1280, 720,
+                            draw.viewport[4], draw.viewport[5]};
+        binding.scissor = {0, 0, 1280, 720};
+        producer_bindings.push_back(binding);
+      }
+      return producer_bindings.size() == 12 &&
+          std::count_if(producer_bindings.begin(), producer_bindings.end(),
+                        [](const auto& binding) {
+                          return binding.feedback;
+                        }) == 1;
+    })) return reject("prepare_initial_producer");
+  }
   TrackFrame frame;
   if (!CreateFrame(device, output, arena, scene_only, ordered_tiles, frame))
     return reject("create_frame");
@@ -1397,6 +1596,10 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
           original_count * 16;
       ++original_count;
     }
+  for (auto& binding : producer_bindings) {
+    binding.view_offset = uint32_t(materials.size()) + original_count * 16;
+    ++original_count;
+  }
   if (!materials.empty()) {
     D3D12_HEAP_PROPERTIES heap_properties{};
     heap_properties.Type = D3D12_HEAP_TYPE_DEFAULT;
@@ -1515,6 +1718,30 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         device->CreateShaderResourceView(snapshot, &view, slot);
       }
     }
+    for (const auto& binding : producer_bindings) {
+      for (uint32_t j = 0; j < binding.material_count; ++j) {
+        const auto& material = materials[binding.materials[j]];
+        auto view = material.view;
+        view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+        view.Texture2DArray.MostDetailedMip = 0;
+        view.Texture2DArray.MipLevels = 1;
+        view.Texture2DArray.FirstArraySlice = 0;
+        view.Texture2DArray.ArraySize = 1;
+        view.Texture2DArray.PlaneSlice = 0;
+        view.Texture2DArray.ResourceMinLODClamp = 0;
+        ID3D12Resource* resource = frame.material_resources[
+            binding.materials[j] * 2 + 1].Get();
+        if (binding.feedback) {
+          resource = frame.initial_color_versions[0].Get();
+          view.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        }
+        auto slot = frame.materials->GetCPUDescriptorHandleForHeapStart();
+        slot.ptr += SIZE_T(binding.view_offset + j * 2) * stride;
+        device->CreateShaderResourceView(resource, &view, slot);
+        slot.ptr += stride;
+        device->CreateShaderResourceView(resource, &view, slot);
+      }
+    }
   }
   {
     D3D12_DESCRIPTOR_HEAP_DESC heap{};
@@ -1553,17 +1780,21 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       (scene.draws.size() + item_bindings.size() +
        character_bindings.size() +
        vegetation_bindings.size() + manager_bindings.size() +
-       remainder_bindings.size() +
+       remainder_bindings.size() + producer_bindings.size() +
        materials.size()) * 512 + 8192);
   const auto base = frame.upload->GetGPUVirtualAddress();
   const auto rtv = frame.rtv->GetCPUDescriptorHandleForHeapStart();
   auto output_rtv = rtv;
   output_rtv.ptr += device->GetDescriptorHandleIncrementSize(
       D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+  auto offscreen_rtv = output_rtv;
+  offscreen_rtv.ptr += device->GetDescriptorHandleIncrementSize(
+      D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
   const auto dsv = frame.dsv->GetCPUDescriptorHandleForHeapStart();
   auto* scene_color = frame.color.Get();
   auto* scene_depth = frame.depth.Get();
   auto* color_tiles = frame.color_tiles.Get();
+  auto* offscreen = frame.offscreen.Get();
   std::array<ID3D12Resource*, 2> initial_color_versions{};
   for (size_t i = 0; i < initial_color_versions.size(); ++i)
     initial_color_versions[i] = frame.initial_color_versions[i].Get();
@@ -1813,6 +2044,44 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     if (binding.shader_bool)
       list->D3DSetGraphicsRootDescriptorTable(10, sampler_gpu_start);
   };
+  auto draw_producer = [&](const ProducerDrawBinding& binding) {
+    list->RSSetViewport(binding.viewport);
+    list->RSSetScissorRect(binding.scissor);
+    list->D3DIASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+    if (binding.feedback) {
+      list->D3DIASetIndexBuffer(nullptr);
+    } else {
+      D3D12_INDEX_BUFFER_VIEW index{base + binding.index,
+                                    binding.count * 2,
+                                    DXGI_FORMAT_R16_UINT};
+      list->D3DIASetIndexBuffer(&index);
+    }
+    list->D3DSetPipelineState(graphics.producer_pipelines.at(
+        binding.pipeline).Get());
+    list->D3DSetGraphicsRootConstantBufferView(0, base + binding.b0);
+    list->D3DSetGraphicsRootConstantBufferView(1, base + binding.b1);
+    list->D3DSetGraphicsRootConstantBufferView(2, base + binding.b3);
+    list->D3DSetGraphicsRootShaderResourceView(3, base + binding.vertex);
+    list->D3DSetGraphicsRootConstantBufferView(7,
+                                               base + binding.descriptors);
+    list->D3DSetGraphicsRootConstantBufferView(8,
+                                               base + binding.pixel_constants);
+    list->D3DSetGraphicsRootConstantBufferView(9, base + binding.bool_loop);
+    auto sampler = sampler_gpu_start;
+    sampler.ptr += 2 * sampler_stride;
+    list->D3DSetGraphicsRootDescriptorTable(10, sampler);
+    auto textures = material_gpu_start;
+    textures.ptr += SIZE_T(binding.view_offset) * material_stride;
+    list->D3DSetGraphicsRootDescriptorTable(11, textures);
+    list->D3DSetGraphicsRootDescriptorTable(12, textures);
+    const float fallback[]{1.f, 1.f, 1.f, 1.f};
+    list->D3DSetGraphicsRoot32BitConstants(4, 4, fallback, 0);
+    if (binding.feedback)
+      list->D3DDrawInstanced(binding.count, 1, 0, 0);
+    else
+      list->D3DDrawIndexedInstanced(binding.count, 1, 0, 0, 0);
+    list->D3DSetGraphicsRootDescriptorTable(10, sampler_gpu_start);
+  };
   using OrderedDraw = std::tuple<uint64_t, uint8_t, size_t>;
   std::vector<OrderedDraw> order;
   order.reserve(scene.draws.size() + item_bindings.size() +
@@ -1850,7 +2119,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   // Scene ownership uses output - 1; prepared GPU events keep the output frame.
   if (ordered_tiles) {
     if (order.empty()) return reject("ordered_source_empty");
-    const auto operations = SnapshotOrderedFrameOperations(trace_frame);
+    const auto& operations = ordered_operations;
     if (!operations) return reject("ordered_stream");
     std::map<uint64_t, std::pair<uint8_t, size_t>> supported;
     for (const auto& [sequence, family, index] : order)
@@ -1891,71 +2160,9 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       }
     }
     if (matched != order.size()) return reject("ordered_draw_mismatch");
-    const auto initial_copy = std::find_if(
-        operations->begin(), operations->end(), [](const auto& event) {
-          return event.kind == 'C' && event.dest_base == 484626432 &&
-              event.copy.source_base_tiles == 720;
-        });
-    if (initial_copy == operations->end())
-      return reject("ordered_initial_color_missing");
-    const auto producer_clear = std::find_if(
-        std::make_reverse_iterator(initial_copy), operations->rend(),
-        [](const auto& event) {
-          return event.kind == 'K' && event.color == 720;
-        });
-    const auto second_copy = std::find_if(
-        std::next(initial_copy), operations->end(), [](const auto& event) {
-          return event.kind == 'C' && event.dest_base == 484626432 &&
-              event.copy.source_base_tiles == 720;
-        });
-    if (producer_clear == operations->rend() ||
-        second_copy == operations->end() ||
-        !WithOrderedFrameDraws(trace_frame,
-            producer_clear->sequence + 1, second_copy->sequence - 1,
-            [&](const auto& draws) {
-              size_t color_draws = 0, feedback_draws = 0;
-              for (const auto& [sequence, draw] : draws) {
-                if (draw.color != 720) continue;
-                const uint8_t *shader = nullptr;
-                size_t shader_size = 0;
-                if (!context.shader ||
-                    !context.shader(context, 0, draw.vertex_shader,
-                                    draw.vertex_specialization, &shader,
-                                    &shader_size) || !shader || shader_size < 4 ||
-                    std::memcmp(shader, "DXBC", 4))
-                  return false;
-                if (draw.pixel_shader &&
-                    (!context.shader(context, 1, draw.pixel_shader,
-                                     draw.pixel_specialization, &shader,
-                                     &shader_size) || !shader ||
-                     shader_size < 4 || std::memcmp(shader, "DXBC", 4)))
-                  return false;
-                for (const auto& texture : draw.textures) {
-                  void* resource = nullptr;
-                  D3D12_SHADER_RESOURCE_VIEW_DESC view{};
-                  bool immutable = false;
-                  if (!context.texture ||
-                      !context.texture(context, texture.fetch_words,
-                                       texture.allocation_id,
-                                       texture.payload_generation, &resource,
-                                       &view, &immutable) || !resource ||
-                      !immutable)
-                    return false;
-                }
-                if (sequence < initial_copy->sequence && draw.index_type == 1 &&
-                    draw.primitive == 13 && draw.textures.size() == 2)
-                  ++color_draws;
-                if (sequence > initial_copy->sequence &&
-                    draw.index_type == 0 && draw.primitive == 13 &&
-                    draw.textures.size() == 1)
-                  ++feedback_draws;
-              }
-              REXGPU_WARN("FH1 RAY01 initial producer frame={} draws={} "
-                          "color={} feedback={}", trace_frame, draws.size(),
-                          color_draws, feedback_draws);
-              return color_draws == 11 && feedback_draws == 1;
-            }))
-      return reject("ordered_initial_producer_inputs");
+    for (const auto& binding : producer_bindings)
+      if (supported.contains(binding.sequence))
+        return reject("ordered_producer_overlap");
     const auto first_draw = std::lower_bound(
         operations->begin(), operations->end(), std::get<0>(order.front()),
         [](const OrderedFrameOperation& event, uint64_t sequence) {
@@ -1984,7 +2191,17 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     uint32_t copied_height = 0, tile_copies = 0, tile_base = 0;
     uint32_t depth_height = 0, depth_copies = 0, depth_base = 0;
     uint32_t initial_color_copies = 0;
+    size_t producer_index = 0;
     for (const auto& event : *operations) {
+      if (event.sequence == producer_clear_sequence) {
+        if (event.kind != 'K' || !(event.clear_flags & 1) ||
+            event.rectangle_count != 1 ||
+            event.bounds[0] != std::array<int32_t, 4>{0, 0, 640, 360})
+          return reject("ordered_producer_clear");
+        list->D3DClearRenderTargetView(offscreen_rtv,
+                                      event.clear_color[0].data(), 0, nullptr);
+        list->D3DOMSetRenderTargets(1, &offscreen_rtv, FALSE, nullptr);
+      }
       if (main_clear && event.sequence == main_clear->sequence) {
         const auto& bounds = event.bounds[0];
         const D3D12_RECT rect{bounds[0], bounds[1], bounds[2], bounds[3]};
@@ -2038,17 +2255,27 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
             event.copy.physical_width != 1280 ||
             event.copy.physical_height != 720 ||
             event.copy.dest_x || event.copy.dest_y ||
-            event.copy.dest_pitch != 1280)
+            event.copy.dest_pitch != 1280 ||
+            producer_index != (initial_color_copies ? 12u : 11u))
           return reject("ordered_initial_color_shape");
-        barrier.Transition.pResource = scene_color;
+        barrier.Transition.pResource = offscreen;
         barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
         barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
         list->D3DResourceBarrier(1, &barrier);
         list->D3DCopyResource(initial_color_versions[initial_color_copies],
-                              scene_color);
+                              offscreen);
         std::swap(barrier.Transition.StateBefore,
                   barrier.Transition.StateAfter);
         list->D3DResourceBarrier(1, &barrier);
+        if (!initial_color_copies) {
+          barrier.Transition.pResource = initial_color_versions[0];
+          barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+          barrier.Transition.StateAfter =
+              D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+          list->D3DResourceBarrier(1, &barrier);
+        } else {
+          list->D3DOMSetRenderTargets(1, &rtv, FALSE, &dsv);
+        }
         REXGPU_WARN("FH1 RAY01 ordered initial color frame={} sequence={} "
                     "version={}", trace_frame, event.sequence,
                     initial_color_copies);
@@ -2096,14 +2323,24 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
                     height, copied_height);
       }
       if (event.kind != 'D') continue;
+      if (producer_index < producer_bindings.size() &&
+          event.sequence == producer_bindings[producer_index].sequence) {
+        draw_producer(producer_bindings[producer_index]);
+        ++producer_index;
+        continue;
+      }
       if (const auto found = supported.find(event.sequence);
           found != supported.end())
         issue_draw(found->second.first, found->second.second);
     }
-    if (initial_color_copies != 2 ||
+    if (producer_index != producer_bindings.size() ||
+        initial_color_copies != 2 ||
         tile_copies != 3 || copied_height != 720 ||
         depth_copies != 3 || depth_height != 720)
       return reject("ordered_tiles_incomplete");
+    REXGPU_WARN("FH1 RAY01 offscreen producer frame={} color_draws=11 "
+                "feedback_draws=1 copies={}", trace_frame,
+                initial_color_copies);
   } else {
     for (const auto& entry : order)
       issue_draw(std::get<1>(entry), std::get<2>(entry));

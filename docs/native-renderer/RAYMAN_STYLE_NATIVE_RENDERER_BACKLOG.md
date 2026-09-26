@@ -149,8 +149,14 @@ the offscreen producer and feedback draw still need native replay.
 The [producer-input pilot](RAYMAN_INITIAL_COLOR_PRODUCER_INPUTS_2026-09-26.md)
 now exposes the bounded post-clear draw payload to the live replay. All 13
 draws have owned geometry/final state, and the native backend retrieves their
-original shader bytecode and immutable textures. Issuing the draws into an
-offscreen target remains the next step.
+original shader bytecode and immutable textures. The offscreen pilot now
+uses those payloads.
+The [offscreen producer pilot](RAYMAN_INITIAL_COLOR_OFFSCREEN_2026-09-26.md)
+now issues eleven original-shader color draws and the feedback draw into an
+owned RGBA target and makes both ordered copies from it. The guest first
+version is a full scene image; a diagnostic view of the native version shows
+large flat regions instead. It remains detached from consumers while target
+history, depth and binding differences are resolved.
 
 - [ ] Feed the selected event stream into the existing D3D12 native output,
   retaining draw order, targets, clears, depth, resolves, viewport, scissor,
@@ -348,13 +354,16 @@ not a prerequisite for the first usable renderer.
 Use the continuous opt-in run as the RAY-03 test bed. The isolated
 track-texture resolution miss did not recur on the next route and is covered
 by whole-frame fallback. Use the new ordered color-tile replay as the
-target-copy pilot. Reconstruct the heavily reused initial color texture at
-guest base `484626432` in the existing D3D12 output. Preserve the tiled
-color texture's retained starting version; replace the initial guest depth
-texture and route the owned color/depth versions to their later consumers.
-Then use the stream's owned geometry, pinned textures
-and final state to issue remaining visible main-scene draws. Save the
-resulting full-frame image and integrate the same-frame HUD at its ordered
+target-copy pilot. Compare the initial offscreen RGBA target against the
+pinned guest version at the same ordinal; restore the target and depth
+history needed to make its scene image coherent before binding it to
+consumers. This mismatch is not a blocker to a usable first renderer: keep
+the pinned guest version while issuing remaining visible world draws.
+Preserve the tiled color texture's retained starting version, replace the
+initial guest depth texture when its producer is ready, and route owned
+color/depth versions to later consumers. Use the stream's owned geometry,
+pinned textures and final state to issue remaining visible main-scene draws.
+Save the resulting full-frame image and integrate the same-frame HUD at its ordered
 suffix.
 Treat `0x00030000` and `0x000C0000` as format aliases over one EDRAM base,
 not separate color targets.

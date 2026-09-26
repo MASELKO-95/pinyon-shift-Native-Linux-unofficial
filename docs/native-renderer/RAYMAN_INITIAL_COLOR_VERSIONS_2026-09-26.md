@@ -28,3 +28,7 @@ passed: 2,877 draws, 94 copies, 20 clears, 413 pinned texture versions and
 88 complete nonzero-size copy inputs. `verify-ordered-ui-capture.py` passed
 all 166 UI draws. Runtime artifacts are under
 `.local/ray-ui-native-promotion-20260925/ordered-initial-color-versions-output/`.
+
+The later [offscreen producer pilot](RAYMAN_INITIAL_COLOR_OFFSCREEN_2026-09-26.md)
+changed these snapshots to read from a separate native target. This note
+records the earlier copy-only milestone.

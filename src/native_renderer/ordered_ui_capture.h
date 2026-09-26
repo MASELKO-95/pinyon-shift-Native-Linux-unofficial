@@ -41,6 +41,7 @@ struct OrderedUiDraw {
   uint32_t raster = 0, clip = 0, final_depth = 0;
   std::array<uint32_t, 64> system{};
   std::array<uint32_t, 192> fetch_constants{};
+  std::array<uint32_t, 40> bool_loop{};
   std::array<float, 6> viewport{};
   std::array<int32_t, 4> scissor{};
   std::vector<rex::system::GraphicsFinalDrawTextureIdentity> textures;
