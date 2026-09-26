@@ -60,12 +60,17 @@ The [textured UI pilot](RAYMAN_TEXTURED_UI_REPLAY_2026-09-25.md) now replays
 all 166 HUD draws with 16 pinned texture versions in one successful frame.
 Two adjacent repeat runs had no UI producer at the selected frame, making
 the scheduling/reuse gap the immediate obstacle to live admission.
+The [adjacent-frame census](RAYMAN_UI_PRODUCER_CADENCE_2026-09-25.md)
+confirmed three no-producer frames among ten while the compatibility HUD
+remained visible. Indexed-vertex trimming reduced a complete UI capture
+from about 67 MB to 2 MB without changing the rendered HUD.
 
 - [ ] From one moving-race frame and one known HUD-gap frame, record one
   ordered stream of draw, clear, resolve and output-target events. Each event
   identifies its source/output frame, target, shaders, state and immutable
   inputs or an exact existing resource version. Account for indirect and
-  deferred draws as well as UI/font draws.
+  deferred draws as well as UI/font draws. Represent a no-producer frame's
+  retained UI target/version explicitly.
 - [x] Compare the candidate title-level D3D hooks with the actual consumed
   GPU work. If they do not cover the frame, use the existing prepared/final
   draw observation boundary and add only the missing ordered target/clear/

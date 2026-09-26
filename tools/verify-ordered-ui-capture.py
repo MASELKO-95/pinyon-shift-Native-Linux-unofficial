@@ -1,4 +1,4 @@
-"""Check a one-frame RAYUI001 capture before using it for offline replay."""
+"""Check a one-frame ordered UI capture before using it for replay."""
 
 import json
 import struct
@@ -28,7 +28,8 @@ def verify(path: Path, allow_incomplete: bool = False) -> dict:
             value = ((value ^ byte) * 1099511628211) & 0xFFFFFFFFFFFFFFFF
         return value
 
-    if bytes(take(8)) != b"RAYUI001":
+    schema = bytes(take(8))
+    if schema not in (b"RAYUI001", b"RAYUI002"):
         raise ValueError("unexpected capture schema")
     frame, = unpack("Q")
     draw_count, complete = unpack("II")
@@ -42,7 +43,9 @@ def verify(path: Path, allow_incomplete: bool = False) -> dict:
     pair_endianness = {}
     pair_vertex_fetches = {}
     sequences = []
-    vertex_bytes = index_bytes = texture_versions = missing_final = 0
+    vertex_bytes = vertex_fetch_bytes = vertex_used_bytes = 0
+    index_bytes = texture_versions = missing_final = 0
+    unique_vertices = {}
     replay_eligible = 0
     texture_versions_seen = set()
     outdated_textures = 0
@@ -59,12 +62,15 @@ def verify(path: Path, allow_incomplete: bool = False) -> dict:
         vertices = []
         for _ in range(vertex_count):
             constant, stride, base, length, type_ = unpack("5I")
+            snapshot_length = unpack("I")[0] if schema == b"RAYUI002" else length
             expected_hash, = unpack("Q")
-            payload = take(length)
-            if not stride or fnv64(payload) != expected_hash:
+            payload = take(snapshot_length)
+            if not stride or not 0 < snapshot_length <= length or fnv64(payload) != expected_hash:
                 raise ValueError(f"draw {sequence}: vertex snapshot mismatch")
-            vertex_bytes += length
-            vertices.append((constant, stride, base, length))
+            vertex_bytes += snapshot_length
+            vertex_fetch_bytes += length
+            unique_vertices[(expected_hash, snapshot_length)] = snapshot_length
+            vertices.append((constant, stride, base, length, snapshot_length))
         expected_hash, = unpack("Q")
         indices = memoryview(b"")
         if index_type:
@@ -72,6 +78,13 @@ def verify(path: Path, allow_incomplete: bool = False) -> dict:
             if fnv64(indices) != expected_hash:
                 raise ValueError(f"draw {sequence}: index snapshot mismatch")
             index_bytes += index_length
+            if vertex_count == 1 and index_count and index_count * 2 <= index_length:
+                highest = max((indices[i] << 8) | indices[i + 1]
+                              for i in range(0, index_count * 2, 2))
+                used = (highest + 1) * vertices[0][1] * 4
+                vertex_used_bytes += min(vertices[0][3], used)
+                if index_endianness == 1 and used > vertices[0][4]:
+                    raise ValueError(f"draw {sequence}: vertex snapshot omits used index")
         texture_fetches, = unpack("I")
         if texture_fetches > 32:
             raise ValueError(f"draw {sequence}: invalid texture fetch count")
@@ -91,13 +104,13 @@ def verify(path: Path, allow_incomplete: bool = False) -> dict:
         ) and vertex_count == 1 and index_type == 1 and index_endianness == 1 \
                 and index_count > 0 and index_count * 2 <= index_length \
                 and vertices[0][0] < 96:
-            constant, stride, base, length = vertices[0]
+            constant, stride, base, length, snapshot_length = vertices[0]
             address, fetch_length = struct.unpack_from("<II", fetch_constants, constant * 8)
             highest = max((indices[i] << 8) | indices[i + 1]
                           for i in range(0, index_count * 2, 2))
             if ((address & 0x1FFFFFFC) == (base & 0x1FFFFFFC)
                     and (fetch_length & 0x03FFFFFC) == length
-                    and (highest + 1) * stride * 4 <= length
+                    and (highest + 1) * stride * 4 <= snapshot_length
                     and viewport[0:3] == (0, 0, 1280)
                     and 0 < viewport[3] <= 720
                     and 0 <= scissor[0] <= scissor[2] <= 1280
@@ -127,12 +140,16 @@ def verify(path: Path, allow_incomplete: bool = False) -> dict:
     missing = [value for left, right in zip(sequences, sequences[1:])
                for value in range(left + 1, right)]
     return {
-        "schema": "RAYUI001", "frame": frame, "draws": draw_count,
+        "schema": schema.decode(), "frame": frame, "draws": draw_count,
         "complete": bool(complete), "missing_final": missing_final,
         "first_sequence": sequences[0], "last_sequence": sequences[-1],
         "sequence_gaps": sequences[-1] - sequences[0] + 1 - draw_count,
         "missing_sequences": missing[:32],
         "shader_pairs": len(shaders), "vertex_bytes": vertex_bytes,
+        "vertex_fetch_bytes": vertex_fetch_bytes,
+        "unique_vertex_buffers": len(unique_vertices),
+        "unique_vertex_bytes": sum(unique_vertices.values()),
+        "vertex_used_bytes": vertex_used_bytes,
         "top_shader_pairs": [
             {"vertex": f"{vertex:016X}", "pixel": f"{pixel:016X}",
              "vertex_spec": f"{vertex_spec:X}",

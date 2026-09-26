@@ -227,7 +227,9 @@ void CaptureOrderedUiDraw(
   uint64_t payload_bytes = sizeof(draw.constants);
   for (uint32_t i = 0; i < observation.vertex_fetch_count; ++i) {
     const auto& input = observation.vertex_fetches[i];
-    if (input.cpu_snapshot_status != 1 || !input.cpu_snapshot_bytes) {
+    if (input.cpu_snapshot_status != 1 || !input.cpu_snapshot_bytes ||
+        !input.cpu_snapshot_length ||
+        input.cpu_snapshot_length > input.length) {
       Reject(observation.frame_sequence);
       return;
     }
@@ -238,7 +240,7 @@ void CaptureOrderedUiDraw(
     vertex.length = input.length;
     vertex.type = input.type;
     vertex.bytes.assign(input.cpu_snapshot_bytes,
-                        input.cpu_snapshot_bytes + input.length);
+                        input.cpu_snapshot_bytes + input.cpu_snapshot_length);
     vertex.hash = ArtifactHash(vertex.bytes);
     payload_bytes += vertex.bytes.size();
     draw.vertices.push_back(std::move(vertex));
@@ -378,7 +380,7 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
       ("ordered-ui-" + std::to_string(frame.source_frame) + ".bin");
   std::ofstream stream(path, std::ios::binary | std::ios::trunc);
   if (!stream) return;
-  stream.write("RAYUI001", 8);
+  stream.write("RAYUI002", 8);
   Write(stream, frame.source_frame);
   Write(stream, uint32_t(frame.draws.size()));
   Write(stream, uint32_t(complete));
@@ -400,7 +402,8 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
     Write(stream, uint32_t(draw.vertices.size()));
     for (const auto& vertex : draw.vertices) {
       for (uint32_t value : {vertex.constant, vertex.stride, vertex.base,
-                             vertex.length, vertex.type})
+                             vertex.length, vertex.type,
+                             uint32_t(vertex.bytes.size())})
         Write(stream, value);
       Write(stream, vertex.hash);
       WriteBytes(stream, vertex.bytes);

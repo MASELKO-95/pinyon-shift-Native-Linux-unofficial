@@ -37,7 +37,7 @@ REXCVAR_DEFINE_BOOL(pinyon_shift_native_track_probe, false,
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 REXCVAR_DEFINE_INT32(pinyon_shift_native_ui_replay_source_frame, 0,
                      "Pinyon Shift",
-                     "Render-test pilot for ordered untextured HUD replay")
+                     "Render-test pilot for ordered HUD replay")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 REXCVAR_DEFINE_BOOL(pinyon_shift_native_race, false, "Pinyon Shift",
                     "Experimental native race output (requires scene capture)")

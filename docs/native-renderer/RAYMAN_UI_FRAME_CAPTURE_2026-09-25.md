@@ -23,10 +23,20 @@ captured this run without a rejection. UI draw count varies with the route's
 timing; the artifact's complete flag checks the captured sequence, not the
 total UI draws the guest intended to emit.
 
-This is **not** an offline replay input yet. Texture bindings have allocation
+At this checkpoint, it was **not** an offline replay input yet. Texture
+bindings had allocation
 and payload-generation identities but no texture pixels. Clear, copy/resolve,
 and world/car work are not in this artifact, and the known HUD-gap frame has
 no UI producer at this seam. The next slice is a single ordered full-frame
 record with those target events and immutable texture inputs, followed by an
 offline D3D12 image. The repeated vertex snapshots are deliberately bounded
 for diagnosis; live shadow capture needs resource reuse instead.
+
+**Follow-up, 2026-09-25:** the capture now writes `RAYUI002`, preserving the
+original fetch length while storing only vertices referenced by the draw's
+index buffer. The verifier still reads `RAYUI001`. In a 166-draw replay run,
+vertex snapshot payload fell from about 66.3 MB of declared fetch ranges
+to 345,840 bytes, and the complete file was 2,045,836 bytes. The original
+textured HUD still rendered in the saved image. This removes the largest
+avoidable CPU copy in the diagnostic path, though live shadow still needs
+a bounded multi-frame owner and source texture retention.
