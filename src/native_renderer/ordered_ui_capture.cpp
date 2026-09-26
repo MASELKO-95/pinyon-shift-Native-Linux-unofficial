@@ -35,7 +35,7 @@ using Draw = OrderedUiDraw;
 
 struct Frame {
   uint64_t source_frame = 0, payload_bytes = 0, geometry_bytes = 0;
-  bool rejected = false, geometry_incomplete = false;
+  bool rejected = false, geometry_incomplete = false, state_incomplete = false;
   std::map<uint64_t, Draw> draws;
   std::map<std::pair<uint64_t, uint32_t>, std::vector<uint8_t>> geometry;
   struct VertexInput {
@@ -60,6 +60,10 @@ struct Frame {
     std::vector<VertexInput> vertices;
     uint32_t prepared_depth = 0, color_mask = 0;
     uint32_t raster = 0, clip = 0, final_depth = 0;
+    uint64_t dynamic_state = 0;
+    std::array<uint64_t, 4> vertex_bitmap{}, pixel_bitmap{};
+    bool state_bitmap_ready = false, state_snapshot_ready = false;
+    std::vector<uint32_t> constants, system, fetch, bool_loop;
     std::array<float, 6> viewport{};
     std::array<int32_t, 4> scissor{};
     std::vector<rex::system::GraphicsFinalDrawTextureIdentity> textures;
@@ -121,6 +125,11 @@ void Write(std::ofstream& stream, const std::array<T, N>& value) {
 void WriteBytes(std::ofstream& stream, const std::vector<uint8_t>& bytes) {
   if (!bytes.empty())
     stream.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+}
+
+void WriteWords(std::ofstream& stream, const std::vector<uint32_t>& words) {
+  stream.write(reinterpret_cast<const char*>(words.data()),
+               words.size() * sizeof(uint32_t));
 }
 
 uint64_t ArtifactHash(const uint8_t* bytes, size_t length) {
@@ -228,6 +237,15 @@ void CaptureOrderedFrameDraw(
       rex::cvar::GetFlagByName("pinyon_shift_snr01_trace_source_frame").c_str(),
       nullptr, 10);
   if (observation.frame_sequence == trace_frame) {
+    event.state_bitmap_ready = observation.vertex_float_constant_bitmap &&
+        (!event.pixel_shader || observation.pixel_float_constant_bitmap);
+    if (event.state_bitmap_ready) {
+      std::copy_n(observation.vertex_float_constant_bitmap, 4,
+                  event.vertex_bitmap.begin());
+      if (event.pixel_shader)
+        std::copy_n(observation.pixel_float_constant_bitmap, 4,
+                    event.pixel_bitmap.begin());
+    }
     if (event.index_type && observation.index_cpu_snapshot_status == 1) {
       if (const auto hash = RecordGeometry(
               frame, observation.index_cpu_snapshot_bytes, event.index_length)) {
@@ -425,6 +443,33 @@ void CaptureOrderedUiFinalState(
         event->second.versioned_textures +=
             observation.textures[i].allocation_id != 0 &&
             observation.textures[i].payload_generation != 0;
+      static const uint64_t trace_frame = std::strtoull(
+          rex::cvar::GetFlagByName(
+              "pinyon_shift_snr01_trace_source_frame").c_str(), nullptr, 10);
+      if (observation.frame_sequence == trace_frame) {
+        auto& draw = event->second;
+        draw.state_snapshot_ready = draw.state_bitmap_ready &&
+            observation.vertex_float_constant_words &&
+            observation.system_constant_words &&
+            observation.system_constant_word_count >= 64 &&
+            observation.fetch_constant_words &&
+            observation.fetch_constant_word_count >= 192 &&
+            observation.bool_loop_constant_words &&
+            observation.bool_loop_constant_word_count >= 40;
+        if (draw.state_snapshot_ready) {
+          draw.dynamic_state = observation.dynamic_state;
+          draw.constants.assign(observation.vertex_float_constant_words,
+                                observation.vertex_float_constant_words + 2048);
+          draw.system.assign(observation.system_constant_words,
+                             observation.system_constant_words + 64);
+          draw.fetch.assign(observation.fetch_constant_words,
+                            observation.fetch_constant_words + 192);
+          draw.bool_loop.assign(observation.bool_loop_constant_words,
+                                observation.bool_loop_constant_words + 40);
+        } else {
+          frame.state_incomplete = true;
+        }
+      }
     }
   }
   const auto found = frame.draws.find(observation.draw_sequence);
@@ -515,7 +560,8 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
                 "prepared_depth,color_mask,raster,clip,final_depth,"
                 "viewport,scissor,texture_versions,index_snapshot_status,"
                 "index_snapshot_hash,vertex_inputs,geometry_incomplete,"
-                "index_blob_hash,index_blob_length,vertex_blobs\n";
+                "index_blob_hash,index_blob_length,vertex_blobs,"
+                "state_snapshot_ready,state_incomplete\n";
       for (const auto& [sequence, event] : frame.events) {
         events << event.kind << ',' << sequence << ',' << event.surface << ','
                << event.color << ',' << event.depth << ',' << event.target_bits
@@ -572,6 +618,8 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
         for (size_t i = 0; i < event.vertices.size(); ++i)
           events << (i ? ";" : "") << event.vertices[i].blob_hash << ':'
                  << event.vertices[i].blob_length;
+        events << ',' << uint32_t(event.state_snapshot_ready) << ','
+               << uint32_t(frame.state_incomplete);
         events << '\n';
       }
       events.close();
@@ -579,6 +627,36 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
                   "written={} path={}", frame.source_frame,
                   frame.events.size(), frame.rejected, bool(events),
                   path.string());
+    }
+  }
+  if (!frame.events.empty()) {
+    const auto path = *output /
+        ("ordered-state-" + std::to_string(frame.source_frame) + ".bin");
+    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    if (stream) {
+      stream.write("RAYSTA01", 8);
+      Write(stream, frame.source_frame);
+      const uint32_t draw_count = uint32_t(std::count_if(
+          frame.events.begin(), frame.events.end(),
+          [](const auto& item) { return item.second.kind == 'D'; }));
+      Write(stream, draw_count);
+      for (const auto& [sequence, event] : frame.events) {
+        if (event.kind != 'D') continue;
+        Write(stream, sequence);
+        Write(stream, uint32_t(event.state_snapshot_ready));
+        if (!event.state_snapshot_ready) continue;
+        Write(stream, event.dynamic_state);
+        Write(stream, event.vertex_bitmap);
+        Write(stream, event.pixel_bitmap);
+        WriteWords(stream, event.constants);
+        WriteWords(stream, event.system);
+        WriteWords(stream, event.fetch);
+        WriteWords(stream, event.bool_loop);
+      }
+      stream.close();
+      REXGPU_INFO("FH1 RAY00 state frame={} draws={} incomplete={} "
+                  "written={} path={}", frame.source_frame, draw_count,
+                  frame.state_incomplete, bool(stream), path.string());
     }
   }
   if (!frame.geometry.empty()) {

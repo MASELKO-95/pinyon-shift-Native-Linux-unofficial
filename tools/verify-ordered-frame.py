@@ -8,6 +8,8 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+STATE_PAYLOAD_BYTES = 8 + 8 * 8 + (2048 + 64 + 192 + 40) * 4
+
 
 def verify(path: Path) -> dict:
     with path.open(newline="") as file:
@@ -50,6 +52,8 @@ def verify(path: Path) -> dict:
     geometry_blob_refs = set()
     geometry_incomplete = 0
     geometry_payload_ready_draws = 0
+    state_snapshot_ready_draws = 0
+    state_manifest_present = False
     if "texture_versions" in rows[0]:
         for row in draws:
             viewport = [float(value) for value in row["viewport"].split(":")]
@@ -140,6 +144,33 @@ def verify(path: Path) -> dict:
                 if int(row["index_snapshot_status"]) == 1 and not geometry_incomplete:
                     raise ValueError(f"missing index blob at ordinal {row['sequence']}")
             geometry_payload_ready_draws += payload_ready
+    if "state_snapshot_ready" in rows[0]:
+        flags = {int(row["state_incomplete"]) for row in rows}
+        if len(flags) != 1:
+            raise ValueError("inconsistent ordered state completion")
+        state_path = path.parent / f"ordered-state-{frame}.bin"
+        data = state_path.read_bytes()
+        if data[:8] != b"RAYSTA01" or len(data) < 20 or struct.unpack_from("<Q", data, 8)[0] != int(frame):
+            raise ValueError("invalid ordered state artifact header")
+        count = struct.unpack_from("<I", data, 16)[0]
+        if count != len(draws):
+            raise ValueError("ordered state draw count mismatch")
+        offset = 20
+        for row in draws:
+            if offset + 12 > len(data):
+                raise ValueError("truncated ordered state record")
+            sequence, ready = struct.unpack_from("<QI", data, offset)
+            offset += 12
+            if sequence != int(row["sequence"]) or ready != int(row["state_snapshot_ready"]):
+                raise ValueError("ordered state sequence or status mismatch")
+            if ready:
+                if offset + STATE_PAYLOAD_BYTES > len(data):
+                    raise ValueError("truncated ordered draw state")
+                offset += STATE_PAYLOAD_BYTES
+                state_snapshot_ready_draws += 1
+        if offset != len(data) or bool(flags.pop()) == (state_snapshot_ready_draws == len(draws)):
+            raise ValueError("invalid ordered state completion")
+        state_manifest_present = True
     geometry_blob_count = 0
     geometry_blob_bytes = 0
     unreferenced_geometry_blobs = 0
@@ -219,6 +250,8 @@ def verify(path: Path) -> dict:
         "geometry_blob_bytes": geometry_blob_bytes,
         "unreferenced_geometry_blobs": unreferenced_geometry_blobs,
         "geometry_payload_ready_draws": geometry_payload_ready_draws,
+        "state_manifest_present": state_manifest_present,
+        "state_snapshot_ready_draws": state_snapshot_ready_draws,
     }
 
 
@@ -236,5 +269,8 @@ if __name__ == "__main__":
                                result["unique_texture_versions"] or
                                result["outdated_texture_keys"] or
                                result["geometry_payload_ready_draws"] !=
+                               result["draws"] or
+                               not result["state_manifest_present"] or
+                               result["state_snapshot_ready_draws"] !=
                                result["draws"]):
         raise SystemExit(1)
