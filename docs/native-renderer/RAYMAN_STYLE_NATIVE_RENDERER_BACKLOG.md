@@ -198,13 +198,14 @@ building family produced neon-yellow surfaces and was reverted. Diagnose its
 resource/constant interpretation before readmitting it. Evidence:
 `.local/ray-ui-native-promotion-20260925/terrain-title-toggle-output` and
 `facade-title-toggle-output`.
-The live draw now consumes the captured procedural-character fixture and
-uses its recorded tiled viewport/scissor. A same-run native/compatibility/
-native toggle exited normally, but the visible spectator crowd remains absent.
-That fixture contains about ten draws; the separate character-manager family
-has hundreds of draws and is not yet rendered live. Replay that larger family
-with source order and depth before calling the crowd gap closed. Evidence:
-`.local/ray-ui-native-promotion-20260925/crowd-title-toggle-output`.
+The live draw consumes the procedural-character fixture and its recorded
+tiled viewport/scissor. The separate character-manager family now joins
+backend draw packets and final state without title records and replays in
+native race output. At source frame 5000, 30 packets/90 manager draws were
+admitted and spectator silhouettes are visible. This closes the missing
+crowd *geometry* gap on the scripted route; material color and whole-frame
+ordering still need a matched comparison. See
+[manager live evidence](RAYMAN_MANAGER_LIVE_2026-09-26.md).
 
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major
@@ -237,7 +238,7 @@ not a prerequisite for the first usable renderer.
 
 ## Next implementation slice
 
-Use the continuous opt-in run as the RAY-03 test bed. Replace the roughest
-visible world and car output with replay from the existing ordered capture
-seam, keeping the complete-frame fallback. Then perform the longer unscripted
-drive required by RAY-04. Profile only after that drive is playable.
+Use the continuous opt-in run as the RAY-03 test bed. Resolve the remaining
+flat building/terrain layers and cross-family draw order, keeping the
+complete-frame fallback. Then perform the longer unscripted drive required
+by RAY-04. Profile only after that drive is playable.
