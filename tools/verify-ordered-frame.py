@@ -40,6 +40,7 @@ def verify(path: Path) -> dict:
     state_draws = 0
     texture_keys = 0
     outdated_texture_keys = 0
+    requested_texture_versions = set()
     geometry_metadata_draws = 0
     geometry_snapshot_ready_draws = 0
     missing_index_snapshots = 0
@@ -65,6 +66,24 @@ def verify(path: Path) -> dict:
             state_draws += 1
             texture_keys += len(keys)
             outdated_texture_keys += sum(key[9] != 0 for key in keys)
+            requested_texture_versions.update(tuple(key[1:9]) for key in keys
+                                              if key[7] and key[8] and not key[9])
+    frame = path.stem.rsplit("-", 1)[-1]
+    pin_path = path.parent / f"ordered-texture-pins-{frame}.csv"
+    pinned_texture_versions = set()
+    if pin_path.is_file():
+        with pin_path.open(newline="") as file:
+            pins = list(csv.DictReader(file))
+        for pin in pins:
+            key = tuple(int(pin[f"word{i}"]) for i in range(6)) + (
+                int(pin["allocation_id"]), int(pin["payload_generation"]))
+            if key in pinned_texture_versions:
+                raise ValueError("duplicate pinned texture version")
+            if not int(pin["width"]) or not int(pin["height"]) or not int(pin["mips"]):
+                raise ValueError("invalid pinned texture description")
+            pinned_texture_versions.add(key)
+        if not requested_texture_versions.issubset(pinned_texture_versions):
+            raise ValueError("ordered texture versions missing from pinned manifest")
     if "vertex_inputs" in rows[0]:
         for row in draws:
             inputs = row["vertex_inputs"].split(";") if row["vertex_inputs"] else []
@@ -76,11 +95,15 @@ def verify(path: Path) -> dict:
                 raise ValueError(f"invalid index metadata at ordinal {row['sequence']}")
             index_ready = not int(row["index_type"]) or index_status == 1
             vertex_ready = (len(vertices) == int(row["vertex_fetches"])
-                            and all(vertex[4] == 1 for vertex in vertices))
+                            and all(vertex[4] == 1 or
+                                    (vertex[2] == 0 and vertex[4] == 3)
+                                    for vertex in vertices))
             geometry_metadata_draws += 1
             geometry_snapshot_ready_draws += index_ready and vertex_ready
             missing_index_snapshots += not index_ready
-            missing_vertex_snapshots += sum(vertex[4] != 1 for vertex in vertices)
+            missing_vertex_snapshots += sum(
+                vertex[4] != 1 and not (vertex[2] == 0 and vertex[4] == 3)
+                for vertex in vertices)
             truncated_vertex_metadata += len(vertices) != int(row["vertex_fetches"])
             vertex_ranges.update((vertex[1], vertex[2]) for vertex in vertices)
     if "vertex_blobs" in rows[0]:
@@ -102,7 +125,8 @@ def verify(path: Path) -> dict:
                         raise ValueError(f"invalid vertex blob at ordinal {row['sequence']}")
                     geometry_blob_refs.add(tuple(blob))
                 else:
-                    payload_ready = False
+                    payload_ready = (payload_ready and vertex[2] == 0
+                                     and vertex[4] == 3)
                     if vertex[4] == 1 and not geometry_incomplete:
                         raise ValueError(f"missing vertex blob at ordinal {row['sequence']}")
             index_length = int(row["index_blob_length"])
@@ -120,7 +144,6 @@ def verify(path: Path) -> dict:
     geometry_blob_bytes = 0
     unreferenced_geometry_blobs = 0
     if geometry_blob_refs:
-        frame = path.stem.rsplit("-", 1)[-1]
         artifact = path.parent / f"ordered-geometry-{frame}.bin"
         data = artifact.read_bytes()
         if data[:8] != b"RAYGEO01" or len(data) < 20 or struct.unpack_from("<Q", data, 8)[0] != int(frame):
@@ -180,6 +203,11 @@ def verify(path: Path) -> dict:
                                            for row in draws),
         "state_draws": state_draws, "texture_keys": texture_keys,
         "outdated_texture_keys": outdated_texture_keys,
+        "unique_texture_versions": len(requested_texture_versions),
+        "texture_manifest_present": pin_path.is_file(),
+        "pinned_texture_versions": len(pinned_texture_versions),
+        "unreferenced_pinned_textures": len(pinned_texture_versions -
+                                           requested_texture_versions),
         "geometry_metadata_draws": geometry_metadata_draws,
         "geometry_snapshot_ready_draws": geometry_snapshot_ready_draws,
         "missing_index_snapshots": missing_index_snapshots,
@@ -195,9 +223,18 @@ def verify(path: Path) -> dict:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: verify-ordered-frame.py ordered-frame-N.csv")
+    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and
+                                     sys.argv[2] != "--require-owned-inputs"):
+        raise SystemExit("usage: verify-ordered-frame.py ordered-frame-N.csv "
+                         "[--require-owned-inputs]")
     result = verify(Path(sys.argv[1]))
     print(json.dumps(result, indent=2))
     if result["missing_final"] or result["failed_copies"]:
+        raise SystemExit(1)
+    if len(sys.argv) == 3 and (not result["texture_manifest_present"] or
+                               result["pinned_texture_versions"] !=
+                               result["unique_texture_versions"] or
+                               result["outdated_texture_keys"] or
+                               result["geometry_payload_ready_draws"] !=
+                               result["draws"]):
         raise SystemExit(1)
