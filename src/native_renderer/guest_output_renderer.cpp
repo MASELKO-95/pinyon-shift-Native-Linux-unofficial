@@ -137,6 +137,7 @@ bool DrawShadow(const rex::system::NativeGuestOutputRenderContext& context,
             context.frame_sequence, [&](const auto& draws) {
               auto next = draws.begin();
               bool started = false;
+              bool final_copy = false;
               for (const auto& event : *operations) {
                 if (next != draws.end() && event.sequence == next->first) {
                   const auto& draw = next->second;
@@ -146,12 +147,21 @@ bool DrawShadow(const rex::system::NativeGuestOutputRenderContext& context,
                     return false;
                   started = true;
                   ++next;
-                } else if (started && (event.kind == 'D' ||
-                           next != draws.end())) {
-                  return false;
+                } else if (started) {
+                  const auto& last = draws.rbegin()->second;
+                  if (next != draws.end() || final_copy || event.kind != 'C' ||
+                      event.sequence != operations->back().sequence ||
+                      !event.succeeded || !event.dest_base ||
+                      !event.dest_pitch || event.resolve_width != 1280 ||
+                      event.resolve_height != 720 ||
+                      event.surface != last.surface ||
+                      event.depth != last.depth ||
+                      (event.color & 0xFFFFu) != (last.color & 0xFFFFu))
+                    return false;
+                  final_copy = true;
                 }
               }
-              return started && next == draws.end();
+              return started && next == draws.end() && final_copy;
             })) return false;
   }
   if (!scene || !ui_frame)

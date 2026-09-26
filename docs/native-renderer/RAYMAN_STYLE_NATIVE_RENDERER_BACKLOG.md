@@ -124,8 +124,10 @@ source frame 5001 and saves a recognizable shadow image with the HUD from that
 same frame. The other 1,796 draws and 94 copies remain counted but unexecuted.
 The selected-frame replay applies one of 20 captured clears: the main scene
 color/depth clear at its stream ordinal when its target and rectangle match
-the native surface. Other target operations and original pixel programs
-remain next.
+the native surface. Selected-frame takeover also requires the UI draws to be
+the stream's final draw suffix and the last event to be a successful full-size
+copy from that UI surface. Intermediate target operations and original pixel
+programs remain next.
 
 - [ ] Feed the selected event stream into the existing D3D12 native output,
   retaining draw order, targets, clears, depth, resolves, viewport, scissor,

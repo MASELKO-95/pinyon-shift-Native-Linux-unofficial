@@ -72,6 +72,17 @@ This executes one of 20 captured clears; the other clears, all 94 copies,
 target aliases, and stencil handling remain open. A separate source-5001
 no-producer run rejected selected-frame takeover and retained compatibility.
 
+The selected-frame takeover now requires one terminal successful 1280×720
+copy from the UI surface, after the last UI draw, with a concrete guest
+destination. The existing native scratch-to-output copy is the presentation
+operation for this selected event; earlier guest-visible copies are still
+performed by the compatibility renderer. An opt-in route under
+`.local/ray-ui-native-promotion-20260925/ordered-final-copy-output/` ended
+with 167 UI draws followed by copy ordinal 11301438 to destination 471109632.
+The log confirmed the main clear and native promotion; the saved frame was
+visually readable. Strict verification passed for all 3,006 owned draws and
+417/417 texture pins, and the UI capture verifier passed.
+
 Next: execute target changes, clears and copies in the same event loop, then
 bring the remaining draws and UI into that loop. Keep the pilot in shadow
 until a complete saved frame is coherent.

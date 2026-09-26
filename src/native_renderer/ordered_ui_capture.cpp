@@ -180,6 +180,11 @@ std::optional<std::vector<OrderedFrameOperation>> SnapshotOrderedFrameOperations
   for (const auto& [sequence, event] : found->second.events) {
     OrderedFrameOperation operation{sequence, event.kind, event.surface,
                                     event.color, event.depth, event.target_bits};
+    operation.dest_base = event.dest_base;
+    operation.dest_pitch = event.dest_pitch;
+    operation.resolve_width = event.resolve_width;
+    operation.resolve_height = event.resolve_height;
+    operation.succeeded = event.succeeded;
     operation.clear_mode = event.clear_mode;
     operation.clear_flags = event.clear_flags;
     operation.rectangle_count = event.rectangle_count;
