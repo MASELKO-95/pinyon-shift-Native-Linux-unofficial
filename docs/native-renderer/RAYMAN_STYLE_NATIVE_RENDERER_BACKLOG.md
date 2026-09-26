@@ -177,6 +177,10 @@ route. Compare a matched Xenos frame
 and inspect sampled values before calling this car-quality gap closed. The
 scripted native and Xenos runs diverged in game time and car position at the
 same output frame, so an unscripted drive remains essential for playability.
+The [dynamic car blend check](RAYMAN_DYNAMIC_CAR_BLEND_2026-09-26.md) removed
+a zero-only constant restriction from the original no-texture car shader.
+This closed a repeated `prepare_remainder` fallback interval in a short race
+route; one later `track_structure_texture` rejection remains to diagnose.
 The first original track structure program now uses its three pinned
 source-frame textures, pixel constants and bool word. In the corrected
 title-to-race route, the former flat-purple structure gains truck and support
@@ -245,7 +249,7 @@ not a prerequisite for the first usable renderer.
 
 ## Next implementation slice
 
-Use the continuous opt-in run as the RAY-03 test bed. Explain the
-`prepare_remainder` fallback in the scripted race, then perform the longer
-unscripted drive required by RAY-04. Continue RAY-00/01 toward one
-authoritative ordered frame stream. Profile only after that drive is playable.
+Use the continuous opt-in run as the RAY-03 test bed. Diagnose the remaining
+intermittent track-texture fallback, then perform the longer unscripted drive
+required by RAY-04. Continue RAY-00/01 toward one authoritative ordered
+frame stream. Profile only after that drive is playable.
