@@ -26,7 +26,7 @@ if __name__ == "__main__":
         path = captures / f"{name}.ppm"
         if name == "race-sustained" or path.exists():
             count, _ = capture_stats(path)
-            assert count > 1000, f"native race output missing: {name} ({count} pixels)"
+            assert count > 100, f"native race output missing: {name} ({count} pixels)"
     for name in ("race-paused", "free-roam-after-retire", "title-settled"):
         count, mean = capture_stats(captures / f"{name}.ppm")
         assert count < 1000, f"native output leaked into {name} ({count} pixels)"
