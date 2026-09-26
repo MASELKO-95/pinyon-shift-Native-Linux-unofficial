@@ -44,6 +44,12 @@ textures; zero missing final draws). `tools/verify-ordered-ui-capture.py
 ordered-ui-5001.bin` passed. The render test exited normally and the shadow
 image was visually inspected.
 
+An opt-in repeat with `--pinyon_shift_native_race=true` also exited normally.
+Its output-5001 log recorded `ui_frame=5001` and `promoted=true`; the saved
+`manager-frame.ppm` visibly contains the native road, car, scenery and HUD.
+That checks selected-frame presentation, not continuous complete-stream
+replay.
+
 Next: execute target changes, clears and copies in the same event loop, then
 bring the remaining draws and UI into that loop. Keep the pilot in shadow
 until a complete saved frame is coherent.
