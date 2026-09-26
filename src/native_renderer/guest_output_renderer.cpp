@@ -279,21 +279,27 @@ bool ObserveRenderTestOutput(
     if (captured_frame != context.frame_sequence) capture_scene();
 #if defined(_WIN32)
     DrainShadow(context.completed_submission);
-    static const uint64_t shadow_start = std::strtoull(
-        rex::cvar::GetFlagByName(
-            "pinyon_shift_native_ui_shadow_start_frame").c_str(),
-        nullptr, 10);
+    static const bool live =
+        rex::cvar::GetFlagByName("pinyon_shift_native_ui_live") == "true";
+    static const uint64_t shadow_start = [] {
+      const auto configured = std::strtoull(
+          rex::cvar::GetFlagByName(
+              "pinyon_shift_native_ui_shadow_start_frame").c_str(),
+          nullptr, 10);
+      return configured ? configured : live ? uint64_t(1) : uint64_t(0);
+    }();
     const uint64_t source_frame = context.frame_sequence - 1;
-    if (shadow_start && pinyon_shift::fh1_render_test::Enabled()) {
-      if (source_frame >= shadow_start &&
-          source_frame - shadow_start < 24) {
-        const bool promote =
-            native_race_enabled.load(std::memory_order_acquire) &&
-            pinyon_shift::native_renderer::NativeRaceAdmittedForOutput(
-                context.frame_sequence);
-        return DrawShadow(context, source_frame - shadow_start >= 8 &&
+    if (shadow_start && (pinyon_shift::fh1_render_test::Enabled() || live)) {
+      const bool admitted = native_race_enabled.load(std::memory_order_acquire) &&
+          pinyon_shift::native_renderer::NativeRaceAdmittedForOutput(
+              context.frame_sequence);
+      const bool pilot = source_frame >= shadow_start &&
+          source_frame - shadow_start < 24;
+      if (pilot || (live && source_frame >= shadow_start && admitted)) {
+        return DrawShadow(context, pilot &&
+                                      source_frame - shadow_start >= 8 &&
                                       source_frame - shadow_start < 16,
-                          promote);
+                          admitted);
       }
       return false;
     }

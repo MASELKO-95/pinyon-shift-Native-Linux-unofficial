@@ -103,7 +103,10 @@ REXCVAR_DEFINE_INT32(pinyon_shift_native_race_capture_start_frame, 0,
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 REXCVAR_DEFINE_INT32(pinyon_shift_native_ui_shadow_start_frame, 0,
                      "Pinyon Shift",
-                     "Capture 24 adjacent race UI frames for native shadow replay")
+                     "Optional source frame to begin native race UI replay")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+REXCVAR_DEFINE_BOOL(pinyon_shift_native_ui_live, false, "Pinyon Shift",
+                    "Continue complete native race UI replay after the pilot window")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 namespace {
@@ -120,9 +123,15 @@ bool NativeRaceCaptureEnabled() {
 }
 
 bool UiShadowFrame(uint64_t frame) {
-  const auto start = REXCVAR_GET(pinyon_shift_native_ui_shadow_start_frame);
+  const auto configured = REXCVAR_GET(pinyon_shift_native_ui_shadow_start_frame);
+  const bool live = REXCVAR_GET(pinyon_shift_native_ui_live);
+  const auto start = configured > 0 ? configured : live ? 1 : 0;
   return start > 0 && frame >= uint64_t(start) &&
-         frame - uint64_t(start) < 24;
+         (frame - uint64_t(start) < 24 ||
+          (live &&
+           pinyon_shift::native_renderer::NativeRaceRequested() &&
+           pinyon_shift::native_renderer::NativeRaceAdmittedForOutput(
+               frame + 1)));
 }
 
 bool Snr04LiveCaptureEnabled() {
@@ -3194,12 +3203,14 @@ void InstallGraphicsCensus(rex::system::IGraphicsSystem* graphics_system,
           : nullptr);
   graphics_system->SetCopyObserver(
       enabled || REXCVAR_GET(pinyon_shift_snr01_trace_source_frame) > 0
-          || REXCVAR_GET(pinyon_shift_native_ui_shadow_start_frame) > 0
+          || REXCVAR_GET(pinyon_shift_native_ui_shadow_start_frame) > 0 ||
+          REXCVAR_GET(pinyon_shift_native_ui_live)
           ? &ObserveCopy
           : nullptr);
   graphics_system->SetFh1ClearObserver(
       REXCVAR_GET(pinyon_shift_snr01_trace_source_frame) > 0 ||
-          REXCVAR_GET(pinyon_shift_native_ui_shadow_start_frame) > 0
+          REXCVAR_GET(pinyon_shift_native_ui_shadow_start_frame) > 0 ||
+          REXCVAR_GET(pinyon_shift_native_ui_live)
           ? &ObserveFh1Clear : nullptr);
 }
 

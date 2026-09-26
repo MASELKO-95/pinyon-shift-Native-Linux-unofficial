@@ -1,6 +1,7 @@
 # Native renderer: complete-frame backlog
 
-Status: active delivery plan, 2026-09-25. This supersedes the delivery order
+Status: active delivery plan, updated 2026-09-26. This supersedes the delivery
+order
 in the [scene-native backlog](SCENE_NATIVE_RENDERER_BACKLOG.md); that document
 remains the implementation and evidence ledger. The
 [Rayman study](RAYMAN_NATIVE_RENDERER_RESEARCH_2026-09-25.md) explains the
@@ -129,15 +130,19 @@ frames with readable, updating world and HUD, and no unbounded capture stall.
 ### RAY-03 — own the visible race output
 
 The [bounded takeover pilot](RAYMAN_NATIVE_TAKEOVER_PILOT_2026-09-25.md)
-now copies a complete scene-plus-HUD scratch frame into guest output only
-when both passes succeed. The hot-toggle route showed native presentation,
+first copied a complete scene-plus-HUD scratch frame into guest output only
+when both passes succeeded. Its hot-toggle route showed native presentation,
 full compatibility fallback on a no-producer HUD frame, and recovery after
-turning native output off and on. The 24-frame capture limit, intermittent
-HUD producer and rough world still prevent a sustained playable race.
+turning native output off and on.
 The [retained HUD pilot](RAYMAN_RETAINED_UI_2026-09-25.md) now replays the
 immediately previous complete HUD on a no-draw frame when no target-write
 event intervened. One observed gap stayed native, but the exact guest target
 version and longer-run cadence still need validation.
+The [continuous race run](RAYMAN_CONTINUOUS_NATIVE_RACE_2026-09-26.md) extends
+opt-in promotion beyond the 24-frame pilot. Scripted runs covered more than
+300 moving frames, hot toggle, pause/resume and return to compatibility.
+The native road and car remain visibly rough; the world does not yet consume
+one authoritative ordered event stream.
 
 - [ ] Route the complete native frame through the existing guest-output hook
   and hot toggle. Select one output target from the captured target/resolve
@@ -182,12 +187,9 @@ measured frame-time improvement without breaking the race or compatibility
 fallback. A Rayman-style null backend is an optional later implementation,
 not a prerequisite for the first usable renderer.
 
-## First implementation slice
+## Next implementation slice
 
-Start with RAY-00, then immediately build RAY-01 from the chosen stream. The
-first code change should add the smallest ordered event feed at the selected
-existing observation seam and a single-frame replay consumer. It should
-produce an inspectable image, not another family-specific evidence ledger.
-After that image exists, move straight to RAY-02 and RAY-03. Reassess this
-backlog only when a concrete missing producer or guest-visible dependency
-forces a different seam.
+Use the continuous opt-in run as the RAY-03 test bed. Replace the roughest
+visible world and car output with replay from the existing ordered capture
+seam, keeping the complete-frame fallback. Then perform the longer unscripted
+drive required by RAY-04. Profile only after that drive is playable.
