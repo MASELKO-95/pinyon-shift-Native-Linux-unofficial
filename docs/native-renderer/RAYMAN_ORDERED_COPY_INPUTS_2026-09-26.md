@@ -24,16 +24,26 @@ The new source fields correct the main intermediate dependency:
 | Copy role | Source select / EDRAM base | Destination | Extent |
 | --- | --- | --- | --- |
 | Initial depth | depth (4), base 0 | `497831936` | 1280×720 |
+| Initial color | color (0), base 720 | `484626432` | 1280×720 |
 | Main tile 1 | depth (4), base 1024 | `497831936` | 1280×256 |
+| Main tile 1 | color (0), base 0 | `474877952` | 1280×256 |
 | Main tile 2 | depth (4), base 1024 | `499142656` | 1280×256 |
+| Main tile 2 | color (0), base 0 | `476188672` | 1280×256 |
 | Main tile 3 | depth (4), base 1024 | `500453376` | 1280×208 |
+| Main tile 3 | color (0), base 0 | `477499392` | 1280×208 |
 | Final presentation | color (0), base 0 | `471109632` | 1280×720 |
 
-The three tile destinations are consecutive sections of one 1280×720
-guest depth texture. Earlier pinned versions of that texture are sampled
-by offscreen and main-scene draws. The next implementation step is to make
-the native depth target and its ordered resolves produce the versions those
-draws consume; pinned compatibility versions remain a bring-up reference.
+The three tile destinations in each column are consecutive sections of a
+1280×720 guest texture. Joining exact texture versions to the same capture
+found 1,274 bindings to the initial color destination `484626432`, 65 to
+the tiled color destination `474877952`, and 15 to the depth destination
+`497831936`. These are binding counts, not an estimate of visible pixels,
+but the initial color version is a much broader dependency than the depth
+version alone. Some bindings to the tiled color destination precede its
+first tile write, so its retained starting version also matters. The next
+implementation step is to produce the ordered
+color and depth versions together, starting with the heavily reused initial
+color resolve. Pinned compatibility versions remain a bring-up reference.
 Color target aliases `0x00030000` and `0x000C0000` still share EDRAM base
 zero and must not be split.
 

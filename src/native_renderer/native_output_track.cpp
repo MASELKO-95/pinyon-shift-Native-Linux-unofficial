@@ -118,7 +118,7 @@ struct UploadArena {
 };
 
 struct TrackFrame {
-  ComPtr<ID3D12Resource> upload, depth, color, hud;
+  ComPtr<ID3D12Resource> upload, depth, color, color_tiles, hud;
   ComPtr<ID3D12DescriptorHeap> rtv, dsv, srv, materials, samplers;
   std::vector<ComPtr<ID3D12Resource>> material_resources;
 };
@@ -880,7 +880,8 @@ bool PrepareRemainder(
 }
 
 bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
-                 const UploadArena& arena, bool scene_only, TrackFrame& frame) {
+                 const UploadArena& arena, bool scene_only,
+                 bool ordered_tiles, TrackFrame& frame) {
   D3D12_HEAP_PROPERTIES upload_heap{};
   upload_heap.Type = D3D12_HEAP_TYPE_UPLOAD;
   D3D12_RESOURCE_DESC upload_desc{};
@@ -916,6 +917,11 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
           &default_heap, D3D12_HEAP_FLAG_NONE, &color_desc,
           D3D12_RESOURCE_STATE_RENDER_TARGET, nullptr,
           IID_PPV_ARGS(&frame.color))))
+    return false;
+  if (ordered_tiles && FAILED(device->CreateCommittedResource(
+          &default_heap, D3D12_HEAP_FLAG_NONE, &color_desc,
+          D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+          IID_PPV_ARGS(&frame.color_tiles))))
     return false;
   if (!scene_only) {
     color_desc.Flags = D3D12_RESOURCE_FLAG_NONE;
@@ -969,7 +975,7 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
       frame.dsv->GetCPUDescriptorHandleForHeapStart());
   heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
   heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-  heap_desc.NumDescriptors = 2;
+  heap_desc.NumDescriptors = ordered_tiles ? 4 : 2;
   if (FAILED(device->CreateDescriptorHeap(&heap_desc,
                                           IID_PPV_ARGS(&frame.srv))))
     return false;
@@ -985,6 +991,14 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
   hud_view.ptr += device->GetDescriptorHandleIncrementSize(
       D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
   if (!scene_only) device->CreateShaderResourceView(frame.hud.Get(), &view, hud_view);
+  if (ordered_tiles) {
+    const auto stride = device->GetDescriptorHandleIncrementSize(
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    hud_view.ptr += stride;
+    device->CreateShaderResourceView(frame.color_tiles.Get(), &view, hud_view);
+    hud_view.ptr += stride;
+    device->CreateShaderResourceView(frame.color_tiles.Get(), &view, hud_view);
+  }
   return true;
 }
 
@@ -1339,8 +1353,12 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
                           remainder_bindings[i].material_index))
       return reject("remainder_texture");
   }
+  const auto trace_frame = std::strtoull(
+      rex::cvar::GetFlagByName("pinyon_shift_snr01_trace_source_frame").c_str(),
+      nullptr, 10);
+  const bool ordered_tiles = trace_frame && live.source_frame + 1 == trace_frame;
   TrackFrame frame;
-  if (!CreateFrame(device, output, arena, scene_only, frame))
+  if (!CreateFrame(device, output, arena, scene_only, ordered_tiles, frame))
     return reject("create_frame");
   uint32_t original_count = 0;
   for (auto& binding : bindings)
@@ -1528,6 +1546,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
   const auto dsv = frame.dsv->GetCPUDescriptorHandleForHeapStart();
   auto* scene_color = frame.color.Get();
+  auto* color_tiles = frame.color_tiles.Get();
   auto* hud = frame.hud.Get();
   auto* scene_srv = frame.srv.Get();
   auto* material_heap = frame.materials.Get();
@@ -1540,7 +1559,9 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   const auto sampler_gpu_start = sampler_heap->GetGPUDescriptorHandleForHeapStart();
   const auto sampler_stride = device->GetDescriptorHandleIncrementSize(
       D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
-  const auto scene_srv_gpu = frame.srv->GetGPUDescriptorHandleForHeapStart();
+  auto scene_srv_gpu = frame.srv->GetGPUDescriptorHandleForHeapStart();
+  if (ordered_tiles)
+    scene_srv_gpu.ptr += 2 * material_stride;
   graphics.submitted.emplace_back(context.submission, std::move(frame));
 
   // Snapshot before any later cache upload can refresh the same allocation.
@@ -1803,11 +1824,8 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       case 5: draw_remainder(index); break;
     }
   };
-  const auto trace_frame = std::strtoull(
-      rex::cvar::GetFlagByName("pinyon_shift_snr01_trace_source_frame").c_str(),
-      nullptr, 10);
   // Scene ownership uses output - 1; prepared GPU events keep the output frame.
-  if (trace_frame && scene.source_frame + 1 == trace_frame) {
+  if (ordered_tiles) {
     if (order.empty()) return reject("ordered_source_empty");
     const auto operations = SnapshotOrderedFrameOperations(trace_frame);
     if (!operations) return reject("ordered_stream");
@@ -1875,6 +1893,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
                       [](float value) { return std::isfinite(value); }))
         main_clear = &clear;
     }
+    uint32_t copied_height = 0, tile_copies = 0, tile_base = 0;
     for (const auto& event : *operations) {
       if (main_clear && event.sequence == main_clear->sequence) {
         const auto& bounds = event.bounds[0];
@@ -1886,11 +1905,53 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         REXGPU_WARN("FH1 RAY01 ordered main clear frame={} sequence={} "
                     "height={}", trace_frame, event.sequence, bounds[3]);
       }
+      if (event.kind == 'C' && event.copy.source_format == 3 &&
+          (event.copy.control & 7) == 0 &&
+          event.copy.source_base_tiles == 0 &&
+          event.resolve_width == 1280 && event.resolve_height) {
+        const auto height = event.resolve_height;
+        if (!event.succeeded || !event.copy.info_valid ||
+            !event.copy.source_available || tile_copies >= 3 ||
+            height != (tile_copies == 2 ? 208u : 256u) ||
+            event.copy.physical_x || event.copy.physical_y ||
+            event.copy.physical_width != 1280 ||
+            event.copy.physical_height != height ||
+            event.copy.dest_x || event.copy.dest_y ||
+            event.copy.dest_pitch != 1280)
+          return reject("ordered_color_tile_shape");
+        if (!tile_copies) tile_base = event.dest_base;
+        if (uint64_t(event.dest_base) !=
+            uint64_t(tile_base) + uint64_t(copied_height) * 1280 * 4)
+          return reject("ordered_color_tile_address");
+        barrier.Transition.pResource = scene_color;
+        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        list->D3DResourceBarrier(1, &barrier);
+        D3D12_TEXTURE_COPY_LOCATION source{}, destination{};
+        source.pResource = scene_color;
+        source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        destination.pResource = color_tiles;
+        destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        const D3D12_BOX source_box{0, copied_height, 0, 1280,
+                                   copied_height + height, 1};
+        list->D3DCopyTextureRegion(&destination, 0, copied_height, 0,
+                                   &source, &source_box);
+        std::swap(barrier.Transition.StateBefore,
+                  barrier.Transition.StateAfter);
+        list->D3DResourceBarrier(1, &barrier);
+        copied_height += height;
+        ++tile_copies;
+        REXGPU_WARN("FH1 RAY01 ordered color tile frame={} sequence={} "
+                    "height={} total={}", trace_frame, event.sequence,
+                    height, copied_height);
+      }
       if (event.kind != 'D') continue;
       if (const auto found = supported.find(event.sequence);
           found != supported.end())
         issue_draw(found->second.first, found->second.second);
     }
+    if (tile_copies != 3 || copied_height != 720)
+      return reject("ordered_color_tiles_incomplete");
   } else {
     for (const auto& entry : order)
       issue_draw(std::get<1>(entry), std::get<2>(entry));
@@ -1899,6 +1960,12 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
   barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
   list->D3DResourceBarrier(1, &barrier);
+  if (ordered_tiles) {
+    barrier.Transition.pResource = color_tiles;
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    list->D3DResourceBarrier(1, &barrier);
+  }
   if (!pre_ui) {
     barrier.Transition.pResource = output;
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATES(

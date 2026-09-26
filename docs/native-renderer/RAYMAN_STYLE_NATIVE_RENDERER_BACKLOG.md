@@ -128,6 +128,13 @@ the native surface. Selected-frame takeover also requires the UI draws to be
 the stream's final draw suffix and the last event to be a successful full-size
 copy from that UI surface. Intermediate target operations and original pixel
 programs remain next.
+The [ordered color-tile pilot](RAYMAN_ORDERED_COLOR_TILES_2026-09-26.md)
+now copies the three completed main-scene regions into an owned 1280×720
+native target at their captured ordinals and presents that assembled image.
+Frame 5001 promoted with readable HUD and a normal continuous-race exit.
+The copy remains approximate: native source is single-sample UNORM, while
+the guest source is 4× MSAA float; initial color, depth and later texture
+versions still depend on compatibility work.
 
 - [ ] Feed the selected event stream into the existing D3D12 native output,
   retaining draw order, targets, clears, depth, resolves, viewport, scissor,
@@ -285,9 +292,11 @@ The [ordered copy-input capture](RAYMAN_ORDERED_COPY_INPUTS_2026-09-26.md)
 now records source selection, EDRAM address/format, source and destination
 rectangles, and validity for every copy. It proves the 1280×720 copy to
 `497831936` and the three main tile updates are **depth** resolves; the
-terminal full-frame copy selects color. All 91 nonzero-size copies in the
-sample have complete in-bounds inputs. Native execution of these resolves
-is still open.
+paired main tile **color** resolves write another guest texture, while the
+terminal full-frame copy selects color. The initial full-size color resolve
+to `484626432` has 1,274 later texture bindings in this sampled frame,
+versus 15 bindings to the depth destination. All 91 nonzero-size copies have
+complete in-bounds inputs. Native execution of these resolves is still open.
 
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major
@@ -322,9 +331,12 @@ not a prerequisite for the first usable renderer.
 
 Use the continuous opt-in run as the RAY-03 test bed. The isolated
 track-texture resolution miss did not recur on the next route and is covered
-by whole-frame fallback. Reconstruct the guest depth texture at base
-`497831936` from the ordered depth targets and resolves in the existing
-D3D12 output, then use the stream's owned geometry, pinned textures
+by whole-frame fallback. Use the new ordered color-tile replay as the
+target-copy pilot. Reconstruct the heavily reused initial color texture at
+guest base `484626432`, then the paired tile depth versions at `497831936`
+in the existing D3D12 output. Preserve the tiled color texture's retained
+starting version and route produced native versions to their later consumers.
+Then use the stream's owned geometry, pinned textures
 and final state to issue remaining visible main-scene draws. Save the
 resulting full-frame image and integrate the same-frame HUD at its ordered
 suffix.
