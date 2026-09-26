@@ -1518,8 +1518,13 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
                                    draw.vertices[0].bytes.size());
         if (binding.indexed) {
           if (draw.indices.size() != draw.index_length ||
-              draw.index_length < draw.index_count * 2) return false;
-          binding.index = arena.Add(draw.indices.data(), draw.indices.size());
+              draw.index_endianness != 1 ||
+              draw.index_length != draw.index_count * 2) return false;
+          std::vector<uint16_t> indices(draw.index_count);
+          for (uint32_t i = 0; i < draw.index_count; ++i)
+            indices[i] = (uint16_t(draw.indices[i * 2]) << 8) |
+                         draw.indices[i * 2 + 1];
+          binding.index = arena.Add(indices.data(), indices.size() * 2);
         }
         std::array<uint32_t, 120> system{};
         std::copy(draw.system.begin(), draw.system.end(), system.begin());

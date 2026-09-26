@@ -162,6 +162,13 @@ also issues one captured textured strip in each of the three color tiles at
 its stream ordinal. A short native race passed with readable HUD, but the
 saved image shows no clear visual gain; 36 draws from that unsupported
 main-color census remain. Prioritize a visibly missing layer next.
+The [index-input and large-scene trial](RAYMAN_INDEX_INPUT_AND_LARGE_SCENE_TRIAL_2026-09-26.md)
+corrected guest-byte-order 16-bit indices in the offscreen pilot. Its native
+texture still lacks the earlier scene history. A combined trial of two large
+main-color families removed the D3D12 device and was withdrawn. Isolated
+follow-up runs exposed the recurring no-producer UI frame: fixed-frame
+ordered replay cannot test a new family when the selected frame retains an
+earlier HUD target. Address this cadence before another large-draw trial.
 
 - [ ] Feed the selected event stream into the existing D3D12 native output,
   retaining draw order, targets, clears, depth, resolves, viewport, scissor,
@@ -371,6 +378,10 @@ pinned textures and final state to issue remaining visible main-scene draws.
 Choose the next draw family by visible missing coverage, not merely by a
 small input shape: the first three-draw textured strip ran successfully but
 did not visibly change the saved race image.
+Resolve fixed-frame UI producer gaps for selected replay, or explicitly
+admit the retained UI target version when the event stream proves it was
+unchanged. Then isolate the two large main-color shader families one at a
+time, with GPU stability and a saved visible image as gates.
 Save the resulting full-frame image and integrate the same-frame HUD at its ordered
 suffix.
 Treat `0x00030000` and `0x000C0000` as format aliases over one EDRAM base,
