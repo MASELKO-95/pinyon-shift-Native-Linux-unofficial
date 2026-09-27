@@ -555,14 +555,14 @@ Use the following gates to avoid another sequence of isolated pilots:
    semantics against a pinned guest tile before changing the live image.
    A [marked sky-writer capture](RAYMAN_SKY_WRITER_2026-09-27.md) now identifies
    draw `12BA4E86B158D049`/`CAE25D74AD7B16CB` as the primary cloud writer
-   in the third scene tile. It is absent from native replay. Before another
-   target-format experiment, replay **one** exact draw with its pinned inputs
-   in isolated shadow and check GPU safety plus the sampled sky pixels. If
-   that survives and improves several moving final frames, extend it across
-   all three tiles and the rolling route. Keep the neighboring 8,700-index
-   family, which previously hung the GPU, excluded. If sky does not impede
-   the interactive drive, leave this as secondary polish behind the measured
-   responsiveness blocker in step 6.
+   in the third scene tile. It is absent from native replay. An isolated
+   selected-frame third-tile attempt prepared the exact captured geometry,
+   shader variants and texture, but GPU submission caused backend failures;
+   a preparation-only control exited normally. The trial was removed. Keep
+   this family and the neighboring 8,700-index family out of live admission.
+   If sky impedes driving, first bound the failing triangle/viewport/target
+   contract. Otherwise prioritize the interactive drive and measured
+   responsiveness blocker in step 6 over further sky experiments.
 6. [ ] **Attack the measured frame-time blocker.** The latest repeated native
    medians are about 91–95 ms versus 23.54 ms compatibility. The
    [current trace checkpoint](RAYMAN_POST_STENCIL_PROFILE_2026-09-27.md)

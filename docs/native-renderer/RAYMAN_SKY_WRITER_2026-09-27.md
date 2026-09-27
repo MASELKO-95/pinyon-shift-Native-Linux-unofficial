@@ -34,11 +34,35 @@ provides that anchor and rules out a final-composite-only sky explanation.
 It also explains why a float target plus quarter-scale conversion of the
 current native draws left the sky flat: the principal guest draw was absent.
 
-Next isolate **one draw of `12BA4E86B158D049 / CAE25D74AD7B16CB`** in
-the third tile with its exact indexed geometry, vertex transform, texture
-version, depth and raster state. First verify GPU safety and the sampled
-sky pixels in shadow; only then extend the safe behavior across all three
-tiles and rolling frames. Keep whole-frame fallback and the current live
-renderer untouched until several moving final images improve. The prior
-8,700-index third-tile `DEVICE_HUNG` is a reason to test this draw alone,
-not evidence that this distinct family also hangs.
+The prior 8,700-index third-tile `DEVICE_HUNG` made an isolated GPU-safety
+check necessary before this distinct family could enter live replay.
+
+## Isolated third-tile admission result
+
+The selected source-5008 capture owns this draw's state, all 74,400 source
+index bytes, 44,828 vertex bytes, and the versioned fetch-0 texture. Its
+9,300 big-endian 32-bit indices range from 0 to 1,600, within the 1,601
+captured vertices. The translated shader variants are present in the local
+shader manifest (`VS` specialization `3`, `PS` `0x400500000003`). No new
+capture format or shader translation is needed for a selected-frame probe.
+
+A temporary opt-in shadow probe prepared **only the third-tile instance**
+with the original shader pair, inputs and ordered draw sequence. With the
+draw submitted, the installed-save race route stopped before writing
+`native-shadow-5008.ppm`; repeated D3D12 backend draw failures followed.
+The test process was stopped after that failure. With the same preparation
+but the final draw call deliberately skipped, the route exited normally,
+logged `sky probe ready` and `prepared but skipped` for sequence 11890358,
+and saved shadows through frame 5012. These A/B runs are under
+`.local/ray-sky-probe-20260927/` and
+`.local/ray-sky-prepare-control-20260927/`. The failed run's crash bundle
+is in the installed preview reports directory. The trial code was removed
+and the safe RelWithDebInfo binary rebuilt.
+
+This isolates GPU submission of this family as unsafe in the current native
+target/viewport path. It does not prove the original guest shader itself is
+invalid: the native probe still used a one-sample packed target where the
+guest used four-sample float, and its tile-3 viewport transform was inferred.
+Keep the family out of live admission. If sky becomes a driving blocker,
+first test a bounded triangle and the tile transform or target contract;
+otherwise spend the next slice on the measured frame-time and drive gates.
