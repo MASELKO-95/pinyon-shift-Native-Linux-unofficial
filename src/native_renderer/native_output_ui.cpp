@@ -138,6 +138,7 @@ struct Graphics {
     desc.SampleMask = UINT_MAX;
     desc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
     desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+    desc.RasterizerState.FrontCounterClockwise = TRUE;
     desc.RasterizerState.DepthClipEnable = FALSE;
     desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     desc.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_0xFFFF;
@@ -146,6 +147,8 @@ struct Graphics {
     desc.SampleDesc.Count = 1;
     for (size_t i = 0; i < kPairs.size(); ++i) {
       const auto& pair = kPairs[i];
+      desc.RasterizerState.CullMode = i == 0
+          ? D3D12_CULL_MODE_NONE : D3D12_CULL_MODE_BACK;
       const uint8_t *vertex = nullptr, *pixel = nullptr;
       size_t vertex_size = 0, pixel_size = 0;
       if (!context.shader(context, 0, pair.vertex, pair.specialization,

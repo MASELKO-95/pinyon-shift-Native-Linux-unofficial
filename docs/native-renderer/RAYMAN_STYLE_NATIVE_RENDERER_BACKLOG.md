@@ -480,26 +480,22 @@ Use the following gates to avoid another sequence of isolated pilots:
    repeatable manager-observer reduction, an inconclusive upload-buffer pool
    that was removed, and the snapshot cost split. Reopen one of these paths
    only if a new trace shows it blocks live ordered ownership.
-2. [ ] **Trace the chosen live gap to its source input.** The
+2. [x] **Trace the chosen live gap to its source input.** The
    [late-race paired capture](RAYMAN_LATE_RACE_UI_LINEAGE_2026-09-27.md)
-   identifies dark native navigation as a driving-cue defect. The first UI
-   draw consumes allocation 43/generation 3599 immediately after a 256×256
-   copy to its base; an independent guest RenderDoc frame shows the bright
-   green route already present in that input before the UI shader. The opt-in
-   pre-UI handoff renders the game's green navigation on producer frames,
-   but late replay still supplies dark frames between them. Read back that
-   exact pinned version at guest execution and native replay, then repair
-   the copy/snapshot path or the shader binding indicated by the comparison.
-   Two blend/sampler trials did not help and were removed; do not repeat
-   state guesses. Keep known `DEVICE_HUNG` families out of admission until
-   one isolated draw survives.
-3. [ ] **Move that ordered slice into rolling frames.** Execute its original
+   joins a green guest and native-bound route texture to a dark native first
+   UI draw. Pixel history found an extra back-facing native triangle covering
+   the route. Matching guest raster state restored the green navigation in
+   three same-run moving frames while preserving the readable HUD. Keep known
+   `DEVICE_HUNG` families out of admission until one isolated draw survives.
+3. [ ] **Move the next scene dependency into rolling frames.** Use the
+   same-run final pair to select one remaining driving-visible gap in car,
+   ground or background, and trace its original producer, resolve and
+   consumer in the authoritative ordered stream. Execute the needed original
    shaders, constants, immutable textures, target alias, clear and copy in
-   the captured order; preserve guest-visible versions and same-stream HUD.
-   RAY-00/01 still need broader intermediate-target execution, but do not
-   complete unrelated selected-frame effects first. Retire the corresponding
-   scene-snapshot approximation only after several final moving frames improve
-   with native promotion, readable HUD and whole-frame fallback.
+   order; preserve guest-visible versions and same-stream HUD. RAY-00/01
+   still need broader intermediate-target execution. Retire the corresponding
+   scene-snapshot approximation only after several final moving frames
+   improve with native promotion and whole-frame fallback.
 4. [ ] **Qualify one duplicate guest pass.** The
    [guest-visible dependency ledger](GUEST_VISIBLE_RENDER_DEPENDENCIES.md)
    does not yet qualify any target for suppression. For one candidate, prove
@@ -512,8 +508,12 @@ Use the following gates to avoid another sequence of isolated pilots:
    with steering and a mode boundary. Record control response, HUD stability,
    fallback frequency, blank/stale frames and the first visible defect that
    interferes with driving. Repeat the scripted sustained, hot-toggle and
-   mode-boundary checks after ownership or suppression changes. Treat this
-   drive, not an arbitrary pixel score or percentage, as the RAY-04 gate.
+   mode-boundary checks after ownership or suppression changes. The latest
+   hot toggle and mode boundary exit normally, but `title-settled` still shows
+   pre-existing saturated background noise; establish a compatibility-only
+   control and reliable title checkpoint before signing off that boundary.
+   Treat the drive, not an arbitrary pixel score or percentage, as the RAY-04
+   gate.
 
 The selected-frame post-scene reductions, final-composite trials, depth and
 color-version experiments, and large-index isolation remain documented above

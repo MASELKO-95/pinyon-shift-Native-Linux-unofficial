@@ -65,24 +65,51 @@ establishes that the original producer supplies the green route *before*
 the UI shader. It does not prove the frame-5200 native snapshot contains the
 same pixels.
 
-A new bounded RenderDoc capture of guest output frame 5200 confirms that
-finding on the selected race route. At first UI event 24900, the 1280×720
-RGBA input (`ResourceId::5043`) has 1,607 bright-green pixels in its
-upper-left 256×256 region; its raw SHA-256 is
-`66F85F6403F0D852A8AE27D2EC374FCF60ED9FAD41CC726B51AFE527E8BE804A`.
-The second input is the same 128×128 BC4 payload seen at frame 5030. The
-capture is ignored at `.local/ray-minimap-readback-20260927/` (RDC SHA-256
-`FE7D54F2BFB69AB7FF352AF1469AA880B706B7E3D4303CDC2ADFEF919E33ABD6`).
-The RenderDoc-wrapped run exited normally but did not execute native shadow
-replay, so it provides no native-bound input comparison. Its guest image
-cannot establish whether allocation 43/generation 3599 is green when native
-UI replay samples it in a normal run.
+An initial fixed-frame RenderDoc trial used the default Release executable,
+which was still built on September 23. The native shadow implementation was
+in the September 27 RelWithDebInfo build. That trial showed a green route in
+another guest frame, but it did not capture output frame 5200 or native UI;
+its purported frame-5200 alignment is withdrawn. The SDK's built-in
+`PINYON_SHIFT_SNR04_RENDERDOC_TRIGGER_FILE` hook was then set to the render
+test's `native-5200.ppm` marker, avoiding the SDK's automatic capture at
+source frame 5000. The fresh RelWithDebInfo capture is ignored at
+`.local/ray-minimap-readback-20260927/capture-inapp_capture.rdc` (SHA-256
+`1A7CB435126C5AAAA36C2567259E46ABDF7BEBFDD8BDBDC632CC18255CE8A761`).
+It contains both the original guest UI and the subsequent native shadow UI.
 
-Next, read back allocation 43/generation 3599 at the selected frame's guest
-draw and at native binding, including its upper-left 256×256 region. If the
-green pixels are missing, trace the 12623261 copy through immutable snapshot
-publication and repair that producer/version path. If the pixels match,
-inspect the original shader's descriptor and constant bindings, then compare
-the first draw's output before later UI draws. Keep whole-frame fallback and
-the original pre-UI handoff available while testing. Do not repeat blend or
-sampler guesses without new input evidence.
+At the first minimap draws (guest event 35551, native event 68637), the
+1280×720 RGBA inputs both contain the green route: 1,328 and 1,396 bright
+green pixels, respectively, in their upper-left 256×256 regions. The
+128×128 BC4 masks are byte-identical. The pixel float constants, post-VS
+vertices and index streams also match exactly; texture view formats,
+dimensions and channel swizzles match. The route is therefore lost *during*
+the native first UI draw, not in its pinned source texture or a later HUD
+draw. At output pixel (160,490), guest pixel history has one green primitive.
+Native pixel history has that primitive in gray, followed by a second black
+primitive covering it.
+
+The captured guest pipeline culls back faces with counterclockwise fronts;
+the native pilot culled none with clockwise fronts. The selected frame's 166
+UI draws split cleanly by shader family: the 50 textured draws use raster
+state `2195458`, and the 116 untextured draws use `2195456`. Native replay
+now applies back-face culling with counterclockwise fronts to the textured
+families while retaining no culling for the untextured family. In a new
+same-run race shadow/reference pair, the lower-left navigation region has
+1,728–1,735 green native pixels at output 5200–5202, versus zero before the
+change and 1,716–1,727 in the corresponding guest references. The frame-5202
+pair is ignored at `.local/ray-ui-cull-fix-20260927/pair-5202.png`; its HUD
+and green route are readable. The game exited normally. This fixes the
+navigation cue, while the rough car, ground and background remain separate
+scene-rendering work.
+
+The scripted hot toggle also exited normally: native-on, compatibility-off
+and native-on-again frames all retained the green cue. The mode-boundary run
+exited normally and retained the cue in race output and the compatibility
+free-roam scene. Its `title-settled` image still has saturated background
+noise with readable menu text. The same defect appears in pre-fix captures
+at `.local/ray-manager-pointer-mode-20260927/title-settled.png` and
+`.local/ray-manager-hash-mode-repeat-20260927/title-settled.png`; it is not a
+regression from the UI raster change. The older
+[scene ledger](SCENE_NATIVE_RENDERER_BACKLOG.md) already calls for a
+compatibility-only control and better title checkpoint semantics before
+title-transition signoff.
