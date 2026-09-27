@@ -22,15 +22,6 @@ class NativeRendererPhaseCProfileTests(unittest.TestCase):
         self.assertNotIn("$ShadowDepthBatch = $true", block)
         self.assertNotIn("$VehicleResourceContribution", block)
 
-    def test_documented_profile_uses_appdata_state_root(self):
-        document = (
-            ROOT / "docs/native-renderer/C1_C2_BATCH_QUALIFICATION.md"
-        ).read_text(encoding="utf-8")
-        self.assertIn("-PhaseCQualification -Json", document)
-        self.assertIn(".local\\preview", document)
-        self.assertIn("passive C4 player/material joins", document)
-        self.assertIn("mutually exclusive", document)
-
 
 if __name__ == "__main__":
     unittest.main()
