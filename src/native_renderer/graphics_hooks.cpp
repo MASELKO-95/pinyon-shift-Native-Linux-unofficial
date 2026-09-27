@@ -911,6 +911,7 @@ struct Snr03ManagerDraw {
 };
 struct Snr03ManagerPayload {
   std::array<std::map<Snr02TrackRange, std::vector<uint8_t>>, 3> ranges;
+  std::array<std::map<Snr02TrackRange, const uint8_t*>, 3> snapshot_sources;
   std::vector<Snr03ManagerDraw> draws;
   size_t bytes = 0;
   bool rejected = false;
@@ -1312,10 +1313,18 @@ bool Snr02OwnTrackRange(
 
 bool Snr03OwnRange(
     std::map<Snr02TrackRange, std::vector<uint8_t>>& ranges,
+    std::map<Snr02TrackRange, const uint8_t*>& snapshot_sources,
     Snr02TrackRange key, const uint8_t* bytes, uint32_t status, uint64_t hash,
     size_t& owned_bytes, size_t limit) {
   if (status != 1 || !bytes || !key.second) return false;
   if (const auto existing = ranges.find(key); existing != ranges.end()) {
+    // The live SDK returns the same immutable per-frame snapshot for a
+    // repeated manager range. Other paths still compare the bytes exactly.
+    if (NativeRaceCaptureEnabled()) {
+      const auto source = snapshot_sources.find(key);
+      if (source != snapshot_sources.end() && source->second == bytes)
+        return true;
+    }
     return existing->second.size() == key.second &&
            std::equal(existing->second.begin(), existing->second.end(), bytes);
   }
@@ -1327,6 +1336,7 @@ bool Snr03OwnRange(
     return false;
   }
   owned_bytes += key.second;
+  if (NativeRaceCaptureEnabled()) snapshot_sources.emplace(key, bytes);
   return true;
 }
 
@@ -1929,11 +1939,11 @@ void ObserveSnr03ManagerPayload(
   draw.index_endianness = observation.index_buffer_guest_endianness;
   for (uint32_t slot = 0; slot < 2; ++slot) {
     draw.ranges[slot] = {fetch[slot].guest_base, fetch[slot].length};
-    if (!Snr03OwnRange(payload.ranges[slot], draw.ranges[slot],
-                             fetch[slot].cpu_snapshot_bytes,
-                             fetch[slot].cpu_snapshot_status,
-                             fetch[slot].cpu_snapshot_hash, payload.bytes,
-                             8 * 1024 * 1024)) {
+    if (!Snr03OwnRange(payload.ranges[slot], payload.snapshot_sources[slot],
+                       draw.ranges[slot], fetch[slot].cpu_snapshot_bytes,
+                       fetch[slot].cpu_snapshot_status,
+                       fetch[slot].cpu_snapshot_hash, payload.bytes,
+                       8 * 1024 * 1024)) {
       if (NativeRaceCaptureEnabled())
         REXGPU_WARN("FH1 native manager vertex rejected frame={} "
                     "sequence={} slot={} status={} address={:08X} length={}",
@@ -1946,11 +1956,11 @@ void ObserveSnr03ManagerPayload(
   }
   draw.ranges[2] = {observation.index_buffer_guest_base,
                     observation.index_buffer_length};
-  if (!Snr03OwnRange(payload.ranges[2], draw.ranges[2],
-                           observation.index_cpu_snapshot_bytes,
-                           observation.index_cpu_snapshot_status,
-                           observation.index_cpu_snapshot_hash, payload.bytes,
-                           8 * 1024 * 1024)) {
+  if (!Snr03OwnRange(payload.ranges[2], payload.snapshot_sources[2],
+                     draw.ranges[2], observation.index_cpu_snapshot_bytes,
+                     observation.index_cpu_snapshot_status,
+                     observation.index_cpu_snapshot_hash, payload.bytes,
+                     8 * 1024 * 1024)) {
     if (NativeRaceCaptureEnabled())
       REXGPU_WARN("FH1 native manager index rejected frame={} sequence={} "
                   "status={} address={:08X} length={}",

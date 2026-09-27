@@ -14,6 +14,8 @@ so the numbers rank CPU work rather than prove a synchronized visual A/B.
 | Native with exact-version reuse | 118.34 ms | 128.59 ms | 6 | 61.30 ms | 41.23 ms |
 | Native with CPU upload scratch reuse | 104.31 ms | 123.43 ms | 6 | 57.17 ms | 30.02 ms |
 | Native without redundant manager rehash | 94.88 ms | 106.54 ms | 6 | 48.85 ms | 29.95 ms |
+| Native with immutable manager snapshot reuse, run 1 | 90.97 ms | 107.64 ms | 6 | 45.45 ms | 30.78 ms |
+| Native with immutable manager snapshot reuse, run 2 | 94.62 ms | 103.15 ms | 6 | 42.71 ms | 35.21 ms |
 
 The original live path made a committed GPU texture and copy for every new
 material key in every frame. The retained change reuses a previous frame's
@@ -81,3 +83,31 @@ output about 30 ms median in the measured window. Keep the whole-frame
 fallback and repeat presentation checks after each change. A longer
 unscripted drive remains open; scripted movement and static screenshots do
 not prove control responsiveness.
+
+An upload-resource reuse trial kept completed D3D12 upload buffers for later
+native frames. Both identical 5,030-frame scripted runs exited normally and
+promoted the sampled native frames, but their frame medians were 104.51 and
+90.01 ms, versus the prior 94.88 ms. Native output medians were 33.58 and
+29.27 ms, versus 29.95 ms. This does not establish a repeatable gain, so the
+pool was removed. Trial CSVs remain under ignored
+`.local/ray-upload-reuse-profile-20260927/` and
+`.local/ray-upload-reuse-repeat-20260927/`. Next inspect the larger prepared
+snapshot/observer cost; do not repeat upload-buffer pooling without evidence
+that buffer creation dominates the output callback.
+
+The live SDK caches each manager geometry range as one immutable CPU snapshot
+within a source frame. The title-side manager observer now recognizes a repeat
+of that *same snapshot pointer* and skips a second exact comparison against
+its owned copy. If the pointer differs, it still compares bytes; the initial
+copy still verifies the SDK hash. Two matched race-profile runs reduced
+prepared-observer CPU from 14.50 ms median to 8.54 and 8.66 ms. Overall frame
+medians were 90.97 and 94.62 ms versus the earlier 94.88 ms, so the observer
+gain is repeatable but the total-frame gain is within run variation. Both
+runs promoted native frames 5005–5029 and exited normally. A separate
+300-frame race segment promoted 5020, 5100, 5200 and 5290 with a readable HUD;
+hot-toggle and mode-boundary verifiers passed. One other extended script took
+a different free-roam path and cannot support the race claim. The source
+frame 5290 native image still shows rough car, navigation and background
+layers. Artifacts are under ignored `.local/ray-manager-pointer-*20260927/`.
+The next cost to inspect is the roughly 11 ms of prepared snapshot work;
+the native output callback remains about 30–35 ms.

@@ -464,14 +464,16 @@ not a prerequisite for the first usable renderer.
 ## Next implementation slice
 
 The 300-frame scripted route and hot toggle establish continuous presentation,
-but not a comfortable drive. The latest matched scripted window measures
-94.88 ms median native versus 23.54 ms compatibility. The native output
-callback takes about 30 ms, while prepared snapshot and observer work take
-about 11 and 15 ms. The full ordered replay is still a selected-frame fixture.
+but not a comfortable drive. The first matched scripted window measured
+94.88 ms median native versus 23.54 ms compatibility. Immutable manager
+snapshot reuse reduced prepared-observer CPU from 14.50 to about 8.6 ms;
+two follow-up frame medians were 90.97 and 94.62 ms. Prepared snapshots still
+take about 11 ms and native output about 30–35 ms. The full ordered replay is
+still a selected-frame fixture.
 Use the following gates to avoid another sequence of isolated pilots:
 
-1. [ ] **Reduce one live repeated cost.** Inspect the existing prepared-draw
-   snapshot/observer path and native output resource lifetime. Pick the larger
+1. [ ] **Reduce the next live repeated cost.** Inspect the prepared-draw
+   snapshot path and native output resource lifetime. Pick the larger
    *removable* allocation or copy shown by a bounded trace; preserve exact
    changing resource versions. Measure the same source-frame window before
    and after. Keep the change only if native frames still promote with stable
@@ -479,7 +481,9 @@ Use the following gates to avoid another sequence of isolated pilots:
    passes. Record frame median, p95 and the affected stage in
    [the performance ledger](RAYMAN_LIVE_PERFORMANCE_2026-09-27.md). If two
    attempts do not produce a live gain, stop optimizing that path and inspect
-   the next cost center. Do not count faster runs that silently fall back.
+   the next cost center. Upload-buffer pooling was inconclusive and removed;
+   do not repeat it without a narrower allocation trace. Do not count faster
+   runs that silently fall back.
 2. [ ] **Check actual driving.** Run a longer unscripted race with native
    output, including steering and a mode boundary. Record control response,
    HUD stability, fallback frequency, blank/stale frames and the first visible
