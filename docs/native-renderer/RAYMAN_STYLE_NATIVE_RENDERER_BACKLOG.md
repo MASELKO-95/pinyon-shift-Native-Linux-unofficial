@@ -468,51 +468,50 @@ but not a comfortable drive. The first matched scripted window measured
 94.88 ms median native versus 23.54 ms compatibility. Immutable manager
 snapshot reuse reduced prepared-observer CPU from 14.50 to about 8.6 ms;
 two follow-up frame medians were 90.97 and 94.62 ms. Prepared snapshots still
-take about 11 ms and native output about 30–35 ms. The full ordered replay is
-still a selected-frame fixture.
+take about 11 ms and native output about 30–35 ms. A bounded split assigned
+about 5.2 ms of snapshots to track draws and 3.8 ms to main-scene probes;
+even eliminating all snapshots would leave an approximately 80 ms frame.
+Stop treating snapshot micro-optimization as the route to a usable cadence.
+The full ordered replay is still a selected-frame fixture.
 Use the following gates to avoid another sequence of isolated pilots:
 
-1. [ ] **Reduce the next live repeated cost.** Inspect the prepared-draw
-   snapshot path and native output resource lifetime. Pick the larger
-   *removable* allocation or copy shown by a bounded trace; preserve exact
-   changing resource versions. Measure the same source-frame window before
-   and after. Keep the change only if native frames still promote with stable
-   HUD, the sustained route exits normally, and mode/hot-toggle fallback
-   passes. Record frame median, p95 and the affected stage in
-   [the performance ledger](RAYMAN_LIVE_PERFORMANCE_2026-09-27.md). If two
-   attempts do not produce a live gain, stop optimizing that path and inspect
-   the next cost center. Upload-buffer pooling was inconclusive and removed;
-   do not repeat it without a narrower allocation trace. Do not count faster
-   runs that silently fall back.
-2. [ ] **Check actual driving.** Run a longer unscripted race with native
-   output, including steering and a mode boundary. Record control response,
-   HUD stability, fallback frequency, blank/stale frames and the first visible
-   defect that interferes with driving. A scripted route is the regression
-   check while this user-driven check is pending. Treat its outcome, not an
-   arbitrary frame-time or pixel-match percentage, as the RAY-04 gate.
-3. [ ] **Fix that one visible defect in the rolling renderer.** Capture final
-   native shadow and unpromoted compatibility images from the same run at
-   several moving frames, with source/output IDs and promotion state. Trace
-   the responsible target or draw through the ordered stream; use its original
-   shader and immutable inputs when possible. Accept the change only when
-   the displayed final frames improve and fallback still works. The previous
-   sky probes did not find a writer; do not start another sky or intermediate
-   target pilot without a live final-frame cause. Keep known `DEVICE_HUNG`
-   families out of admission until one isolated draw survives.
-4. [ ] **Extend ownership only where the live fix needs it.** RAY-00/01 still
-   need ordered intermediate-target execution and same-stream UI. Move the
-   smallest useful ordered slice into continuous live frames, then retire the
-   corresponding snapshot approximation. Keep the rest as explicit unsupported
-   work rather than completing every selected-frame effect first. Recheck the
-   final image, HUD and fallback on multiple moving frames.
-5. [ ] **Remove duplicate guest visual work only with dependency proof.** The
+1. [x] **Bound the capture-only optimization path.** The
+   [performance ledger](RAYMAN_LIVE_PERFORMANCE_2026-09-27.md) records the
+   repeatable manager-observer reduction, an inconclusive upload-buffer pool
+   that was removed, and the snapshot cost split. Reopen one of these paths
+   only if a new trace shows it blocks live ordered ownership.
+2. [ ] **Trace the chosen live gap to its source input.** The
+   [late-race paired capture](RAYMAN_LATE_RACE_UI_LINEAGE_2026-09-27.md)
+   identifies dark native navigation as a driving-cue defect and places it
+   in the first original UI draw or its two pinned textures. The opt-in
+   pre-UI handoff renders the game's green navigation on producer frames,
+   but late replay still supplies dark frames between them. Compare the
+   first draw's actual input contents and generation at guest execution and
+   native replay, then name the missing producer/resolve or wrong binding.
+   Two blend/sampler trials did not help and were removed; do not repeat
+   state guesses. Keep known `DEVICE_HUNG` families out of admission until
+   one isolated draw survives.
+3. [ ] **Move that ordered slice into rolling frames.** Execute its original
+   shaders, constants, immutable textures, target alias, clear and copy in
+   the captured order; preserve guest-visible versions and same-stream HUD.
+   RAY-00/01 still need broader intermediate-target execution, but do not
+   complete unrelated selected-frame effects first. Retire the corresponding
+   scene-snapshot approximation only after several final moving frames improve
+   with native promotion, readable HUD and whole-frame fallback.
+4. [ ] **Qualify one duplicate guest pass.** The
    [guest-visible dependency ledger](GUEST_VISIBLE_RENDER_DEPENDENCIES.md)
    does not yet qualify any target for suppression. For one candidate, prove
    its resolves, later fetches, queries, memexport and CPU visibility are
    preserved or replaced before suppressing it; otherwise leave Xenos
-   execution intact. Measure a live frame-time gain and repeat the driving
-   and fallback checks. A null backend is optional, not a shortcut around
-   guest-visible side effects.
+   execution intact. Measure promoted-frame latency before and after; a
+   faster fallback is not a gain. A null backend is optional, not a shortcut
+   around guest-visible side effects.
+5. [ ] **Check actual driving and boundaries.** Run a longer unscripted race
+   with steering and a mode boundary. Record control response, HUD stability,
+   fallback frequency, blank/stale frames and the first visible defect that
+   interferes with driving. Repeat the scripted sustained, hot-toggle and
+   mode-boundary checks after ownership or suppression changes. Treat this
+   drive, not an arbitrary pixel score or percentage, as the RAY-04 gate.
 
 The selected-frame post-scene reductions, final-composite trials, depth and
 color-version experiments, and large-index isolation remain documented above

@@ -111,3 +111,19 @@ frame 5290 native image still shows rough car, navigation and background
 layers. Artifacts are under ignored `.local/ray-manager-pointer-*20260927/`.
 The next cost to inspect is the roughly 11 ms of prepared snapshot work;
 the native output callback remains about 30–35 ms.
+
+A temporary opt-in split of prepared snapshots on promoted source frames
+5010 and 5020 attributed 5.05/5.40 ms to 736/722 track draws and
+3.76/3.83 ms to 852/837 main-scene probe draws. Manager draws took
+0.80/0.83 ms, UI 0.20/0.23 ms, and other draws 0.46/0.52 ms. The remaining
+snapshot-stage time is bookkeeping outside those per-draw buckets. The trace
+was removed after capture; its three sampled records remain under ignored
+`.local/ray-snapshot-trace-20260927/snapshot-kinds.txt`.
+
+This is a ceiling for the current micro-optimization path: eliminating all
+roughly 11 ms of prepared snapshots would still leave an approximately
+80 ms native frame on the measured route, before accounting for new ownership
+work. Do not spend the next slice shaving track or UI snapshots in isolation.
+Move an ordered producer/resolve/consumer slice into the rolling renderer,
+then qualify any guest visual work it can safely replace. Keep measuring
+actual promoted frames and the unscripted drive while doing that.
