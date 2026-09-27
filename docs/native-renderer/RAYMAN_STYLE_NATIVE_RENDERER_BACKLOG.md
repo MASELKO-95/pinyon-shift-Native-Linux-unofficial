@@ -487,15 +487,19 @@ Use the following gates to avoid another sequence of isolated pilots:
    the route. Matching guest raster state restored the green navigation in
    three same-run moving frames while preserving the readable HUD. Keep known
    `DEVICE_HUNG` families out of admission until one isolated draw survives.
-3. [ ] **Move the next scene dependency into rolling frames.** Use the
-   same-run final pair to select one remaining driving-visible gap in car,
-   ground or background, and trace its original producer, resolve and
-   consumer in the authoritative ordered stream. Execute the needed original
+3. [ ] **Move the scene color/resolve dependency into rolling frames.** The
+   [same-output color trace](RAYMAN_LIVE_SCENE_COLOR_CHAIN_2026-09-27.md)
+   locates the pale ground and missing background upstream of the guest's
+   final composite: guest scene draws use a four-sample float target and a
+   packed color resolve, while native copies a single-sample UNORM target.
+   Validate one exact main-tile conversion against the pinned guest version
+   before feeding it to a live consumer. Execute the needed original
    shaders, constants, immutable textures, target alias, clear and copy in
    order; preserve guest-visible versions and same-stream HUD. RAY-00/01
    still need broader intermediate-target execution. Retire the corresponding
    scene-snapshot approximation only after several final moving frames
-   improve with native promotion and whole-frame fallback.
+   improve with native promotion and whole-frame fallback. The 320×192 and
+   640×360 composite inputs remain separate dependencies.
 4. [ ] **Qualify one duplicate guest pass.** The
    [guest-visible dependency ledger](GUEST_VISIBLE_RENDER_DEPENDENCIES.md)
    does not yet qualify any target for suppression. For one candidate, prove
