@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -1232,6 +1233,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
                      D3D12_RESOURCE_STATE_RENDER_TARGET) ||
       !graphics.Ready(device) || !graphics.BlitReady())
     return reject("input_or_pipeline");
+  const auto scene_begin = std::chrono::steady_clock::now();
   auto scene = ParseSnr04TrackScene(*live.track);
   auto remainder = ParseSnr04RemainderScene(*live.remainder);
   Snr04ProceduralScene characters;
@@ -1247,6 +1249,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       (live.characters && characters.frame != live.source_frame) ||
       (live.manager && manager.source_frame != live.source_frame))
     return reject("scene_parse");
+  const auto parse_ready = std::chrono::steady_clock::now();
   while (!graphics.submitted.empty() &&
          graphics.submitted.front().first <= context.completed_submission)
     graphics.submitted.pop_front();
@@ -1843,10 +1846,12 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       guest_small_color_index = producer_bindings[15].materials[0];
   }
   TrackFrame frame;
+  const auto frame_begin = std::chrono::steady_clock::now();
   if (!CreateFrame(device, output, arena, scene_only, ordered_tiles,
                    static_cast<ID3D12Resource*>(
                        context.fh1_initial_color_depth), frame))
     return reject("create_frame");
+  const auto frame_ready = std::chrono::steady_clock::now();
   uint32_t original_count = 0;
   for (auto& binding : bindings)
     if (std::get<5>(binding.pipeline) == 3) {
@@ -2121,6 +2126,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   const auto sampler_gpu_start = sampler_heap->GetGPUDescriptorHandleForHeapStart();
   const auto sampler_stride = device->GetDescriptorHandleIncrementSize(
       D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+  const auto descriptors_ready = std::chrono::steady_clock::now();
   auto scene_srv_gpu = frame.srv->GetGPUDescriptorHandleForHeapStart();
   if (ordered_tiles)
     scene_srv_gpu.ptr += std::array<uint32_t, 9>{2, 4, 5, 6, 7, 7, 7, 7, 2}[
@@ -2744,6 +2750,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     for (const auto& entry : order)
       issue_draw(std::get<1>(entry), std::get<2>(entry));
   }
+  const auto draws_ready = std::chrono::steady_clock::now();
   barrier.Transition.pResource = scene_color;
   barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
   barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -2778,6 +2785,24 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         context.guest_output_state);
     list->D3DResourceBarrier(1, &barrier);
   }
+  static const bool log_stages =
+      rex::cvar::GetFlagByName("perf_critical_path_trace") == "true";
+  if (log_stages && context.frame_sequence % 10 == 0)
+    REXGPU_WARN("FH1 native scene stages frame={} parse_us={} prepare_us={} "
+                "create_frame_us={} descriptors_us={} draws_us={} finish_us={}",
+                context.frame_sequence,
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    parse_ready - scene_begin).count(),
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    frame_begin - parse_ready).count(),
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    frame_ready - frame_begin).count(),
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    descriptors_ready - frame_ready).count(),
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    draws_ready - descriptors_ready).count(),
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - draws_ready).count());
   return true;
 }
 }  // namespace

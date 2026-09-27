@@ -239,11 +239,24 @@ bool DrawShadow(const rex::system::NativeGuestOutputRenderContext& context,
       rex::cvar::GetFlagByName("pinyon_shift_snr01_trace_source_frame").c_str(),
       nullptr, 10) && std::strtol(rex::cvar::GetFlagByName(
       "pinyon_shift_native_small_target_probe").c_str(), nullptr, 10) > 0;
+  const auto scene_begin = std::chrono::steady_clock::now();
   const bool scene_drawn = pinyon_shift::native_renderer::DrawNativeOutputTrack(
       shadow_context, *scene, true);
+  const auto scene_end = std::chrono::steady_clock::now();
   const bool ui_drawn = scene_drawn && !small_probe &&
       pinyon_shift::native_renderer::DrawNativeOutputUi(
           shadow_context, ui_frame);
+  static const bool log_stages =
+      rex::cvar::GetFlagByName("perf_critical_path_trace") == "true";
+  if (log_stages && context.frame_sequence % 10 == 0) {
+    const auto ui_end = std::chrono::steady_clock::now();
+    REXGPU_WARN("FH1 native output stages frame={} scene_us={} ui_us={} "
+                "scene={} ui={}", context.frame_sequence,
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    scene_end - scene_begin).count(),
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    ui_end - scene_end).count(), scene_drawn, ui_drawn);
+  }
   if (scene_drawn && (small_probe || ui_drawn) && save_image) {
     heap.Type = D3D12_HEAP_TYPE_READBACK;
     device->GetCopyableFootprints(&desc, 0, 1, 0, &frame.footprint,

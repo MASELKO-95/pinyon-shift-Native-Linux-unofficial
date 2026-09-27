@@ -38,9 +38,15 @@ the hot-toggle verifier passed on/off/on. Artifacts are under ignored
 `.local/ray-toggle-reused-20260927/`.
 
 At about 118 ms per frame, the renderer is still too slow for the requested
-usable race. Next isolate the 41 ms native output callback from the roughly
-36 ms prepared snapshot/observer work in the live path, then remove one
-measured duplicate cost at a time. Keep the whole-frame fallback and repeat
-the native presentation checks after each change. A longer unscripted drive
-remains open; scripted movement and static screenshots do not prove control
-responsiveness.
+usable race. An opt-in `--perf_critical_path_trace=true` probe split the
+roughly 41 ms native output callback: sampled frames 5010 and 5020 spent
+about 28–39 ms in scene drawing and 3 ms in UI replay. Within scene drawing,
+parsing took 5 ms, repeated draw preparation 17–19 ms, frame-resource
+creation 5–14 ms, descriptor setup about 1 ms, and issuing prepared draws
+under 0.3 ms of CPU time. These are two samples, not a population estimate.
+The next bounded optimization should remove repeated preparation or resource
+allocation before changing the draw loop. The prepared snapshot/observer work
+also remains substantial (about 12 and 25 ms median respectively in the
+native window). Keep the whole-frame fallback and repeat the presentation
+checks after each change. A longer unscripted drive remains open; scripted
+movement and static screenshots do not prove control responsiveness.
