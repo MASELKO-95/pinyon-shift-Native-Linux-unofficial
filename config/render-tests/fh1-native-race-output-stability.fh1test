@@ -57,6 +57,8 @@ input 3726 0000 0 0 0 0 0 0
 input 3840 1000 0 0 0 0 0 0
 input 3846 0000 0 0 0 0 0 0
 capture 4080 race-ready
+input 4100 1000 0 0 0 0 0 0
+input 4106 0000 0 0 0 0 0 0
 input 4200 0000 0 255 0 0 0 0
 capture 4560 race-moving
 capture 5200 native-5200

@@ -2260,7 +2260,7 @@ pinyon_shift::native_renderer::Snr04TrackScene pinyon_shift::native_renderer::Pa
     for (uint32_t i = 0; i < count; ++i) {
       const auto base = reader.take<uint32_t>();
       const auto length = reader.take<uint32_t>();
-      require(length > 0 && length <= limit && total + length <= 8 * 1024 * 1024,
+      require(length > 0 && length <= limit && total + length <= 24 * 1024 * 1024,
               "unsupported track geometry bound");
       total += length;
       require(ranges.emplace(Range{base, length}, reader.bytes(length)).second,
@@ -2268,7 +2268,7 @@ pinyon_shift::native_renderer::Snr04TrackScene pinyon_shift::native_renderer::Pa
     }
     return ranges;
   };
-  auto vertices = read_ranges(vertex_count, 512 * 1024);
+  auto vertices = read_ranges(vertex_count, 8 * 1024 * 1024);
   auto indices = read_ranges(index_count, 64 * 1024);
   using TrackDraw = pinyon_shift::native_renderer::Snr04TrackDraw;
   std::vector<TrackDraw> draws;

@@ -1311,7 +1311,7 @@ bool Snr02OwnTrackRange(
   if (existing != ranges.end()) {
     return std::equal(existing->second.begin(), existing->second.end(), bytes);
   }
-  constexpr uint32_t kOwnedBytesLimit = 8 * 1024 * 1024;
+  constexpr uint32_t kOwnedBytesLimit = 24 * 1024 * 1024;
   if (payload.bytes > kOwnedBytesLimit ||
       key.second > kOwnedBytesLimit - payload.bytes) return false;
   auto& owned = ranges[key];
@@ -2292,6 +2292,8 @@ void ObserveSnr02TrackFinalDrawState(
   std::copy_n(observation.system_constant_words, 64,
               draw.system_constants.begin());
   std::copy_n(observation.fetch_47_words, 4, draw.fetch47.begin());
+  // The owned vertex snapshot may cover only the indices this draw uses.
+  draw.fetch47[3] = (draw.fetch47[3] & ~0x03FFFFFCu) | draw.vertex.second;
   draw.raster_mode_control = observation.raster_mode_control;
   draw.clip_control = observation.clip_control;
   draw.depth_control = observation.normalized_depth_control;
@@ -2908,7 +2910,9 @@ void ObservePreparedDraw(
           observation.texture_fetch_count <= 32 &&
           (!observation.texture_fetch_count || observation.texture_fetches)) {
         const auto& fetch = observation.vertex_fetches[0];
-        const Snr02TrackRange vertex{fetch.guest_base, fetch.length};
+        const Snr02TrackRange vertex{
+            fetch.guest_base,
+            fetch.cpu_snapshot_length ? fetch.cpu_snapshot_length : fetch.length};
         const Snr02TrackRange index{observation.index_buffer_guest_base,
                                     observation.index_buffer_length};
         if (fetch.fetch_constant == 95 && fetch.stride_words >= 4 &&
