@@ -548,6 +548,11 @@ Use the following gates to avoid another sequence of isolated pilots:
    scene-snapshot approximation only after several moving final frames
    improve. The 320×192 and 640×360 composite inputs remain separate
    dependencies.
+   A [single-sample float plus quarter-scale trial](RAYMAN_FLOAT_SCENE_RESOLVE_TRIAL_2026-09-27.md)
+   made the native shadow much darker and was removed. It did not reproduce
+   the guest's four samples or full float producer contract. Do not retry a
+   format-only conversion; verify one producer's float output and sample
+   semantics against a pinned guest tile before changing the live image.
 6. [ ] **Attack the measured frame-time blocker.** The latest repeated native
    medians are about 91–95 ms versus 23.54 ms compatibility. The
    [current trace checkpoint](RAYMAN_POST_STENCIL_PROFILE_2026-09-27.md)
