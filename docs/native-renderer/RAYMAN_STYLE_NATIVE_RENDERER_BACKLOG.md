@@ -446,11 +446,13 @@ not a prerequisite for the first usable renderer.
    existing mode-boundary and hot-toggle routes. Save final native shadow and
    guest references from one run at several moving frames, with output/source
    frame IDs, promotion state and fallback reason. Review road, car, lighting,
-   HUD and scenery regions. Do not use a cross-run intermediate MAE to choose
-   the next fix.
-2. **Choose one visible blocker.** Start with road/background lighting or car
-   readability, whichever the final-frame pair and a short drive show is
-   worse. Map its draw/copy lineage in the ordered stream, then make the
+   HUD and scenery regions. The [first paired baseline](RAYMAN_LIVE_FINAL_BASELINE_2026-09-26.md)
+   covers frames 5040–5044; repeat at a different race moment if the chosen
+   fix depends on it. Do not use a cross-run intermediate MAE to choose the
+   next fix.
+2. **Choose one visible blocker.** Start with road/ground readability: the
+   paired baseline shows broad flat green/gray areas absent from the guest
+   output. Map its draw/copy lineage in the ordered stream, then make the
    smallest useful producer slice run in the continuous native route. Preserve
    guest-visible target versions and whole-frame fallback. Verify a visible
    final-frame gain at multiple moments, not just source frame 5001. If that
