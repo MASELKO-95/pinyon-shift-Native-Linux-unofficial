@@ -257,11 +257,12 @@ Sizes are relative scope, not time estimates. XR-08 and XR-09 can overlap.
 - [ ] Add missing mode routes: boot with movies, Press Start, main and
   single-player menus, garage/car select, a second race event, loading
   screens, rewind. Reuse the free-roam, map, pause and photo scripts.
-- [ ] Limit `pinyon_shift_skip_opening_movies` (hook at `0x82E5D8AC` in the
-  XMedia wrapper `sub_82E5D868`) to `media/ui/videos/splash_intros/`. It now
-  completes every movie, so the Press Start screen is solid green and the
-  single-player menu shows pink noise instead of `PressStart.wmv` in every
-  scripted run (with movies playing, both are correct).
+- [x] Limit `pinyon_shift_skip_opening_movies` (hook at `0x82E5D8AC` in the
+  XMedia wrapper `sub_82E5D868`) to `media/ui/videos/splash_intros/`. It
+  completed every movie, so scripted runs showed a solid green Press Start
+  screen and pink noise behind the single-player menu. A kernel file-open
+  observer now tracks the playing movie (`041d541`): the splash intros are
+  skipped, `PressStart.wmv` plays, and Press Start is still up by frame 400.
 - [ ] Bound native diagnostics: no per-draw INFO JSON by default, and stop
   the "absent from the offline analysis catalog" error flood that native
   runs trigger in `PipelineCache::ConfigurePipeline`.
