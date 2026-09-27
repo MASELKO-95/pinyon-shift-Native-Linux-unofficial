@@ -1255,7 +1255,10 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     graphics.submitted.pop_front();
   if (graphics.submitted.size() >= 8) return reject("in_flight_limit");
 
-  UploadArena arena;
+  // ponytail: keep at most the 64 MiB peak scratch per render thread;
+  // release it on mode exit if retained CPU memory becomes a problem.
+  static thread_local UploadArena arena;
+  arena.bytes.clear();
   struct Material {
     ComPtr<ID3D12Resource> resource;
     ComPtr<ID3D12Resource> snapshot;

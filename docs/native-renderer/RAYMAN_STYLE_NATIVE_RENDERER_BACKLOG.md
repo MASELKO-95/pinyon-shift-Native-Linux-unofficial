@@ -491,12 +491,14 @@ not a prerequisite for the first usable renderer.
 3. **Remove the measured responsiveness blocker.** The first native/compatibility
    comparison and safe texture-snapshot reuse are documented above. The
    [output-stage split](RAYMAN_LIVE_PERFORMANCE_2026-09-27.md) points to
-   repeated draw preparation (17–19 ms in sampled frames), frame-resource
-   creation (5–14 ms) and prepared snapshot/observer work (about 12/25 ms
-   median), not CPU issuance of already-prepared native draws. Remove one
-   proven repeated cost at a time, checking live promotion, HUD and fallback
-   after each. This work precedes secondary visual fixes because the
-   remaining roughly 118 ms native frame is not a usable driving cadence.
+   repeated draw preparation and frame-resource creation, not CPU issuance
+   of already-prepared native draws. CPU upload scratch reuse reduced the
+   measured native window to 104.31 ms while keeping promotion and fallback.
+   Prepared snapshot/observer work (about 12/25 ms median in the earlier
+   window) remains a candidate. Remove one proven repeated cost at a time,
+   checking live promotion, HUD and fallback after each. This work precedes
+   secondary visual fixes because the remaining native frame is not a usable
+   driving cadence.
 4. **Prove playability.** Run a longer unscripted drive plus mode-boundary,
    hot-toggle and UI stress checks. Record visible remaining gaps, fallback
    frequency, blank/stale frames and responsiveness. RAY-04 closes when the

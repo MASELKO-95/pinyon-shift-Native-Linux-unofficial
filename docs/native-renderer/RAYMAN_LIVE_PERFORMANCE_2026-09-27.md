@@ -12,6 +12,7 @@ so the numbers rank CPU work rather than prove a synchronized visual A/B.
 | Compatibility | 23.54 ms | 25.94 ms | 0 | 0 | 0 |
 | Native before reuse | 187.81 ms | 201.20 ms | 143 | 132.99 ms | 41.56 ms |
 | Native with exact-version reuse | 118.34 ms | 128.59 ms | 6 | 61.30 ms | 41.23 ms |
+| Native with CPU upload scratch reuse | 104.31 ms | 123.43 ms | 6 | 57.17 ms | 30.02 ms |
 
 The original live path made a committed GPU texture and copy for every new
 material key in every frame. The retained change reuses a previous frame's
@@ -44,9 +45,22 @@ about 28–39 ms in scene drawing and 3 ms in UI replay. Within scene drawing,
 parsing took 5 ms, repeated draw preparation 17–19 ms, frame-resource
 creation 5–14 ms, descriptor setup about 1 ms, and issuing prepared draws
 under 0.3 ms of CPU time. These are two samples, not a population estimate.
-The next bounded optimization should remove repeated preparation or resource
-allocation before changing the draw loop. The prepared snapshot/observer work
-also remains substantial (about 12 and 25 ms median respectively in the
-native window). Keep the whole-frame fallback and repeat the presentation
-checks after each change. A longer unscripted drive remains open; scripted
-movement and static screenshots do not prove control responsiveness.
+The next bounded split found about 8 ms in manager bulk-data setup for
+roughly 100 draws; their binding loop and texture lookup were under 0.2 ms
+and 0.05 ms respectively. `UploadArena` had allocated and grown a fresh CPU
+byte vector every frame before copying it into the D3D12 upload resource.
+Reusing that CPU scratch per render thread reduced the measured output
+callback from 41.23 to 30.02 ms and total frame time from 118.34 to
+104.31 ms. The GPU upload resource is still created per frame. The extended
+scripted route exited normally, with native promotion at captured frames
+5040, 5100, 5200 and 5290; mode-boundary and hot-toggle verifiers passed.
+Artifacts are under `.local/ray-arena-reuse-profile-20260927/`,
+`.local/ray-arena-live-20260927/`, `.local/ray-arena-mode-20260927/` and
+`.local/ray-arena-toggle-20260927/`.
+
+At about 104 ms per frame, responsiveness remains open. The prepared
+snapshot/observer work is still substantial (about 12 and 25 ms median in
+the earlier native window). Keep the whole-frame fallback and repeat the
+presentation checks after each change. A longer unscripted drive remains
+open; scripted movement and static screenshots do not prove control
+responsiveness.
