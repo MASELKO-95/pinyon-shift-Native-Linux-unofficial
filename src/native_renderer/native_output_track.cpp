@@ -1494,6 +1494,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   std::optional<std::vector<OrderedFrameOperation>> ordered_operations;
   std::vector<ProducerDrawBinding> producer_bindings;
   uint64_t producer_clear_sequence = 0;
+  uint32_t guest_second_color_index = UINT32_MAX;
   if (ordered_tiles) {
     ordered_operations = SnapshotOrderedFrameOperations(trace_frame);
     if (!ordered_operations) return reject("ordered_stream");
@@ -1647,6 +1648,33 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     }
     if (producer_bindings.size() != 15)
       return reject("scene_producer_count");
+    // Fetch 13 in the first car-body draw reads the second resolved color
+    // version. Identify its pinned texture before replacing one consumer.
+    const auto guest_consumer = std::find_if(
+        std::next(second_copy), ordered_operations->end(),
+        [](const auto& event) {
+          return event.kind == 'D' && event.color == 786432 &&
+              event.pixel_shader == 16847216741118496823ull;
+        });
+    if (guest_consumer == ordered_operations->end() ||
+        !WithOrderedFrameDraws(trace_frame, guest_consumer->sequence,
+                               guest_consumer->sequence,
+                               [&](const auto& draws) {
+          if (draws.size() != 1) return false;
+          for (const auto& texture : draws.begin()->second.textures) {
+            if (texture.fetch_constant != 13 ||
+                (texture.fetch_words[1] >> 12) != (484626432u >> 12))
+              continue;
+            Snr04TrackTextureIdentity identity;
+            std::copy_n(texture.fetch_words, 6,
+                        identity.fetch_words.begin());
+            identity.allocation_id = texture.allocation_id;
+            identity.payload_generation = texture.payload_generation;
+            identity.outdated_mask = texture.outdated_mask;
+            return resolve_material(identity, guest_second_color_index, true);
+          }
+          return false;
+        })) return reject("guest_second_color");
   }
   TrackFrame frame;
   if (!CreateFrame(device, output, arena, scene_only, ordered_tiles,
@@ -1764,6 +1792,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         device->CreateShaderResourceView(snapshot, &view, slot);
       }
     }
+    bool native_second_routed = false;
     for (const auto& binding : remainder_bindings) {
       const uint32_t kind = std::get<8>(binding.pipeline);
       if (kind != 3 && kind != 4) continue;
@@ -1791,11 +1820,21 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         slot.ptr += SIZE_T(offset) * stride;
         auto* snapshot = frame.material_resources[
             binding.shader_materials[j] * 2 + 1].Get();
+        if (ordered_tiles && !native_second_routed &&
+            binding.shader_materials[j] == guest_second_color_index) {
+          snapshot = frame.initial_color_versions[1].Get();
+          view.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+          native_second_routed = true;
+          REXGPU_WARN("FH1 RAY01 native second color consumer frame={} "
+                      "sequence={}", trace_frame, binding.sequence);
+        }
         device->CreateShaderResourceView(snapshot, &view, slot);
         slot.ptr += stride;
         device->CreateShaderResourceView(snapshot, &view, slot);
       }
     }
+    if (ordered_tiles && !native_second_routed)
+      return reject("second_color_consumer");
     for (const auto& binding : producer_bindings) {
       for (uint32_t j = 0; j < binding.material_count; ++j) {
         const auto& material = materials[binding.materials[j]];
@@ -2386,6 +2425,11 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
           list->SetDescriptorHeaps(material_heap, sampler_heap);
           list->D3DSetGraphicsRootSignature(graphics.root.Get());
         } else {
+          barrier.Transition.pResource = initial_color_versions[1];
+          barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+          barrier.Transition.StateAfter =
+              D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+          list->D3DResourceBarrier(1, &barrier);
           list->D3DOMSetRenderTargets(1, &rtv, FALSE, &dsv);
         }
         REXGPU_WARN("FH1 RAY01 ordered initial color frame={} sequence={} "

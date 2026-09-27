@@ -49,9 +49,10 @@ and pinned texture. The diagnostic second-version image at
 contains the crowd, scenery, vegetation and car without the previous white
 wedge. The short route exited normally. This is a hybrid second version:
 the first native copy remains incomplete and the seed depends on the guest
-resolve. Visible consumers still use pinned compatibility textures. Compare
-the second native version with its same-frame guest version and route it to
-one consumer only when the result is safe under the whole-frame fallback.
+resolve. The later [paired comparison and consumer pilot](RAYMAN_SECOND_COLOR_CONSUMER_2026-09-26.md)
+found a close central-region match and routed one car draw to the second
+native version under whole-frame fallback. Other consumers remain pinned
+compatibility textures.
 
 The final normal-output rerun is
 `ordered-feedback-seeded-final-output/`: it exited normally, saved four

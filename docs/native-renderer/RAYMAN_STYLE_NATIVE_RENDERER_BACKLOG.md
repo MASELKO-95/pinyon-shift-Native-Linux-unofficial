@@ -168,7 +168,10 @@ found that a pre-draw full-resource cache snapshot is nearly white despite
 the guest's complete first resolved version. It now seeds the second native
 version from that pinned first version before the original feedback draw.
 The diagnostic second version has recognizable crowd, scenery and car;
-visible consumers still use the guest texture until same-frame comparison.
+the [paired comparison and guarded consumer pilot](RAYMAN_SECOND_COLOR_CONSUMER_2026-09-26.md)
+then found a 97.342% exact match in the sampled central region and routed
+one car-material read to it. The complete frame still has major background
+artifacts; other consumers remain compatibility-backed.
 The [main-scene original draw pilot](RAYMAN_MAIN_SCENE_ORIGINAL_DRAW_2026-09-26.md)
 also issues one captured textured strip in each of the three color tiles at
 its stream ordinal. A short native race passed with readable HUD, but the
@@ -411,9 +414,10 @@ the D3D12 debug layer and DRED, then retry only when its cause is addressed.
 Until that path is stable, prioritize the already captured offscreen
 color/depth history and its pinned guest consumer comparison rather than
 admitting another large scene family.
-Compare the seeded second native color version against the pinned guest
-second version at the same frame and ordinal. If coherent, bind it to one
-later consumer under the existing whole-frame fallback. Do not use the
+The seeded second native color version now matches the pinned guest second
+version closely in one sampled region, and one car draw consumes it under
+the existing whole-frame fallback. Expand replacement only to a consumer
+whose pinned version and sampled region are verified. Do not use the
 pre-draw full-resource cache snapshot as the starting image: it is nearly
 white because the EDRAM history has not been materialized there. The first
 native version still lacks that history; keep the guest first version for
