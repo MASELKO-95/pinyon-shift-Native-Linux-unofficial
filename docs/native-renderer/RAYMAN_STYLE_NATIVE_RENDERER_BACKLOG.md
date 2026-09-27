@@ -416,6 +416,12 @@ families using flat fallback colors. Fetch-0 sampling for those 30 draws
 removes both exact flat colors across five consecutive moving native shadows,
 with same-run guest references and a normal route exit. This is a visible
 RAY-04 gain, while earlier color resolves remain an RAY-00/01 ownership gap.
+The [late-race facade check](RAYMAN_FACADE_NEON_2026-09-27.md) caught a
+persistent pure-yellow artifact missed by the short route. Isolating the
+five-texture original program removed it; the retained captured fetch-5
+approximation also removes it across eleven moving stress frames while
+keeping visible structure texture. A paired later shadow run and hot-toggle
+pass. This is a playability correction, not full material parity.
 
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major

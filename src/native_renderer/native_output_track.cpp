@@ -50,7 +50,9 @@ uint32_t TrackMaterialKind(const Snr04TrackDraw& draw) {
       draw.pixel_shader == 0x56D45C45966FD938ull &&
       draw.pixel_specialization == 0x4000002B003Full &&
       draw.textures.size() == 5)
-    return 3;
+    // ponytail: fetch-5 color avoids late-race neon; restore the full
+    // program when its source-frame inputs match the guest output.
+    return 5;
   if (((draw.shader == 0x0CBC533419F61E0Dull &&
         draw.pixel_shader == 0xEFCA69AA2BEE366Bull) ||
        (draw.shader == 0x5DB1ECF39EA11DB0ull &&
@@ -380,7 +382,8 @@ struct TrackGraphics {
         return false;
       description.PS = {pixel_bytecode, pixel_size};
     } else {
-      ID3DBlob* fragment = material == 1 ? pixel_textured.Get()
+      ID3DBlob* fragment = material == 1 || material == 5
+          ? pixel_textured.Get()
           : material == 2 || material == 4
               ? pixel_road.Get() : pixel.Get();
       description.PS = {fragment->GetBufferPointer(), fragment->GetBufferSize()};
@@ -1331,8 +1334,9 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       return reject("track_viewport");
     TrackDrawBinding binding;
     const uint32_t material = TrackMaterialKind(draw);
-    if (material == 1 || material == 2 || material == 4) {
-      const auto found = texture_identities.find({draw.sequence, 0});
+    if (material == 1 || material == 2 || material == 4 || material == 5) {
+      const auto found = texture_identities.find({draw.sequence,
+                                                 material == 5 ? 5u : 0u});
       if (found == texture_identities.end() ||
           !resolve_material(*found->second, binding.material_index)) {
         REXGPU_INFO("FH1 native track texture unavailable frame={} sequence={}",
