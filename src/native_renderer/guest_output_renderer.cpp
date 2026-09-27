@@ -70,7 +70,7 @@ using Microsoft::WRL::ComPtr;
 struct ShadowFrame {
   uint64_t output_frame = 0, submission = 0;
   D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
-  ComPtr<ID3D12Resource> target, readback;
+  ComPtr<ID3D12Resource> target, readback, guest_readback;
 };
 thread_local std::deque<ShadowFrame> shadow_pending;
 
@@ -81,30 +81,35 @@ void DrainShadow(uint64_t completed_submission) {
          shadow_pending.front().submission <= completed_submission) {
     auto frame = std::move(shadow_pending.front());
     shadow_pending.pop_front();
-    if (!output || !frame.readback) continue;
-    void* mapped = nullptr;
-    if (FAILED(frame.readback->Map(0, nullptr, &mapped))) continue;
+    if (!output || (!frame.readback && !frame.guest_readback)) continue;
     std::error_code error;
     std::filesystem::create_directories(*output, error);
-    const auto path = *output /
-        ("native-shadow-" + std::to_string(frame.output_frame) + ".ppm");
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    if (!error && file) {
-      file << "P6\n1280 720\n255\n";
-      const auto* bytes = static_cast<const uint8_t*>(mapped);
-      for (uint32_t y = 0; y < 720; ++y) {
-        const auto* row = reinterpret_cast<const uint32_t*>(
-            bytes + y * frame.footprint.Footprint.RowPitch);
-        for (uint32_t x = 0; x < 1280; ++x) {
-          const uint32_t pixel = row[x];
-          const char rgb[3]{char(((pixel & 1023) * 255 + 511) / 1023),
-                            char((((pixel >> 10) & 1023) * 255 + 511) / 1023),
-                            char((((pixel >> 20) & 1023) * 255 + 511) / 1023)};
-          file.write(rgb, 3);
+    const auto write_image = [&](ID3D12Resource* readback, const char* name) {
+      if (error || !readback) return;
+      void* mapped = nullptr;
+      if (FAILED(readback->Map(0, nullptr, &mapped))) return;
+      const auto path = *output /
+          (std::string(name) + std::to_string(frame.output_frame) + ".ppm");
+      std::ofstream file(path, std::ios::binary | std::ios::trunc);
+      if (file) {
+        file << "P6\n1280 720\n255\n";
+        const auto* bytes = static_cast<const uint8_t*>(mapped);
+        for (uint32_t y = 0; y < 720; ++y) {
+          const auto* row = reinterpret_cast<const uint32_t*>(
+              bytes + y * frame.footprint.Footprint.RowPitch);
+          for (uint32_t x = 0; x < 1280; ++x) {
+            const uint32_t pixel = row[x];
+            const char rgb[3]{char(((pixel & 1023) * 255 + 511) / 1023),
+                              char((((pixel >> 10) & 1023) * 255 + 511) / 1023),
+                              char((((pixel >> 20) & 1023) * 255 + 511) / 1023)};
+            file.write(rgb, 3);
+          }
         }
       }
-    }
-    frame.readback->Unmap(0, nullptr);
+      readback->Unmap(0, nullptr);
+    };
+    write_image(frame.readback.Get(), "native-shadow-");
+    write_image(frame.guest_readback.Get(), "guest-reference-");
   }
 }
 
@@ -128,7 +133,14 @@ bool DrawShadow(const rex::system::NativeGuestOutputRenderContext& context,
       rex::cvar::GetFlagByName("pinyon_shift_snr01_trace_source_frame").c_str(),
       nullptr, 10);
   const bool ordered_pilot = trace_frame == context.frame_sequence;
-  save_image |= ordered_pilot && pinyon_shift::fh1_render_test::Enabled();
+  const bool traced_capture = trace_frame &&
+      context.frame_sequence >= trace_frame &&
+      context.frame_sequence - trace_frame <= 4 &&
+      pinyon_shift::fh1_render_test::Enabled();
+  // A promoted image can reappear in a reused guest buffer; compare only
+  // shadow-only runs that have not replaced presentation.
+  const bool paired_reference = traced_capture && !promote;
+  save_image |= traced_capture;
   const uint64_t ui_frame = pinyon_shift::native_renderer::ResolveOrderedUiReplayFrame(
       ordered_pilot ? context.frame_sequence : source_frame);
   if (ordered_pilot) {
@@ -253,6 +265,34 @@ bool DrawShadow(const rex::system::NativeGuestOutputRenderContext& context,
       from.pResource = frame.target.Get();
       from.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
       to.pResource = frame.readback.Get();
+      to.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+      to.PlacedFootprint = frame.footprint;
+      list->D3DCopyTextureRegion(&to, 0, 0, 0, &from, nullptr);
+      std::swap(barrier.Transition.StateBefore,
+                barrier.Transition.StateAfter);
+      list->D3DResourceBarrier(1, &barrier);
+    }
+    if (paired_reference && output &&
+        output->GetDesc().Format == DXGI_FORMAT_R10G10B10A2_UNORM &&
+        output->GetDesc().Width == 1280 &&
+        output->GetDesc().Height == 720 &&
+        output->GetDesc().SampleDesc.Count == 1 &&
+        SUCCEEDED(device->CreateCommittedResource(
+            &heap, D3D12_HEAP_FLAG_NONE, &desc,
+            D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            IID_PPV_ARGS(&frame.guest_readback)))) {
+      D3D12_RESOURCE_BARRIER barrier{};
+      barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+      barrier.Transition.pResource = output;
+      barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+      barrier.Transition.StateBefore =
+          D3D12_RESOURCE_STATES(context.guest_output_state);
+      barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+      list->D3DResourceBarrier(1, &barrier);
+      D3D12_TEXTURE_COPY_LOCATION from{}, to{};
+      from.pResource = output;
+      from.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+      to.pResource = frame.guest_readback.Get();
       to.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
       to.PlacedFootprint = frame.footprint;
       list->D3DCopyTextureRegion(&to, 0, 0, 0, &from, nullptr);

@@ -335,6 +335,12 @@ remains open.
 The [layered material trial](RAYMAN_LAYERED_MATERIAL_TRIAL_2026-09-26.md)
 ran the original one-texture pixel program on 269 procedural draws without
 closing the flat-ground or missing-background gap. The trial was removed.
+The [shadow-only frame comparison](RAYMAN_SHADOW_ONLY_FRAME_COMPARISON_2026-09-26.md)
+exposed a misleading live comparison: a promoted native image reappeared in
+a reused guest-output buffer three output frames later. With promotion off,
+native shadow 5001 and near-aligned guest output 5002 differ strongly: flat
+sky, unlit buildings and asphalt, missing car detail/shadow and a degraded
+navigation graphic. Use shadow-only guest references for visual triage.
 The [ordered support census](RAYMAN_ORDERED_SUPPORT_CENSUS_2026-09-26.md)
 joins every selected-frame draw to its native family. Of 1,377 unsupported
 draws, 1,049 precede the main scene, 63 target the main scene, and 265 follow
@@ -421,6 +427,11 @@ background gap.
 Until that path is stable, prioritize the already captured offscreen
 color/depth history and its pinned guest consumer comparison rather than
 admitting another large scene family.
+The uncontaminated shadow-only comparison makes the first full-scene color
+history and its lighting/road consumers the immediate visual priority.
+Recheck native output against a near-aligned guest reference with promotion
+off before claiming a visible gap closed; a later guest buffer may contain
+an earlier promoted native frame.
 The seeded second native color version now matches the pinned guest second
 version closely in one sampled region, and one car draw consumes it under
 the existing whole-frame fallback. Expand replacement only to a consumer
