@@ -2320,6 +2320,9 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   };
   auto draw_remainder = [&](size_t i) {
     const auto& binding = remainder_bindings[i];
+    // ponytail: omit this overlay until the native target owns guest stencil.
+    if (std::get<8>(binding.pipeline) == 1 &&
+        (std::get<4>(binding.pipeline) & 1)) return;
     list->D3DSetGraphicsRootShaderResourceView(3, base + remainder_vertex);
     list->RSSetViewport(binding.viewport);
     list->RSSetScissorRect(binding.scissor);

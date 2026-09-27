@@ -423,6 +423,11 @@ five-texture original program removed it; the retained captured fetch-5
 approximation also removes it across eleven moving stress frames while
 keeping visible structure texture. A paired later shadow run and hot-toggle
 pass. This is a playability correction, not full material parity.
+The [car stencil comparison](RAYMAN_CAR_STENCIL_2026-09-27.md) found that
+guest stencil rejects a black rear overlay that native applied without a
+stencil target. Omitting that overlay improves the rear-car region in four
+paired moving frames. Exact stencil ownership remains a later ordered-replay
+task if the missing detail proves visible during driving.
 
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major
@@ -487,23 +492,42 @@ Use the following gates to avoid another sequence of isolated pilots:
    the route. Matching guest raster state restored the green navigation in
    three same-run moving frames while preserving the readable HUD. Keep known
    `DEVICE_HUNG` families out of admission until one isolated draw survives.
-3. [ ] **Move the scene color/resolve dependency into rolling frames.** The
+3. [x] **Remove the confirmed rear-car stencil mismatch.** The
+   [car stencil comparison](RAYMAN_CAR_STENCIL_2026-09-27.md) identifies the
+   rejected guest overlay and verifies a bounded native omission across four
+   paired moving frames. Keep it only while the car remains readable in a
+   longer drive; implement guest stencil ownership if the omitted detail
+   becomes a visible blocker.
+4. [ ] **Check actual driving and boundaries next.** Run a longer unscripted
+   race with steering and a mode boundary. Record control response, HUD
+   stability, fallback frequency, blank/stale frames and the first visible
+   defect that interferes with driving. Repeat the scripted sustained,
+   hot-toggle and mode-boundary checks after ownership or suppression
+   changes. The latest hot toggle and mode boundary exit normally, but
+   `title-settled` still shows pre-existing saturated background noise;
+   establish a compatibility-only control and reliable title checkpoint
+   before signing off that boundary. The drive is the RAY-04 gate.
+5. [ ] **Fix the next observed driving blocker.** Use a same-run final-frame
+   pair and its exact source inputs. The
    [same-output color trace](RAYMAN_LIVE_SCENE_COLOR_CHAIN_2026-09-27.md)
    locates the pale ground and missing background upstream of the guest's
    final composite: guest scene draws use a four-sample float target and a
    packed color resolve, while native copies a single-sample UNORM target.
    The captured copy's -2 exponent bias and four-sample mode predict the
    guest packed pixel at a road location; a 5,000-pixel probe supports that
-   conversion across the first tile. Reproduce one native tile and compare
-   it against the pinned guest version before feeding it to a live consumer.
-   Execute the needed original
-   shaders, constants, immutable textures, target alias, clear and copy in
-   order; preserve guest-visible versions and same-stream HUD. RAY-00/01
-   still need broader intermediate-target execution. Retire the corresponding
-   scene-snapshot approximation only after several final moving frames
-   improve with native promotion and whole-frame fallback. The 320×192 and
-   640×360 composite inputs remain separate dependencies.
-4. [ ] **Qualify one duplicate guest pass.** The
+   conversion across the first tile. This is a candidate cause, not a gate
+   for all scene work. If it is the drive blocker, reproduce one native tile
+   against the pinned guest version, then move the needed original shaders,
+   constants, texture versions, target alias, clears and copies into rolling
+   frames. Retire the scene-snapshot approximation only after several final
+   moving frames improve. The 320×192 and 640×360 composite inputs remain
+   separate dependencies.
+6. [ ] **Attack the measured frame-time blocker.** The latest repeated native
+   medians are about 91–95 ms versus 23.54 ms compatibility. Profile a
+   promoted live window and remove the largest cost with a paired frame and
+   short driving check. Do not spend another slice on snapshot micro-tuning:
+   its measured ceiling cannot make the renderer responsive.
+7. [ ] **Qualify one duplicate guest pass only with dependency proof.** The
    [guest-visible dependency ledger](GUEST_VISIBLE_RENDER_DEPENDENCIES.md)
    does not yet qualify any target for suppression. For one candidate, prove
    its resolves, later fetches, queries, memexport and CPU visibility are
@@ -511,16 +535,6 @@ Use the following gates to avoid another sequence of isolated pilots:
    execution intact. Measure promoted-frame latency before and after; a
    faster fallback is not a gain. A null backend is optional, not a shortcut
    around guest-visible side effects.
-5. [ ] **Check actual driving and boundaries.** Run a longer unscripted race
-   with steering and a mode boundary. Record control response, HUD stability,
-   fallback frequency, blank/stale frames and the first visible defect that
-   interferes with driving. Repeat the scripted sustained, hot-toggle and
-   mode-boundary checks after ownership or suppression changes. The latest
-   hot toggle and mode boundary exit normally, but `title-settled` still shows
-   pre-existing saturated background noise; establish a compatibility-only
-   control and reliable title checkpoint before signing off that boundary.
-   Treat the drive, not an arbitrary pixel score or percentage, as the RAY-04
-   gate.
 
 The selected-frame post-scene reductions, final-composite trials, depth and
 color-version experiments, and large-index isolation remain documented above
