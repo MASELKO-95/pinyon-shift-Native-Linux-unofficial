@@ -1565,8 +1565,21 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   const auto trace_frame = std::strtoull(
       rex::cvar::GetFlagByName("pinyon_shift_snr01_trace_source_frame").c_str(),
       nullptr, 10);
-  const bool ordered_tiles = trace_frame && live.source_frame + 1 == trace_frame;
-  const int32_t small_probe = ordered_tiles
+  const auto rolling_start = std::strtoull(
+      rex::cvar::GetFlagByName(
+          "pinyon_shift_native_race_capture_start_frame").c_str(), nullptr, 10);
+  const bool rolling =
+      rex::cvar::GetFlagByName("pinyon_shift_native_ordered_live_probe") ==
+          "true" &&
+      rex::cvar::GetFlagByName("pinyon_shift_native_race") != "true" &&
+      rolling_start &&
+      live.source_frame + 1 >= rolling_start &&
+      live.source_frame + 1 - rolling_start < 64;
+  const uint64_t ordered_frame =
+      trace_frame && live.source_frame + 1 == trace_frame ? trace_frame :
+      rolling ? live.source_frame + 1 : 0;
+  const bool ordered_tiles = ordered_frame != 0;
+  const int32_t small_probe = ordered_frame == trace_frame && trace_frame
       ? REXCVAR_GET(pinyon_shift_native_small_target_probe) : 0;
   if (small_probe < 0 || small_probe > 8)
     return reject("small_probe_range");
@@ -1579,7 +1592,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   uint32_t guest_second_color_index = UINT32_MAX;
   uint32_t guest_small_color_index = UINT32_MAX;
   if (ordered_tiles) {
-    ordered_operations = SnapshotOrderedFrameOperations(trace_frame);
+    ordered_operations = SnapshotOrderedFrameOperations(ordered_frame);
     if (!ordered_operations) return reject("ordered_stream");
     const auto first_copy = std::find_if(
         ordered_operations->begin(), ordered_operations->end(),
@@ -1727,26 +1740,30 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         producer_bindings.push_back(binding);
         return true;
     };
-    if (!WithOrderedFrameDraws(trace_frame, clear->sequence + 1,
-                              second_copy->sequence - 1,
-                              [&](const auto& draws) {
-      for (const auto& [sequence, draw] : draws) {
-        if (draw.color != 720 || !draw.pixel_shader) continue;
-        if (!prepare_producer(sequence, draw, false)) return false;
-      }
-      return producer_bindings.size() == 12 &&
-          producer_bindings[11].feedback &&
-          std::count_if(producer_bindings.begin(), producer_bindings.end(),
-                        [](const auto& binding) {
-                          return binding.feedback;
-                        }) == 1;
-    })) return reject("prepare_initial_producer");
+    for (const auto& event : *ordered_operations) {
+      if (event.sequence <= clear->sequence ||
+          event.sequence >= second_copy->sequence ||
+          event.kind != 'D' || event.color != 720 || !event.pixel_shader)
+        continue;
+      if (!WithOrderedFrameDraws(ordered_frame, event.sequence, event.sequence,
+                                [&](const auto& draws) {
+            return draws.size() == 1 &&
+                prepare_producer(event.sequence, draws.begin()->second, false);
+          })) return reject("prepare_initial_producer");
+    }
+    if (producer_bindings.size() != 12 ||
+        !producer_bindings[11].feedback ||
+        std::count_if(producer_bindings.begin(), producer_bindings.end(),
+                      [](const auto& binding) {
+                        return binding.feedback;
+                      }) != 1)
+      return reject("prepare_initial_producer");
     for (const auto& event : *ordered_operations) {
       if (event.kind != 'D' || event.surface != 335676672 ||
           event.color != 786432 ||
           event.vertex_shader != 0x21FBB5F33759B350ull ||
           event.pixel_shader != 0xCF453BD52292E8E8ull) continue;
-      if (!WithOrderedFrameDraws(trace_frame, event.sequence, event.sequence,
+      if (!WithOrderedFrameDraws(ordered_frame, event.sequence, event.sequence,
                                 [&](const auto& draws) {
         return draws.size() == 1 &&
             prepare_producer(event.sequence, draws.begin()->second, true);
@@ -1760,7 +1777,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
           event.vertex_shader != 0x2C53E1A563484076ull ||
           (event.pixel_shader != 0xE17BECBE8BE65806ull &&
            event.pixel_shader != 0xAE59F518D522BDD1ull)) continue;
-      if (!WithOrderedFrameDraws(trace_frame, event.sequence, event.sequence,
+      if (!WithOrderedFrameDraws(ordered_frame, event.sequence, event.sequence,
                                 [&](const auto& draws) {
         if (draws.size() != 1) return false;
         const auto& draw = draws.begin()->second;
@@ -1784,25 +1801,20 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
           return event.kind == 'D' && event.color == 786432 &&
               event.pixel_shader == 16847216741118496823ull;
         });
-    if (guest_consumer == ordered_operations->end() ||
-        !WithOrderedFrameDraws(trace_frame, guest_consumer->sequence,
-                               guest_consumer->sequence,
-                               [&](const auto& draws) {
-          if (draws.size() != 1) return false;
-          for (const auto& texture : draws.begin()->second.textures) {
-            if (texture.fetch_constant != 13 ||
-                (texture.fetch_words[1] >> 12) != (484626432u >> 12))
-              continue;
-            Snr04TrackTextureIdentity identity;
-            std::copy_n(texture.fetch_words, 6,
-                        identity.fetch_words.begin());
-            identity.allocation_id = texture.allocation_id;
-            identity.payload_generation = texture.payload_generation;
-            identity.outdated_mask = texture.outdated_mask;
-            return resolve_material(identity, guest_second_color_index, true);
-          }
-          return false;
-        })) return reject("guest_second_color");
+    if (guest_consumer == ordered_operations->end())
+      return reject("guest_second_color");
+    const auto texture = OrderedFrameTextureIdentity(
+        ordered_frame, guest_consumer->sequence, 13);
+    if (!texture ||
+        (texture->fetch_words[1] >> 12) != (484626432u >> 12))
+      return reject("guest_second_color");
+    Snr04TrackTextureIdentity identity;
+    std::copy_n(texture->fetch_words, 6, identity.fetch_words.begin());
+    identity.allocation_id = texture->allocation_id;
+    identity.payload_generation = texture->payload_generation;
+    identity.outdated_mask = texture->outdated_mask;
+    if (!resolve_material(identity, guest_second_color_index, true))
+      return reject("guest_second_color");
     if (small_probe >= 4 && small_probe <= 6) {
       const auto input_copy = small_probe == 6 ? std::find_if(
           ordered_operations->begin(), ordered_operations->end(),
@@ -1825,7 +1837,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
                           : 0xE17BECBE8BE65806ull));
           });
       if (guest_small == ordered_operations->end() ||
-          !WithOrderedFrameDraws(trace_frame, guest_small->sequence,
+          !WithOrderedFrameDraws(ordered_frame, guest_small->sequence,
                                  guest_small->sequence,
                                  [&](const auto& draws) {
             if (draws.size() != 1) return false;
@@ -2007,7 +2019,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
           view.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
           native_second_routed = true;
           REXGPU_WARN("FH1 RAY01 native second color consumer frame={} "
-                      "sequence={}", trace_frame, binding.sequence);
+                      "sequence={}", ordered_frame, binding.sequence);
         }
         device->CreateShaderResourceView(snapshot, &view, slot);
         slot.ptr += stride;
@@ -2470,15 +2482,15 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     REXGPU_WARN("FH1 RAY01 ordered dispatch frame={} scene_frame={} supported={} "
                 "unsupported={} copies={} clears={} source_draws={} "
                 "source_range={}:{} event_range={}:{}",
-                trace_frame, scene.source_frame, matched, unsupported, copies,
+                ordered_frame, scene.source_frame, matched, unsupported, copies,
                 clears,
                 order.size(), std::get<0>(order.front()),
                 std::get<0>(order.back()), operations->front().sequence,
                 operations->back().sequence);
     if (const char* root = std::getenv("PINYON_SHIFT_FH1_RENDER_TEST_OUTPUT");
-        root && *root) {
+        ordered_frame == trace_frame && trace_frame && root && *root) {
       std::ofstream manifest(std::filesystem::path(root) /
-          ("ordered-native-support-" + std::to_string(trace_frame) + ".csv"));
+          ("ordered-native-support-" + std::to_string(ordered_frame) + ".csv"));
       if (manifest) {
         manifest << "sequence,family\n";
         for (const auto& event : *operations)
@@ -2556,7 +2568,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         list->D3DClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH,
                                       event.clear_depth[0], 0, 1, &rect);
         REXGPU_WARN("FH1 RAY01 ordered main clear frame={} sequence={} "
-                    "height={}", trace_frame, event.sequence, bounds[3]);
+                    "height={}", ordered_frame, event.sequence, bounds[3]);
       }
       if (event.kind == 'C' && event.copy.source_format == 1 &&
           (event.copy.control & 7) == 4 &&
@@ -2587,7 +2599,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         depth_height += height;
         ++depth_copies;
         REXGPU_WARN("FH1 RAY01 ordered depth tile frame={} sequence={} "
-                    "height={} total={}", trace_frame, event.sequence,
+                    "height={} total={}", ordered_frame, event.sequence,
                     height, depth_height);
       }
       if (event.kind == 'C' && event.dest_base == 484626432 &&
@@ -2647,7 +2659,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
           list->D3DOMSetRenderTargets(1, &rtv, FALSE, &dsv);
         }
         REXGPU_WARN("FH1 RAY01 ordered initial color frame={} sequence={} "
-                    "version={}", trace_frame, event.sequence,
+                    "version={}", ordered_frame, event.sequence,
                     initial_color_copies);
         ++initial_color_copies;
       }
@@ -2696,7 +2708,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
           list->D3DResourceBarrier(1, &barrier);
         }
         REXGPU_WARN("FH1 RAY01 ordered color tile frame={} sequence={} "
-                    "height={} total={}", trace_frame, event.sequence,
+                    "height={} total={}", ordered_frame, event.sequence,
                     height, copied_height);
       }
       const uint8_t small_stage = event.kind != 'C' ? 0 :
@@ -2749,7 +2761,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       return reject_ordered("ordered_tiles_incomplete");
     REXGPU_WARN("FH1 RAY01 original draw replay frame={} "
                 "offscreen_draws=12 scene_draws=3 reduction_draws=3 "
-                "copies={}", trace_frame,
+                "copies={}", ordered_frame,
                 initial_color_copies);
     restore_offscreen_depth();
   } else {

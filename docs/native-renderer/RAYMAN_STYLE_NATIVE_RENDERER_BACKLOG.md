@@ -112,8 +112,13 @@ pack. The remaining RAY-00/01 gap is native execution of the ordered target
 and copy sequence, not input identification for that sampled frame.
 The [bounded rolling event seam](RAYMAN_ROLLING_EVENT_SEAM_2026-09-27.md)
 now observes draw, copy and optimized-clear order across moving race frames
-behind an opt-in flag. Rolling producer payloads, target execution and
-consumer routing remain open; the selected-frame replay is still a fixture.
+behind an opt-in flag. Complete target ownership and consumer routing remain
+open; the selected-frame replay is still a fixture for the full stream.
+The [bounded producer replay check](RAYMAN_ROLLING_EVENT_SEAM_2026-09-27.md#bounded-producer-replay-check)
+then captured the 18 selected producer inputs on moving frames and executed
+them in 15 consecutive native shadows. This removes the selected-frame-only
+gate for that narrow path, but the saved image still has major world and car
+gaps; the complete frame is not owned.
 
 - [ ] From one moving-race frame and one known HUD-gap frame, record one
   ordered stream of draw, clear, resolve and output-target events. Each event
@@ -528,11 +533,16 @@ Use the following gates to avoid another sequence of isolated pilots:
    against the pinned guest version, then move the needed original shaders,
    constants, texture versions, target alias, clears and copies into rolling
    frames. The [rolling event seam](RAYMAN_ROLLING_EVENT_SEAM_2026-09-27.md)
-   supplies ordered metadata; capture only the needed producer payloads
-   next, not a full per-frame diagnostic artifact. Retire the scene-snapshot
-   approximation only after several final
-   moving frames improve. The 320×192 and 640×360 composite inputs remain
-   separate dependencies.
+   now supplies ordered metadata and the 18 producer inputs to bounded live
+   shadow replay. Its 15-frame run did not visibly close the flat-sky,
+   unlit-world or dark-car gaps. **Pause expansion of that producer path.**
+   First test one scene color tile's float/MSAA resolve against its pinned
+   guest version and the same-run final image. If it improves the final
+   image, carry only the necessary target/resolve behavior into rolling
+   frames; otherwise re-rank the next visible blocker. Retire the
+   scene-snapshot approximation only after several moving final frames
+   improve. The 320×192 and 640×360 composite inputs remain separate
+   dependencies.
 6. [ ] **Attack the measured frame-time blocker.** The latest repeated native
    medians are about 91–95 ms versus 23.54 ms compatibility. The
    [current trace checkpoint](RAYMAN_POST_STENCIL_PROFILE_2026-09-27.md)

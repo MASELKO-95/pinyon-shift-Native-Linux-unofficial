@@ -90,6 +90,29 @@ Frame& CaptureFrame(uint64_t source_frame) {
   return frame;
 }
 
+bool RollingFrame(uint64_t source_frame) {
+  static const bool enabled =
+      rex::cvar::GetFlagByName("pinyon_shift_native_ordered_live_probe") ==
+      "true";
+  static const uint64_t start = std::strtoull(
+      rex::cvar::GetFlagByName(
+          "pinyon_shift_native_race_capture_start_frame").c_str(), nullptr, 10);
+  return enabled && start && source_frame >= start &&
+      source_frame - start < 64;
+}
+
+bool RollingProducer(uint32_t surface, uint32_t color, uint64_t vertex,
+                     uint64_t pixel) {
+  return (color == 720 && pixel) ||
+      (surface == 335676672 && color == 786432 &&
+       vertex == 0x21FBB5F33759B350ull &&
+       pixel == 0xCF453BD52292E8E8ull) ||
+      (surface == 335545600 && color == 196608 &&
+       vertex == 0x2C53E1A563484076ull &&
+       (pixel == 0xE17BECBE8BE65806ull ||
+        pixel == 0xAE59F518D522BDD1ull));
+}
+
 bool CompleteUi(const Frame& frame) {
   return !frame.rejected && !frame.draws.empty() &&
       std::all_of(frame.draws.begin(), frame.draws.end(),
@@ -306,6 +329,28 @@ bool WithOrderedFrameDraws(
   return !draws.empty() && use(draws);
 }
 
+std::optional<rex::system::GraphicsFinalDrawTextureIdentity>
+OrderedFrameTextureIdentity(uint64_t source_frame, uint64_t sequence,
+                            uint32_t fetch_constant) {
+  std::lock_guard lock(capture_mutex);
+  const auto frame = captured_frames.find(source_frame);
+  if (frame == captured_frames.end() || frame->second.rejected)
+    return std::nullopt;
+  const auto event = frame->second.events.find(sequence);
+  if (event == frame->second.events.end() ||
+      event->second.kind != 'D' || event->second.final_seen != 1)
+    return std::nullopt;
+  const auto& textures = event->second.textures;
+  const auto texture = std::find_if(textures.begin(), textures.end(),
+      [fetch_constant](const auto& value) {
+        return value.fetch_constant == fetch_constant;
+      });
+  if (texture == textures.end() || !texture->allocation_id ||
+      !texture->payload_generation || texture->outdated_mask)
+    return std::nullopt;
+  return *texture;
+}
+
 uint64_t ResolveOrderedUiReplayFrame(uint64_t source_frame) {
   std::lock_guard lock(capture_mutex);
   const auto current = captured_frames.find(source_frame);
@@ -365,7 +410,10 @@ void CaptureOrderedFrameDraw(
   static const uint64_t trace_frame = std::strtoull(
       rex::cvar::GetFlagByName("pinyon_shift_snr01_trace_source_frame").c_str(),
       nullptr, 10);
-  if (observation.frame_sequence == trace_frame) {
+  if (observation.frame_sequence == trace_frame ||
+      (RollingFrame(observation.frame_sequence) &&
+       RollingProducer(event.surface, event.color, event.vertex_shader,
+                       event.pixel_shader))) {
     event.state_bitmap_ready = observation.vertex_float_constant_bitmap &&
         (!event.pixel_shader || observation.pixel_float_constant_bitmap);
     if (event.state_bitmap_ready) {
@@ -598,7 +646,11 @@ void CaptureOrderedUiFinalState(
       static const uint64_t trace_frame = std::strtoull(
           rex::cvar::GetFlagByName(
               "pinyon_shift_snr01_trace_source_frame").c_str(), nullptr, 10);
-      if (observation.frame_sequence == trace_frame) {
+      if (observation.frame_sequence == trace_frame ||
+          (RollingFrame(observation.frame_sequence) &&
+           RollingProducer(event->second.surface, event->second.color,
+                           event->second.vertex_shader,
+                           event->second.pixel_shader))) {
         auto& draw = event->second;
         draw.state_snapshot_ready = draw.state_bitmap_ready &&
             observation.vertex_float_constant_words &&
@@ -670,6 +722,7 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
       source_frame - rolling_start < 64 && source_frame % 10 == 0) {
     const auto operations = SnapshotOrderedFrameOperations(source_frame);
     size_t draws = 0, copies = 0, clears = 0, main_color_copies = 0;
+    size_t producers = 0, ready_producers = 0;
     if (operations)
       for (const auto& event : *operations) {
         draws += event.kind == 'D';
@@ -677,10 +730,19 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
         clears += event.kind == 'K';
         main_color_copies += event.kind == 'C' &&
             event.dest_base == 484626432;
+        if (event.kind == 'D' &&
+            RollingProducer(event.surface, event.color,
+                            event.vertex_shader, event.pixel_shader)) {
+          ++producers;
+          ready_producers += WithOrderedFrameDraws(
+              source_frame, event.sequence, event.sequence,
+              [](const auto&) { return true; });
+        }
       }
     REXGPU_WARN("FH1 ordered live frame={} present={} draws={} copies={} "
-                "clears={} main_color_copies={}", source_frame,
-                bool(operations), draws, copies, clears, main_color_copies);
+                "clears={} main_color_copies={} producers={} ready={}",
+                source_frame, bool(operations), draws, copies, clears,
+                main_color_copies, producers, ready_producers);
   }
   const uint64_t ui_replay_source_frame = source_frame == trace_frame
       ? ResolveOrderedUiReplayFrame(source_frame) : 0;
