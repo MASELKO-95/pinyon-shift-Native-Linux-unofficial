@@ -411,6 +411,13 @@ one-texture indexed strip separately. Both caused D3D12 `DEVICE_HUNG` after
 submission and were removed. Stop admitting large indexed families by input
 shape alone. Diagnose one draw's GPU bindings and translated shader under
 the D3D12 debug layer and DRED, then retry only when its cause is addressed.
+The [tile isolation](RAYMAN_LARGE_SCENE_TILE_ISOLATION_2026-09-26.md)
+now shows the 8,700-index family is safe for a full first tile and the first
+two tiles together, but its third tile alone removes the device. A first-tile
+NDC/viewport mapping lets the third tile finish alone; all three still hang
+together. Measure the translated vertex path and per-tile GPU duration before
+admitting this family. Its safe trial images did not visibly close the
+background gap.
 Until that path is stable, prioritize the already captured offscreen
 color/depth history and its pinned guest consumer comparison rather than
 admitting another large scene family.

@@ -63,3 +63,11 @@ reported failed PM4 draws. Its result is inconclusive. The test route can
 also land in free roam; a prior normal exit with 65 HUD draws never opened
 the native shadow gate. Future GPU comparisons must verify the race HUD and
 the `RAY01 original draw replay` marker in the same run.
+
+The later [source-5001 tile isolation](RAYMAN_LARGE_SCENE_TILE_ISOLATION_2026-09-26.md)
+reached that marker reliably. One triangle, 100 triangles, the complete first
+tile, and the first two complete tiles passed. The complete third tile alone
+reproduced device removal, including with a 16-pixel scissor. Its captured
+Y NDC system constants are the key varying state; replacing them and using a
+full-height host viewport let that tile finish alone, but all three still
+removed the device. None of those diagnostic variants were retained.
