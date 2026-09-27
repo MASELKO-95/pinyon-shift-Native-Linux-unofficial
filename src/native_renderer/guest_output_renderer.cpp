@@ -235,12 +235,16 @@ bool DrawShadow(const rex::system::NativeGuestOutputRenderContext& context,
   auto shadow_context = context;
   shadow_context.guest_output = frame.target.Get();
   shadow_context.guest_output_state = D3D12_RESOURCE_STATE_COMMON;
+  const bool small_probe = context.frame_sequence == std::strtoull(
+      rex::cvar::GetFlagByName("pinyon_shift_snr01_trace_source_frame").c_str(),
+      nullptr, 10) && std::strtol(rex::cvar::GetFlagByName(
+      "pinyon_shift_native_small_target_probe").c_str(), nullptr, 10) > 0;
   const bool scene_drawn = pinyon_shift::native_renderer::DrawNativeOutputTrack(
       shadow_context, *scene, true);
-  const bool ui_drawn = scene_drawn &&
+  const bool ui_drawn = scene_drawn && !small_probe &&
       pinyon_shift::native_renderer::DrawNativeOutputUi(
           shadow_context, ui_frame);
-  if (ui_drawn && save_image) {
+  if (scene_drawn && (small_probe || ui_drawn) && save_image) {
     heap.Type = D3D12_HEAP_TYPE_READBACK;
     device->GetCopyableFootprints(&desc, 0, 1, 0, &frame.footprint,
                                   nullptr, nullptr, nullptr);

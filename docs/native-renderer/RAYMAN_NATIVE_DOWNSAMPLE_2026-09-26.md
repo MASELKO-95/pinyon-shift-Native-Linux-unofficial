@@ -15,7 +15,7 @@ resource state. This preserves the first version needed by the following
 64×32 reduction. The pass runs only for the explicitly selected ordered
 trace frame; ordinary native race frames retain their existing path.
 
-An opt-in `--pinyon_shift_native_downsample_probe=true` shows that target
+An opt-in `--pinyon_shift_native_small_target_probe=1` shows that target
 in the lower-right of the shadow capture. The probe only runs with native
 presentation off. The route
 `manager-rejection-short.fh1test` exited normally and saved
@@ -31,8 +31,7 @@ was promoted in either run. Build validation used
 `cmake --build out/build/win-amd64-relwithdebinfo --config RelWithDebInfo
 --target pinyon_shift --parallel 8`.
 
-Next, replay and version the small reduction/feedback chain that follows
-this copy, then compare the resulting 320×192 texture with the pinned guest
-version used by the final composite. The 640×360 depth/color-fed pair remains
-separate work. This first owned downsample is not yet connected to the final
-composite or live presentation.
+The following 64×32 and 32×32 passes are described in
+[small reduction replay](RAYMAN_NATIVE_SMALL_REDUCTIONS_2026-09-26.md).
+The 640×360 depth/color-fed pair remains separate work. These small targets
+are not yet connected to the final composite or live presentation.

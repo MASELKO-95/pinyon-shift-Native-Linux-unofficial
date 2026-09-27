@@ -191,11 +191,12 @@ guest output addresses. Frame 6782 promoted with UI source 6781 and normal
 route exit. The saved selected-frame image from a separate same-frame-HUD run
 is recognizable but still shows major yellow background artifacts.
 The [first owned post-scene downsample](RAYMAN_NATIVE_DOWNSAMPLE_2026-09-26.md)
-now executes the original eight-rectangle 320×192 draw from native tiled
-color and preserves its target at the captured resolve ordinal. An opt-in
-shadow probe shows a coherent small race image; the ordinary full-scene
-shadow remains intact. The later 320×192 reduction/feedback version is not
-yet owned or bound to the final composite.
+and [small reductions](RAYMAN_NATIVE_SMALL_REDUCTIONS_2026-09-26.md) now
+execute original 320×192, 64×32 and 32×32 draws from native targets at their
+copy ordinals. The 64×32 probe shows a bright but recognizable race image;
+the 32×32 output is solid white and needs a guest intermediate comparison.
+The next 320×192 feedback draw also reads prior-frame history. Neither the
+later feedback version nor the final composite is owned.
 
 - [ ] Diagnose the shared `DEVICE_HUNG` in large indexed scene draws: isolate
   one draw with the D3D12 debug layer and DRED, verify index/vertex bounds,
