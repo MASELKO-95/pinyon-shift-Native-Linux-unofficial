@@ -14,6 +14,7 @@ param(
     [ValidateRange(1, 3600)]
     [int]$RenderTestTimeoutSeconds,
     [switch]$CollectFh1PassInventory,
+    [switch]$SkipShaderPreparation,
     [switch]$RenderTestIncludeOpeningMovies,
     [switch]$DirectChildProcess,
     [string[]]$GameArguments = @(),
@@ -77,7 +78,7 @@ if ($DiscShaderCorpusDir) {
     $stagedShaderProducer = Join-Path (Split-Path $executable -Parent) `
         'rexgpu-fh1-producer.dll'
 }
-if (-not ($RenderTestScript -or $ShaderCaptureDir -or $DiscShaderCorpusDir -or $CrashSelfTest)) {
+if (-not ($RenderTestScript -or $ShaderCaptureDir -or $DiscShaderCorpusDir -or $CrashSelfTest -or $SkipShaderPreparation)) {
     & (Join-Path $PSScriptRoot 'prepare-fh1-shaders.ps1') -StateRoot $resolvedStateRoot `
         -GameRoot $resolvedGameRoot -BuildDirectory $resolvedBuildDirectory -JsonEvents:$JsonEvents
     $stagedNativeShaderPack = Join-Path $resolvedStateRoot 'cache/fh1-artifacts.json'
