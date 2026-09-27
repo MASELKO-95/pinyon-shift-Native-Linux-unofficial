@@ -110,6 +110,10 @@ selected-frame run. Its 2,965 draws also have complete geometry and exact
 texture pins; all required shader specializations exist in the installed
 pack. The remaining RAY-00/01 gap is native execution of the ordered target
 and copy sequence, not input identification for that sampled frame.
+The [bounded rolling event seam](RAYMAN_ROLLING_EVENT_SEAM_2026-09-27.md)
+now observes draw, copy and optimized-clear order across moving race frames
+behind an opt-in flag. Rolling producer payloads, target execution and
+consumer routing remain open; the selected-frame replay is still a fixture.
 
 - [ ] From one moving-race frame and one known HUD-gap frame, record one
   ordered stream of draw, clear, resolve and output-target events. Each event
@@ -523,7 +527,10 @@ Use the following gates to avoid another sequence of isolated pilots:
    for all scene work. If it is the drive blocker, reproduce one native tile
    against the pinned guest version, then move the needed original shaders,
    constants, texture versions, target alias, clears and copies into rolling
-   frames. Retire the scene-snapshot approximation only after several final
+   frames. The [rolling event seam](RAYMAN_ROLLING_EVENT_SEAM_2026-09-27.md)
+   supplies ordered metadata; capture only the needed producer payloads
+   next, not a full per-frame diagnostic artifact. Retire the scene-snapshot
+   approximation only after several final
    moving frames improve. The 320×192 and 640×360 composite inputs remain
    separate dependencies.
 6. [ ] **Attack the measured frame-time blocker.** The latest repeated native

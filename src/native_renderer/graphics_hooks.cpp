@@ -109,6 +109,10 @@ REXCVAR_DEFINE_INT32(pinyon_shift_native_ui_shadow_start_frame, 0,
 REXCVAR_DEFINE_BOOL(pinyon_shift_native_ui_live, false, "Pinyon Shift",
                     "Continue complete native race UI replay after the pilot window")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+REXCVAR_DEFINE_BOOL(pinyon_shift_native_ordered_live_probe, false,
+                    "Pinyon Shift",
+                    "Capture ordered metadata for 64 rolling race frames")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 namespace {
 
@@ -121,6 +125,15 @@ int32_t NativeRaceCaptureStartFrame() {
 
 bool NativeRaceCaptureEnabled() {
   return NativeRaceCaptureStartFrame() > 0;
+}
+
+bool OrderedLiveFrame(uint64_t frame) {
+  static const bool enabled =
+      REXCVAR_GET(pinyon_shift_native_ordered_live_probe);
+  if (!enabled) return false;
+  const int32_t start = NativeRaceCaptureStartFrame();
+  return start > 0 && frame >= uint64_t(start) &&
+      frame - uint64_t(start) < 64;
 }
 
 bool UiShadowFrame(uint64_t frame) {
@@ -2727,7 +2740,7 @@ void ObservePreparedDraw(
   const bool shadow_ui_target = UiShadowFrame(observation.frame_sequence) &&
       observation.surface_info == 0x14000500 &&
       observation.color_info[0] == 0x000A0000;
-  if (trace || shadow_ui_target) {
+  if (trace || shadow_ui_target || OrderedLiveFrame(observation.frame_sequence)) {
     pinyon_shift::native_renderer::CaptureOrderedFrameDraw(observation);
   }
   if ((trace || shadow_ui_target) &&
@@ -3210,7 +3223,8 @@ void ObserveIndirectBuffer(
 void ObserveCopy(const rex::system::GraphicsCopyObservation& observation) {
   RecordFh1GpuCopy(observation);
   static const int32_t target = REXCVAR_GET(pinyon_shift_snr01_trace_source_frame);
-  if ((target > 0 && observation.frame_sequence == uint64_t(target)) ||
+  if (OrderedLiveFrame(observation.frame_sequence) ||
+      (target > 0 && observation.frame_sequence == uint64_t(target)) ||
       (UiShadowFrame(observation.frame_sequence) &&
        observation.surface_info == 0x14000500 &&
        ((observation.color_info[0] == 0x000A0000) ||
@@ -3258,7 +3272,8 @@ void ObserveCopy(const rex::system::GraphicsCopyObservation& observation) {
 void ObserveFh1Clear(
     const rex::system::GraphicsFh1ClearObservation& observation) {
   const auto target = REXCVAR_GET(pinyon_shift_snr01_trace_source_frame);
-  if ((target > 0 && observation.frame_sequence == uint64_t(target)) ||
+  if (OrderedLiveFrame(observation.frame_sequence) ||
+      (target > 0 && observation.frame_sequence == uint64_t(target)) ||
       (UiShadowFrame(observation.frame_sequence) &&
        observation.surface_info == 0x14000500 &&
        observation.color_info == 0x000A0000))
@@ -3336,12 +3351,14 @@ void InstallGraphicsCensus(rex::system::IGraphicsSystem* graphics_system,
           : nullptr);
   graphics_system->SetCopyObserver(
       enabled || REXCVAR_GET(pinyon_shift_snr01_trace_source_frame) > 0
+          || REXCVAR_GET(pinyon_shift_native_ordered_live_probe)
           || REXCVAR_GET(pinyon_shift_native_ui_shadow_start_frame) > 0 ||
           REXCVAR_GET(pinyon_shift_native_ui_live)
           ? &ObserveCopy
           : nullptr);
   graphics_system->SetFh1ClearObserver(
       REXCVAR_GET(pinyon_shift_snr01_trace_source_frame) > 0 ||
+          REXCVAR_GET(pinyon_shift_native_ordered_live_probe) ||
           REXCVAR_GET(pinyon_shift_native_ui_shadow_start_frame) > 0 ||
           REXCVAR_GET(pinyon_shift_native_ui_live)
           ? &ObserveFh1Clear : nullptr);

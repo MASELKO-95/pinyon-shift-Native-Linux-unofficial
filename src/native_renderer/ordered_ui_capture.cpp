@@ -660,6 +660,28 @@ void FlushOrderedUiFrame(uint64_t output_frame) {
       rex::cvar::GetFlagByName("pinyon_shift_native_ui_shadow_start_frame").c_str(),
       nullptr, 10);
   const uint64_t source_frame = output_frame + 1;
+  static const bool rolling_probe =
+      rex::cvar::GetFlagByName("pinyon_shift_native_ordered_live_probe") ==
+      "true";
+  static const uint64_t rolling_start = std::strtoull(
+      rex::cvar::GetFlagByName(
+          "pinyon_shift_native_race_capture_start_frame").c_str(), nullptr, 10);
+  if (rolling_probe && rolling_start && source_frame >= rolling_start &&
+      source_frame - rolling_start < 64 && source_frame % 10 == 0) {
+    const auto operations = SnapshotOrderedFrameOperations(source_frame);
+    size_t draws = 0, copies = 0, clears = 0, main_color_copies = 0;
+    if (operations)
+      for (const auto& event : *operations) {
+        draws += event.kind == 'D';
+        copies += event.kind == 'C';
+        clears += event.kind == 'K';
+        main_color_copies += event.kind == 'C' &&
+            event.dest_base == 484626432;
+      }
+    REXGPU_WARN("FH1 ordered live frame={} present={} draws={} copies={} "
+                "clears={} main_color_copies={}", source_frame,
+                bool(operations), draws, copies, clears, main_color_copies);
+  }
   const uint64_t ui_replay_source_frame = source_frame == trace_frame
       ? ResolveOrderedUiReplayFrame(source_frame) : 0;
   const bool shadow = shadow_start && source_frame >= shadow_start &&
