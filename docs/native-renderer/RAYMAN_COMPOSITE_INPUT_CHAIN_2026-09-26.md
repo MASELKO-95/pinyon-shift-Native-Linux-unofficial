@@ -36,9 +36,10 @@ format conversion caused the color error. Images are
 promotion directory. Both experiments were removed, and the safe binary
 was rebuilt. Neither result is a candidate for live takeover.
 
-Next, preserve the post-tile target/version sequence in the native ordered
-replay. Start with the 320×192 downsample from owned `color_tiles`, then
-replay the depth/color-fed 640×360 pair with exact versions and compare each
-intermediate against its pinned guest counterpart. Retry the final composite
-only when its scene-dependent inputs are owned. Keep it shadow-only until
-both orientation and color are visibly coherent.
+The [first native downsample](RAYMAN_NATIVE_DOWNSAMPLE_2026-09-26.md)
+now owns the 320×192 draw from `color_tiles` and preserves its first version
+at the captured resolve. Continue through the small reduction and feedback
+passes, then replay the depth/color-fed 640×360 pair with exact versions.
+Compare each intermediate against its pinned guest counterpart. Retry the
+final composite only when its scene-dependent inputs are owned; keep it in
+shadow until both orientation and color are visibly coherent.

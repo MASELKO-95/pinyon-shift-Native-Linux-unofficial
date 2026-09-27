@@ -30,6 +30,11 @@
 #include "native_renderer/ordered_ui_capture.h"
 #include "native_renderer/snr04_owned_scene_diagnostic.h"
 
+REXCVAR_DEFINE_BOOL(pinyon_shift_native_downsample_probe, false,
+                    "Pinyon Shift",
+                    "Show the selected native 320x192 post-scene target")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+
 namespace pinyon_shift::native_renderer {
 namespace {
 using Microsoft::WRL::ComPtr;
@@ -121,8 +126,8 @@ struct UploadArena {
 };
 
 struct TrackFrame {
-  ComPtr<ID3D12Resource> upload, depth, color, color_tiles, offscreen,
-      offscreen_depth, hud;
+  ComPtr<ID3D12Resource> upload, depth, color, color_tiles, downsample,
+      offscreen, offscreen_depth, hud;
   std::array<ComPtr<ID3D12Resource>, 2> initial_color_versions;
   std::array<ComPtr<ID3D12Resource>, 3> depth_versions;
   ComPtr<ID3D12DescriptorHeap> rtv, dsv, srv, materials, samplers;
@@ -184,7 +189,7 @@ struct ProducerDrawBinding {
   uint64_t descriptors = 0, pixel_constants = 0, bool_loop = 0;
   uint32_t count = 0, material_count = 0, view_offset = 0;
   std::array<uint32_t, 2> materials{};
-  bool feedback = false, indexed = true;
+  bool feedback = false, indexed = true, downsample = false;
   D3D12_VIEWPORT viewport{};
   D3D12_RECT scissor{};
 };
@@ -193,7 +198,7 @@ struct TrackGraphics {
   ComPtr<ID3D12Device> device;
   ComPtr<ID3D12RootSignature> root;
   ComPtr<ID3DBlob> pixel, pixel_textured, pixel_road, pixel_foliage,
-      pixel_car;
+      pixel_car, rectangle_geometry;
   ComPtr<ID3D12PipelineState> manager_pipeline, manager_original_pipeline;
   ComPtr<ID3D12RootSignature> blit_root;
   ComPtr<ID3D12PipelineState> blit_pipeline, scene_blit_pipeline,
@@ -218,6 +223,7 @@ struct TrackGraphics {
       pixel_road.Reset();
       pixel_foliage.Reset();
       pixel_car.Reset();
+      rectangle_geometry.Reset();
       manager_pipeline.Reset();
       manager_original_pipeline.Reset();
       blit_root.Reset();
@@ -597,6 +603,24 @@ struct TrackGraphics {
     desc.pRootSignature = root.Get();
     desc.VS = {vertex, vertex_size};
     desc.PS = {pixel_bytecode, pixel_size};
+    if (draw.primitive == 8) {
+      if (!rectangle_geometry) {
+        constexpr char shader[] =
+            "struct V {float4 uv:TEXCOORD0; float4 p:SV_Position;};"
+            "[maxvertexcount(4)] void main(triangle V v[3],"
+            " inout TriangleStream<V> s) {"
+            " V d; d.uv=v[1].uv+v[2].uv-v[0].uv;"
+            " d.p=v[1].p+v[2].p-v[0].p;"
+            " s.Append(v[0]); s.Append(v[1]); s.Append(v[2]);"
+            " s.Append(d); }";
+        ComPtr<ID3DBlob> errors;
+        if (FAILED(D3DCompile(shader, sizeof(shader) - 1, nullptr,
+                              nullptr, nullptr, "main", "gs_5_1", 0, 0,
+                              &rectangle_geometry, &errors))) return false;
+      }
+      desc.GS = {rectangle_geometry->GetBufferPointer(),
+                 rectangle_geometry->GetBufferSize()};
+    }
     desc.BlendState.RenderTarget[0].RenderTargetWriteMask =
         uint8_t(draw.color_mask & 15);
     desc.SampleMask = UINT_MAX;
@@ -1011,6 +1035,13 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
           IID_PPV_ARGS(&frame.color_tiles))))
     return false;
   if (ordered_tiles) {
+    auto downsample_desc = color_desc;
+    downsample_desc.Width = 320;
+    downsample_desc.Height = 192;
+    if (FAILED(device->CreateCommittedResource(
+            &default_heap, D3D12_HEAP_FLAG_NONE, &downsample_desc,
+            D3D12_RESOURCE_STATE_RENDER_TARGET, nullptr,
+            IID_PPV_ARGS(&frame.downsample)))) return false;
     if (!initial_depth) return false;
     const auto source_desc = initial_depth->GetDesc();
     if (source_desc.Width != 1280 || source_desc.Height != 2048 ||
@@ -1070,7 +1101,7 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
         return false;
 
   D3D12_DESCRIPTOR_HEAP_DESC heap_desc{};
-  heap_desc.NumDescriptors = ordered_tiles ? 3 : 2;
+  heap_desc.NumDescriptors = ordered_tiles ? 4 : 2;
   heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
   if (FAILED(device->CreateDescriptorHeap(&heap_desc,
                                           IID_PPV_ARGS(&frame.rtv))))
@@ -1086,6 +1117,9 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
     output_rtv.ptr += device->GetDescriptorHandleIncrementSize(
         D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     device->CreateRenderTargetView(frame.offscreen.Get(), nullptr, output_rtv);
+    output_rtv.ptr += device->GetDescriptorHandleIncrementSize(
+        D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    device->CreateRenderTargetView(frame.downsample.Get(), nullptr, output_rtv);
   }
   heap_desc.NumDescriptors = ordered_tiles ? 2 : 1;
   heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
@@ -1109,7 +1143,7 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
   }
   heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
   heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-  heap_desc.NumDescriptors = ordered_tiles ? 4 : 2;
+  heap_desc.NumDescriptors = ordered_tiles ? 5 : 2;
   if (FAILED(device->CreateDescriptorHeap(&heap_desc,
                                           IID_PPV_ARGS(&frame.srv))))
     return false;
@@ -1132,6 +1166,8 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
     device->CreateShaderResourceView(frame.color_tiles.Get(), &view, hud_view);
     hud_view.ptr += stride;
     device->CreateShaderResourceView(frame.color_tiles.Get(), &view, hud_view);
+    hud_view.ptr += stride;
+    device->CreateShaderResourceView(frame.downsample.Get(), &view, hud_view);
   }
   return true;
 }
@@ -1491,6 +1527,11 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       rex::cvar::GetFlagByName("pinyon_shift_snr01_trace_source_frame").c_str(),
       nullptr, 10);
   const bool ordered_tiles = trace_frame && live.source_frame + 1 == trace_frame;
+  const bool downsample_probe = ordered_tiles &&
+      REXCVAR_GET(pinyon_shift_native_downsample_probe);
+  if (downsample_probe &&
+      rex::cvar::GetFlagByName("pinyon_shift_native_race") == "true")
+    return reject("downsample_probe_requires_shadow");
   std::optional<std::vector<OrderedFrameOperation>> ordered_operations;
   std::vector<ProducerDrawBinding> producer_bindings;
   uint64_t producer_clear_sequence = 0;
@@ -1522,22 +1563,33 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       return reject("ordered_initial_producer_range");
     producer_clear_sequence = clear->sequence;
     auto prepare_producer = [&](uint64_t sequence, const OrderedUiDraw& draw,
-                                bool scene) {
+                                bool scene, bool downsample = false) {
         const bool feedback = !scene && sequence > first_copy->sequence;
-        if (draw.primitive != 13 || draw.vertices.size() != 1 ||
-            draw.index_count != (feedback || scene ? 4u : 24u) ||
+        if (draw.primitive != (downsample ? 8u : 13u) ||
+            draw.vertices.size() != 1 ||
+            draw.index_count != (downsample ? 24u :
+                                 feedback || scene ? 4u : 24u) ||
             draw.index_type != (feedback || scene ? 0u : 1u) ||
-            draw.textures.size() != (feedback || scene ? 1u : 2u) ||
+            draw.textures.size() != (downsample ? 1u :
+                                    feedback || scene ? 1u : 2u) ||
             draw.vertices[0].constant >= 96 ||
             draw.vertices[0].bytes.empty() ||
             draw.viewport[0] != 0 || draw.viewport[1] != 0 ||
-            draw.viewport[2] != 1280 ||
-            (scene ? (draw.viewport[3] != 720 &&
+            draw.viewport[2] != (downsample ? 320 : 1280) ||
+            (downsample ? draw.viewport[3] != 192 :
+             scene ? (draw.viewport[3] != 720 &&
                       draw.viewport[3] != 464 && draw.viewport[3] != 208)
                    : draw.viewport[3] != 720) ||
-            draw.scissor != std::array<int32_t, 4>{
-                0, 0, 1280, scene ? int32_t(std::min(256.f, draw.viewport[3]))
-                                    : 720} ||
+            draw.scissor != (downsample
+                ? std::array<int32_t, 4>{0, 0, 320, 192}
+                : std::array<int32_t, 4>{
+                    0, 0, 1280,
+                    scene ? int32_t(std::min(256.f, draw.viewport[3]))
+                          : 720}) ||
+            (downsample &&
+                (draw.textures[0].fetch_constant != 0 ||
+                 (draw.textures[0].fetch_words[1] >> 12) !=
+                     (474877952u >> 12))) ||
             !graphics.ProducerPipeline(context, draw, scene)) return false;
         ProducerDrawBinding binding;
         binding.sequence = sequence;
@@ -1547,6 +1599,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
                             draw.color_mask, scene};
         binding.feedback = feedback;
         binding.indexed = !feedback && !scene;
+        binding.downsample = downsample;
         binding.count = draw.index_count;
         binding.vertex = arena.Add(draw.vertices[0].bytes.data(),
                                    draw.vertices[0].bytes.size());
@@ -1613,10 +1666,13 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         binding.material_count = uint32_t(draw.textures.size());
         binding.descriptors = arena.Add(descriptors.data(),
                                         sizeof(descriptors));
-        const float tile_offset = scene ? 720.f - draw.viewport[3] : 0.f;
-        binding.viewport = {0, tile_offset, 1280, draw.viewport[3],
+        const float tile_offset = scene && !downsample
+            ? 720.f - draw.viewport[3] : 0.f;
+        binding.viewport = {0, tile_offset,
+                            downsample ? 320.f : 1280.f, draw.viewport[3],
                             draw.viewport[4], draw.viewport[5]};
-        binding.scissor = {0, LONG(tile_offset), 1280,
+        binding.scissor = {0, LONG(tile_offset),
+                           downsample ? 320 : 1280,
                            LONG(tile_offset + draw.scissor[3])};
         producer_bindings.push_back(binding);
         return true;
@@ -1648,6 +1704,23 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     }
     if (producer_bindings.size() != 15)
       return reject("scene_producer_count");
+    const auto downsample_event = std::find_if(
+        ordered_operations->begin(), ordered_operations->end(),
+        [](const auto& event) {
+          return event.kind == 'D' && event.surface == 335545600 &&
+              event.color == 196608 &&
+              event.vertex_shader == 0x2C53E1A563484076ull &&
+              event.pixel_shader == 0xE17BECBE8BE65806ull;
+        });
+    if (downsample_event == ordered_operations->end() ||
+        !WithOrderedFrameDraws(trace_frame, downsample_event->sequence,
+                               downsample_event->sequence,
+                               [&](const auto& draws) {
+          return draws.size() == 1 && prepare_producer(
+              downsample_event->sequence, draws.begin()->second,
+              true, true);
+        }) || producer_bindings.size() != 16)
+      return reject("prepare_downsample");
     // Fetch 13 in the first car-body draw reads the second resolved color
     // version. Identify its pinned texture before replacing one consumer.
     const auto guest_consumer = std::find_if(
@@ -1848,6 +1921,10 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         view.Texture2DArray.ResourceMinLODClamp = 0;
         ID3D12Resource* resource = frame.material_resources[
             binding.materials[j] * 2 + 1].Get();
+        if (binding.downsample) {
+          resource = frame.color_tiles.Get();
+          view.Format = DXGI_FORMAT_R10G10B10A2_UNORM;
+        }
         auto slot = frame.materials->GetCPUDescriptorHandleForHeapStart();
         slot.ptr += SIZE_T(binding.view_offset + j * 2) * stride;
         device->CreateShaderResourceView(resource, &view, slot);
@@ -1903,6 +1980,9 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   auto offscreen_rtv = output_rtv;
   offscreen_rtv.ptr += device->GetDescriptorHandleIncrementSize(
       D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+  auto downsample_rtv = offscreen_rtv;
+  downsample_rtv.ptr += device->GetDescriptorHandleIncrementSize(
+      D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
   const auto dsv = frame.dsv->GetCPUDescriptorHandleForHeapStart();
   auto offscreen_dsv = dsv;
   offscreen_dsv.ptr += device->GetDescriptorHandleIncrementSize(
@@ -1910,6 +1990,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   auto* scene_color = frame.color.Get();
   auto* scene_depth = frame.depth.Get();
   auto* color_tiles = frame.color_tiles.Get();
+  auto* downsample_color = frame.downsample.Get();
   auto* offscreen = frame.offscreen.Get();
   auto* offscreen_depth = frame.offscreen_depth.Get();
   std::array<ID3D12Resource*, 2> initial_color_versions{};
@@ -1932,7 +2013,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
   auto scene_srv_gpu = frame.srv->GetGPUDescriptorHandleForHeapStart();
   if (ordered_tiles)
-    scene_srv_gpu.ptr += 2 * material_stride;
+    scene_srv_gpu.ptr += (downsample_probe ? 4 : 2) * material_stride;
   graphics.submitted.emplace_back(context.submission, std::move(frame));
 
   // Snapshot before any later cache upload can refresh the same allocation.
@@ -2162,9 +2243,13 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       list->D3DSetGraphicsRootDescriptorTable(10, sampler_gpu_start);
   };
   auto draw_producer = [&](const ProducerDrawBinding& binding) {
+    if (binding.downsample)
+      list->D3DOMSetRenderTargets(1, &downsample_rtv, FALSE, nullptr);
     list->RSSetViewport(binding.viewport);
     list->RSSetScissorRect(binding.scissor);
-    list->D3DIASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+    list->D3DIASetPrimitiveTopology(binding.downsample
+        ? D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST
+        : D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
     if (!binding.indexed) {
       list->D3DIASetIndexBuffer(nullptr);
     } else {
@@ -2198,6 +2283,8 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     else
       list->D3DDrawInstanced(binding.count, 1, 0, 0);
     list->D3DSetGraphicsRootDescriptorTable(10, sampler_gpu_start);
+    if (binding.downsample)
+      list->D3DOMSetRenderTargets(1, &rtv, FALSE, &dsv);
   };
   using OrderedDraw = std::tuple<uint64_t, uint8_t, size_t>;
   std::vector<OrderedDraw> order;
@@ -2322,6 +2409,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     uint32_t copied_height = 0, tile_copies = 0, tile_base = 0;
     uint32_t depth_height = 0, depth_copies = 0, depth_base = 0;
     uint32_t initial_color_copies = 0;
+    bool downsample_copied = false;
     size_t producer_index = 0;
     for (const auto& event : *operations) {
       if (event.sequence == producer_clear_sequence) {
@@ -2474,9 +2562,38 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         list->D3DResourceBarrier(1, &barrier);
         copied_height += height;
         ++tile_copies;
+        if (tile_copies == 3) {
+          barrier.Transition.pResource = color_tiles;
+          barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+          barrier.Transition.StateAfter =
+              D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+          list->D3DResourceBarrier(1, &barrier);
+        }
         REXGPU_WARN("FH1 RAY01 ordered color tile frame={} sequence={} "
                     "height={} total={}", trace_frame, event.sequence,
                     height, copied_height);
+      }
+      if (event.kind == 'C' && event.dest_base == 480858112 &&
+          event.resolve_width == 320 && event.resolve_height == 192) {
+        if (downsample_copied || producer_index != 16 ||
+            !event.succeeded || !event.copy.info_valid ||
+            !event.copy.source_available ||
+            event.copy.source_base_tiles != 0 ||
+            event.copy.source_format != 3 ||
+            (event.copy.control & 7) != 0 ||
+            event.copy.physical_x || event.copy.physical_y ||
+            event.copy.physical_width != 320 ||
+            event.copy.physical_height != 192 ||
+            event.copy.dest_x || event.copy.dest_y ||
+            event.copy.dest_pitch != 320 ||
+            event.copy.dest_height != 192)
+          return reject_ordered("ordered_downsample_copy");
+        barrier.Transition.pResource = downsample_color;
+        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        barrier.Transition.StateAfter =
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        list->D3DResourceBarrier(1, &barrier);
+        downsample_copied = true;
       }
       if (event.kind != 'D') continue;
       if (producer_index < producer_bindings.size() &&
@@ -2492,10 +2609,11 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
     if (producer_index != producer_bindings.size() ||
         initial_color_copies != 2 ||
         tile_copies != 3 || copied_height != 720 ||
-        depth_copies != 3 || depth_height != 720)
+        depth_copies != 3 || depth_height != 720 || !downsample_copied)
       return reject_ordered("ordered_tiles_incomplete");
     REXGPU_WARN("FH1 RAY01 original draw replay frame={} "
-                "offscreen_draws=12 scene_draws=3 copies={}", trace_frame,
+                "offscreen_draws=12 scene_draws=3 downsample_draws=1 "
+                "copies={}", trace_frame,
                 initial_color_copies);
     restore_offscreen_depth();
   } else {
@@ -2506,12 +2624,6 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
   barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
   list->D3DResourceBarrier(1, &barrier);
-  if (ordered_tiles) {
-    barrier.Transition.pResource = color_tiles;
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    list->D3DResourceBarrier(1, &barrier);
-  }
   if (!pre_ui) {
     barrier.Transition.pResource = output;
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATES(
@@ -2530,8 +2642,8 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   list->RSSetScissorRect({0, 0, 1280, 720});
   list->SetDescriptorHeaps(scene_srv, nullptr);
   list->D3DSetGraphicsRootSignature(graphics.blit_root.Get());
-  list->D3DSetPipelineState((scene_only ? graphics.scene_blit_pipeline
-                                   : graphics.blit_pipeline).Get());
+  list->D3DSetPipelineState((scene_only || downsample_probe
+      ? graphics.scene_blit_pipeline : graphics.blit_pipeline).Get());
   list->D3DSetGraphicsRootDescriptorTable(0, scene_srv_gpu);
   list->D3DIASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   list->D3DDrawInstanced(3, 1, 0, 0);

@@ -190,6 +190,12 @@ and both terminal copies identify the same EDRAM source, despite alternating
 guest output addresses. Frame 6782 promoted with UI source 6781 and normal
 route exit. The saved selected-frame image from a separate same-frame-HUD run
 is recognizable but still shows major yellow background artifacts.
+The [first owned post-scene downsample](RAYMAN_NATIVE_DOWNSAMPLE_2026-09-26.md)
+now executes the original eight-rectangle 320×192 draw from native tiled
+color and preserves its target at the captured resolve ordinal. An opt-in
+shadow probe shows a coherent small race image; the ordinary full-scene
+shadow remains intact. The later 320×192 reduction/feedback version is not
+yet owned or bound to the final composite.
 
 - [ ] Diagnose the shared `DEVICE_HUNG` in large indexed scene draws: isolate
   one draw with the D3D12 debug layer and DRED, verify index/vertex bounds,
@@ -447,11 +453,13 @@ that trace: fetch 0 is the same three-tile color resolve already assembled in
 native `color_tiles`. Replacing it and using an unrotated blit gave an upright,
 recognizable shadow, but harsh color artifacts made it worse than the current
 native output. Fetches 2 and 5 still came from guest-produced 320×192 and
-640×360 target versions. The trial was removed. Next, replay the 320×192
-downsample from owned color and the depth/color-fed 640×360 pair in order,
-compare each intermediate to its guest version, then retry the final pair
-with only owned scene-dependent inputs. A composite of the guest scene does
-not count as native coverage.
+640×360 target versions. The trial was removed. The first 320×192 draw from
+owned color now runs in the selected ordered frame. Next, replay its smaller
+reduction and 320×192 feedback passes, preserving exact target versions;
+then replay the depth/color-fed 640×360 pair. Compare each intermediate to
+its guest version before retrying the final composite with only owned
+scene-dependent inputs. A composite of the guest scene does not count as
+native coverage.
 The seeded second native color version now matches the pinned guest second
 version closely in one sampled region, and one car draw consumes it under
 the existing whole-frame fallback. Expand replacement only to a consumer
