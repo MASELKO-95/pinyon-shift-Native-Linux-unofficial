@@ -492,8 +492,11 @@ Use the following gates to avoid another sequence of isolated pilots:
    locates the pale ground and missing background upstream of the guest's
    final composite: guest scene draws use a four-sample float target and a
    packed color resolve, while native copies a single-sample UNORM target.
-   Validate one exact main-tile conversion against the pinned guest version
-   before feeding it to a live consumer. Execute the needed original
+   The captured copy's -2 exponent bias and four-sample mode predict the
+   guest packed pixel at a road location; a 5,000-pixel probe supports that
+   conversion across the first tile. Reproduce one native tile and compare
+   it against the pinned guest version before feeding it to a live consumer.
+   Execute the needed original
    shaders, constants, immutable textures, target alias, clear and copy in
    order; preserve guest-visible versions and same-stream HUD. RAY-00/01
    still need broader intermediate-target execution. Retire the corresponding
