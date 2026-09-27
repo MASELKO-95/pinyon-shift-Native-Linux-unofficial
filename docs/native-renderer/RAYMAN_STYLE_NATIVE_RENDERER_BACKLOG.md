@@ -1,6 +1,6 @@
 # Native renderer: complete-frame backlog
 
-Status: active delivery plan, updated 2026-09-26. This supersedes the delivery
+Status: active delivery plan, updated 2026-09-27. This supersedes the delivery
 order
 in the [scene-native backlog](SCENE_NATIVE_RENDERER_BACKLOG.md); that document
 remains the implementation and evidence ledger. The
@@ -463,49 +463,52 @@ not a prerequisite for the first usable renderer.
 
 ## Next implementation slice
 
-1. **Establish the live baseline.** Use `continuous-race.fh1test` and the
-   existing mode-boundary and hot-toggle routes. Save final native shadow and
-   guest references from one run at several moving frames, with output/source
-   frame IDs, promotion state and fallback reason. Review road, car, lighting,
-   HUD and scenery regions. The [first paired baseline](RAYMAN_LIVE_FINAL_BASELINE_2026-09-26.md)
-   covers frames 5040–5044; repeat at a different race moment if the chosen
-   fix depends on it. Do not use a cross-run intermediate MAE to choose the
-   next fix.
-2. **Choose one visible blocker.** The flat ground identified in the first
-   baseline now has a bounded texture approximation. Re-rank the next gap
-   using the new paired frames: lighting/sky, navigation and car detail are
-   still conspicuous. Inspect exact native fallback pixels and their captured
-   draw family before extending another shader. For the flat sky, the
-   [pixel-lineage check](RAYMAN_SKY_PIXEL_LINEAGE_2026-09-27.md) rules out
-   reading the final swapchain's history as sufficient evidence; anchor a
-   paired capture at the main scene target before its resolve. Keep the
-   earlier color producer and its two resolves at guest base `484626432` on
-   the RAY-00/01
-   ownership path, but require same-run evidence that it changes the final
-   image before expanding its executor. Preserve guest-visible target
-   versions and whole-frame fallback. The two existing sky lineage probes
-   did not identify a writer; first use a drive to decide whether sky or
-   car/navigation detail is the next playability blocker. If a slice depends
-   on a `DEVICE_HUNG` family, isolate and time one draw before further
-   admission.
-3. **Remove the measured responsiveness blocker.** The first native/compatibility
-   comparison and safe texture-snapshot reuse are documented above. The
-   [output-stage split](RAYMAN_LIVE_PERFORMANCE_2026-09-27.md) points to
-   repeated draw preparation and frame-resource creation, not CPU issuance
-   of already-prepared native draws. CPU upload scratch reuse reduced the
-   measured native window to 104.31 ms while keeping promotion and fallback.
-   Removing redundant hashing of exact-byte-checked manager ranges reduced it
-   further to 94.88 ms. Prepared snapshot/observer work (about 11/15 ms
-   median) remains a candidate. Remove one proven repeated cost at a time,
-   checking live promotion, HUD and fallback after each. This work precedes
-   secondary visual fixes because the remaining native frame is not a usable
-   driving cadence.
-4. **Prove playability.** Run a longer unscripted drive plus mode-boundary,
-   hot-toggle and UI stress checks. Record visible remaining gaps, fallback
-   frequency, blank/stale frames and responsiveness. RAY-04 closes when the
-   race is coherent enough to drive with stable HUD; optional effects may
-   remain approximate. Recheck matched performance after the drive for
-   RAY-05; suppress guest visual work only after proving its side effects.
+The 300-frame scripted route and hot toggle establish continuous presentation,
+but not a comfortable drive. The latest matched scripted window measures
+94.88 ms median native versus 23.54 ms compatibility. The native output
+callback takes about 30 ms, while prepared snapshot and observer work take
+about 11 and 15 ms. The full ordered replay is still a selected-frame fixture.
+Use the following gates to avoid another sequence of isolated pilots:
+
+1. [ ] **Reduce one live repeated cost.** Inspect the existing prepared-draw
+   snapshot/observer path and native output resource lifetime. Pick the larger
+   *removable* allocation or copy shown by a bounded trace; preserve exact
+   changing resource versions. Measure the same source-frame window before
+   and after. Keep the change only if native frames still promote with stable
+   HUD, the sustained route exits normally, and mode/hot-toggle fallback
+   passes. Record frame median, p95 and the affected stage in
+   [the performance ledger](RAYMAN_LIVE_PERFORMANCE_2026-09-27.md). If two
+   attempts do not produce a live gain, stop optimizing that path and inspect
+   the next cost center. Do not count faster runs that silently fall back.
+2. [ ] **Check actual driving.** Run a longer unscripted race with native
+   output, including steering and a mode boundary. Record control response,
+   HUD stability, fallback frequency, blank/stale frames and the first visible
+   defect that interferes with driving. A scripted route is the regression
+   check while this user-driven check is pending. Treat its outcome, not an
+   arbitrary frame-time or pixel-match percentage, as the RAY-04 gate.
+3. [ ] **Fix that one visible defect in the rolling renderer.** Capture final
+   native shadow and unpromoted compatibility images from the same run at
+   several moving frames, with source/output IDs and promotion state. Trace
+   the responsible target or draw through the ordered stream; use its original
+   shader and immutable inputs when possible. Accept the change only when
+   the displayed final frames improve and fallback still works. The previous
+   sky probes did not find a writer; do not start another sky or intermediate
+   target pilot without a live final-frame cause. Keep known `DEVICE_HUNG`
+   families out of admission until one isolated draw survives.
+4. [ ] **Extend ownership only where the live fix needs it.** RAY-00/01 still
+   need ordered intermediate-target execution and same-stream UI. Move the
+   smallest useful ordered slice into continuous live frames, then retire the
+   corresponding snapshot approximation. Keep the rest as explicit unsupported
+   work rather than completing every selected-frame effect first. Recheck the
+   final image, HUD and fallback on multiple moving frames.
+5. [ ] **Remove duplicate guest visual work only with dependency proof.** The
+   [guest-visible dependency ledger](GUEST_VISIBLE_RENDER_DEPENDENCIES.md)
+   does not yet qualify any target for suppression. For one candidate, prove
+   its resolves, later fetches, queries, memexport and CPU visibility are
+   preserved or replaced before suppressing it; otherwise leave Xenos
+   execution intact. Measure a live frame-time gain and repeat the driving
+   and fallback checks. A null backend is optional, not a shortcut around
+   guest-visible side effects.
 
 The selected-frame post-scene reductions, final-composite trials, depth and
 color-version experiments, and large-index isolation remain documented above
