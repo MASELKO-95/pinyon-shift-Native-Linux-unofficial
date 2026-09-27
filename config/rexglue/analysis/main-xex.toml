@@ -1095,8 +1095,8 @@ registers = ["r3", "r4", "r5"]
 address = 0x8240CF68
 name = "PinyonShiftObserveClearCommandRefill"
 
-# Complete XMedia movies through the title's normal end-of-stream path when
-# the opt-in test shortcut is enabled.
+# Complete opening splash movies through the title's normal end-of-stream
+# path when the opt-in test shortcut is enabled.
 [[midasm_hook]]
 address = 0x82E5D8AC
 name = "PinyonShiftCompleteOpeningMovie"

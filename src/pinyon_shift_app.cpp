@@ -13,6 +13,7 @@
 #include <system_error>
 
 #include <rex/cvar.h>
+#include <rex/kernel/xboxkrnl/io.h>
 #include <rex/logging.h>
 #include <rex/perf/counter.h>
 #include <rex/runtime.h>
@@ -24,6 +25,7 @@
 #include "native_renderer/guest_output_renderer.h"
 #include "native_renderer/shader_capture.h"
 #include "pinyon_shift_diagnostics.h"
+#include "pinyon_shift_runtime_hooks.h"
 
 #include <cstdio>
 
@@ -396,6 +398,7 @@ void PinyonShiftApp::OnPostLoadXexImage() {
 
 void PinyonShiftApp::OnPostSetup() {
   pinyon_shift::diagnostics::RefreshCrashReporter();
+  rex::kernel::xboxkrnl::SetGuestFileOpenObserver(&PinyonShiftObserveGuestFileOpen);
   pinyon_shift::native_renderer::InstallGuestOutputRenderer(
       runtime() ? runtime()->graphics_system() : nullptr);
   pinyon_shift::native_renderer::InstallGraphicsCensus(

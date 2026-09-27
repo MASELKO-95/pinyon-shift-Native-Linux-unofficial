@@ -25,10 +25,11 @@
 #include "pinyon_shift_diagnostics.h"
 #include "fh1_render_test.h"
 #include "native_renderer/graphics_hooks.h"
+#include "pinyon_shift_runtime_hooks.h"
 #include "ui/fh1_ui_api.h"
 
 REXCVAR_DEFINE_BOOL(pinyon_shift_skip_opening_movies, false, "Pinyon Shift",
-                    "Complete XMedia-backed movies immediately");
+                    "Complete the opening splash movies immediately");
 REXCVAR_DEFINE_BOOL(
     pinyon_shift_stabilize_vehicle_presentation, false, "Pinyon Shift",
     "Suppress isolated implausible player-vehicle presentation transforms");
@@ -130,6 +131,9 @@ std::atomic<uint64_t> g_last_vehicle_discontinuity_ms{};
 std::atomic<uint32_t> g_title_generation{1};
 std::atomic<bool> g_cleanup_pointer_live{};
 std::atomic<bool> g_opening_movie_skip_logged{};
+// Set by the guest file-open observer: true while the most recently opened
+// .wmv is a boot splash intro rather than the title loop or a later movie.
+std::atomic<bool> g_opening_movie_is_splash{};
 std::mutex g_vehicle_hook_sample_mutex;
 std::mutex g_save_snapshot_mutex;
 std::mutex g_geometry_zero_index_buffer_mutex;
@@ -566,7 +570,11 @@ bool PinyonShiftDisableDepthOfField(PPCRegister& r11) {
 void PinyonShiftCompleteOpeningMovie(PPCRegister& r3, PPCRegister& r30,
                                      PPCRegister& r31) {
   const uint32_t original_result = r3.u32;
-  const bool skip = OpeningMovieSkipRequested();
+  // Only boot splash intros are skipped. Completing every XMedia stream also
+  // ended the title's PressStart.wmv loop, leaving zeroed (green) or stale
+  // (noisy) video planes behind the Press Start and single-player menus.
+  const bool skip = OpeningMovieSkipRequested() &&
+                    g_opening_movie_is_splash.load(std::memory_order_acquire);
   if (skip) {
     // This is the XMedia facade's normal end-of-stream result. Returning it
     // through the title's own wrapper runs the ordinary movie-finished event
@@ -581,6 +589,30 @@ void PinyonShiftCompleteOpeningMovie(PPCRegister& r3, PPCRegister& r30,
          {"result", Hex32(r3.u32)},
          {"argument", Hex32(r30.u32)},
          {"object", Hex32(r31.u32)}});
+  }
+}
+
+// Registered with the kernel's NtCreateFile/NtOpenFile observer. Movies play
+// one at a time, so the last opened .wmv identifies the stream the XMedia
+// wrapper is decoding.
+void PinyonShiftObserveGuestFileOpen(std::string_view guest_path) {
+  if (guest_path.size() < 4) {
+    return;
+  }
+  std::string path(guest_path);
+  for (char& character : path) {
+    if (character >= 'A' && character <= 'Z') {
+      character = static_cast<char>(character + ('a' - 'A'));
+    }
+  }
+  if (!path.ends_with(".wmv")) {
+    return;
+  }
+  const bool splash = path.find("splash_intros") != std::string::npos;
+  g_opening_movie_is_splash.store(splash, std::memory_order_release);
+  if (OpeningMovieSkipRequested()) {
+    pinyon_shift::diagnostics::RecordEvent(
+        "opening_movie.opened", {{"path", path}, {"skip", splash ? "1" : "0"}});
   }
 }
 
