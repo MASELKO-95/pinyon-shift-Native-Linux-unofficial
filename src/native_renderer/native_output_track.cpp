@@ -69,6 +69,12 @@ uint32_t TrackMaterialKind(const Snr04TrackDraw& draw) {
   if (draw.pixel_shader == 0x93961AB9BDF347DDull &&
       draw.shader == 0x1193B16753866698ull &&
       draw.specialization == 0x3FFull) return 2;
+  if (draw.pixel_shader == 0xA47DB20460BADDDFull &&
+      draw.shader == 0x1193B16753866698ull &&
+      draw.specialization == 0x3FFull) return 4;
+  if (draw.pixel_shader == 0x175C1F483406F7FDull &&
+      draw.shader == 0xD7F57566A51FA243ull &&
+      draw.specialization == 0x3FFull) return 4;
   return 0;
 }
 
@@ -375,7 +381,8 @@ struct TrackGraphics {
       description.PS = {pixel_bytecode, pixel_size};
     } else {
       ID3DBlob* fragment = material == 1 ? pixel_textured.Get()
-          : material == 2 ? pixel_road.Get() : pixel.Get();
+          : material == 2 || material == 4
+              ? pixel_road.Get() : pixel.Get();
       description.PS = {fragment->GetBufferPointer(), fragment->GetBufferSize()};
     }
     description.BlendState.RenderTarget[0].RenderTargetWriteMask =
@@ -1324,7 +1331,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       return reject("track_viewport");
     TrackDrawBinding binding;
     const uint32_t material = TrackMaterialKind(draw);
-    if (material == 1 || material == 2) {
+    if (material == 1 || material == 2 || material == 4) {
       const auto found = texture_identities.find({draw.sequence, 0});
       if (found == texture_identities.end() ||
           !resolve_material(*found->second, binding.material_index)) {

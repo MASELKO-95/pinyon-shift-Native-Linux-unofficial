@@ -410,6 +410,12 @@ terminal full-frame copy selects color. The initial full-size color resolve
 to `484626432` has 1,274 later texture bindings in this sampled frame,
 versus 15 bindings to the depth destination. All 91 nonzero-size copies have
 complete in-bounds inputs. Native execution of these resolves is still open.
+The [paired live baseline and flat-color lookup](RAYMAN_LIVE_FINAL_BASELINE_2026-09-26.md)
+identified the large green/gray ground polygons as two supported track
+families using flat fallback colors. Fetch-0 sampling for those 30 draws
+removes both exact flat colors across five consecutive moving native shadows,
+with same-run guest references and a normal route exit. This is a visible
+RAY-04 gain, while earlier color resolves remain an RAY-00/01 ownership gap.
 
 - [ ] Fix the largest problems seen in RAY-03 in this order: missing UI
   producer or ordering; opaque/missing car; unreadable road/terrain; major
@@ -450,18 +456,16 @@ not a prerequisite for the first usable renderer.
    covers frames 5040–5044; repeat at a different race moment if the chosen
    fix depends on it. Do not use a cross-run intermediate MAE to choose the
    next fix.
-2. **Choose one visible blocker.** Start with the missing earlier color
-   producer and its two resolves at guest base `484626432`: the paired
-   baseline shows broad flat green/gray areas absent from the guest, while
-   the existing road family already samples asphalt. Capture only the
-   producer draws and their state for consecutive moving frames; reuse the
-   selected-frame ordered executor with per-frame shape checks and whole-frame
-   fallback. First establish that its output changes the live final image,
-   then compare the green/gray region against the same-run guest reference.
-   Preserve guest-visible target versions and whole-frame fallback. Verify a
-   visible final-frame gain at multiple moments, not just source frame 5001. If that
-   slice depends on a `DEVICE_HUNG` family, isolate and time one draw before
-   further admission; otherwise choose a safe visible gap.
+2. **Choose one visible blocker.** The flat ground identified in the first
+   baseline now has a bounded texture approximation. Re-rank the next gap
+   using the new paired frames: lighting/sky, navigation and car detail are
+   still conspicuous. Inspect exact native fallback pixels and their captured
+   draw family before extending another shader. Keep the earlier color
+   producer and its two resolves at guest base `484626432` on the RAY-00/01
+   ownership path, but require same-run evidence that it changes the final
+   image before expanding its executor. Preserve guest-visible target
+   versions and whole-frame fallback. If a slice depends on a `DEVICE_HUNG`
+   family, isolate and time one draw before further admission.
 3. **Prove playability.** Run a longer unscripted drive plus mode-boundary,
    hot-toggle and UI stress checks. Record visible remaining gaps, fallback
    frequency, blank/stale frames and responsiveness. RAY-04 closes when the

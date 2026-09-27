@@ -32,8 +32,7 @@ flat green area is therefore not evidence that this material needs another
 shader trial. The selected-frame ordered path builds two versions of the
 earlier color resolve at guest base `484626432`, but the continuous path
 skips that producer and its copies. The capture records many later readers
-of this resolve. Recheck the flat region after carrying that producer across
-moving frames before expanding any other road material.
+of this resolve. Its impact on the flat region still needs an isolated test.
 
 A trace-off repeat (`.local/ray-live-trace-off-20260926/`) exited normally,
 but the two runs diverged visibly before the comparison frame (their guest
@@ -43,3 +42,21 @@ the selected ordered frame 5040 is close to the adjacent continuous frames.
 The earlier resolve is thus a concrete missing dependency, not yet a proven
 cause of the flat ground. Require a same-run on/off probe or live final-frame
 gain before expanding its executor.
+
+An exact-color lookup then identified the flat ground directly. Native RGB
+`111,120,45` equals the flat fallback color calculated for pixel shader
+`175C1F483406F7FD` (16 supported track draws), while `104,114,90` equals
+the fallback for `A47DB20460BADDDF` (14 supported track draws). Both are
+seven-fetch terrain/roadside programs. A bounded fetch-0 texture trial
+removed both flat colors from all five moving native shadows at 5040–5044;
+their same-run guest references and readable HUD were saved under
+`.local/ray-flat-track-two-textures-20260926/`. The route exited normally.
+Visual review confirms textured ground and barrier detail in place of the
+large flat polygons, while sky, lighting, navigation and car materials still
+need work. This is a texture approximation, not full execution of either
+seven-fetch pixel shader.
+The corrected native-promotion mode-boundary route also exited normally;
+`verify-native-race-mode-boundary.py` found native race output and compatible
+pause, free-roam and title output. The first boundary attempt omitted
+`--pinyon_shift_native_ui_live=true` and remained entirely on compatibility,
+so it was not counted as native validation.
