@@ -1,5 +1,9 @@
 # Sky pixel lineage check
 
+The later [marked moving-race capture](RAYMAN_SKY_WRITER_2026-09-27.md)
+identifies the sky writer. The inconclusive result below is retained as the
+history of the earlier captures.
+
 The paired live race frames after the two ground-material fixes still show a
 flat native sky where the compatibility frame has clouds and lighting. The
 next work must identify a writer of those pixels before adding a sky shader

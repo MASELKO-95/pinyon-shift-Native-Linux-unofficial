@@ -553,6 +553,16 @@ Use the following gates to avoid another sequence of isolated pilots:
    the guest's four samples or full float producer contract. Do not retry a
    format-only conversion; verify one producer's float output and sample
    semantics against a pinned guest tile before changing the live image.
+   A [marked sky-writer capture](RAYMAN_SKY_WRITER_2026-09-27.md) now identifies
+   draw `12BA4E86B158D049`/`CAE25D74AD7B16CB` as the primary cloud writer
+   in the third scene tile. It is absent from native replay. Before another
+   target-format experiment, replay **one** exact draw with its pinned inputs
+   in isolated shadow and check GPU safety plus the sampled sky pixels. If
+   that survives and improves several moving final frames, extend it across
+   all three tiles and the rolling route. Keep the neighboring 8,700-index
+   family, which previously hung the GPU, excluded. If sky does not impede
+   the interactive drive, leave this as secondary polish behind the measured
+   responsiveness blocker in step 6.
 6. [ ] **Attack the measured frame-time blocker.** The latest repeated native
    medians are about 91–95 ms versus 23.54 ms compatibility. The
    [current trace checkpoint](RAYMAN_POST_STENCIL_PROFILE_2026-09-27.md)
