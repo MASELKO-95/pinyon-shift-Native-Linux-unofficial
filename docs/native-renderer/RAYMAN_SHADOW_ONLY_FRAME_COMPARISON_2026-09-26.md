@@ -73,8 +73,10 @@ The run exited normally in shadow mode. Evidence is in
 `.local/ray-ui-native-promotion-20260925/composite-descriptor-corrected/`.
 The trial was removed and the safe native binary rebuilt.
 
-Next, identify the guest fetch-0 producer and the coordinate convention at
-the two composite draws. Replace that input with the native-owned color
-target before counting the pair as native progress. Keep the earlier 640×360
-passes and small resolves explicit as dependencies, and compare the resulting
-shadow against a same-run guest frame before enabling presentation.
+The [input-chain follow-up](RAYMAN_COMPOSITE_INPUT_CHAIN_2026-09-26.md)
+identified fetch 0's three tiled color resolves and substituted their owned
+native target in shadow. An identity blit corrected the 180-degree rotation,
+but color remained visibly worse than the existing native shadow. The
+composite still read guest-produced 320×192 and 640×360 intermediates. The
+trial was removed; replay and compare those upstream versions before retrying
+the final pair.

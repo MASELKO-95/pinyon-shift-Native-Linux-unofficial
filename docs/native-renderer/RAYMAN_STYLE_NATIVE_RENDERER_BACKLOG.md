@@ -442,11 +442,16 @@ confirmed rectangle expansion and stage-specific descriptor mappings, but
 its detailed output sampled a pinned guest 1280×720 color texture and was
 rotated 180 degrees. The trial was removed; see the
 [shadow comparison](RAYMAN_SHADOW_ONLY_FRAME_COMPARISON_2026-09-26.md).
-Trace fetch 0 to its final color producer, bind the native-owned color target
-in its place, and correct the coordinate convention in shadow before
-promoting this pair. The earlier 640×360 passes and small resolves remain
-explicit upstream dependencies. A composite of the guest scene does not
-count as native coverage.
+The [owned-input trial](RAYMAN_COMPOSITE_INPUT_CHAIN_2026-09-26.md) completed
+that trace: fetch 0 is the same three-tile color resolve already assembled in
+native `color_tiles`. Replacing it and using an unrotated blit gave an upright,
+recognizable shadow, but harsh color artifacts made it worse than the current
+native output. Fetches 2 and 5 still came from guest-produced 320×192 and
+640×360 target versions. The trial was removed. Next, replay the 320×192
+downsample from owned color and the depth/color-fed 640×360 pair in order,
+compare each intermediate to its guest version, then retry the final pair
+with only owned scene-dependent inputs. A composite of the guest scene does
+not count as native coverage.
 The seeded second native color version now matches the pinned guest second
 version closely in one sampled region, and one car draw consumes it under
 the existing whole-frame fallback. Expand replacement only to a consumer
