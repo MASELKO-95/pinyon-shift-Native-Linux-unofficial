@@ -23,6 +23,33 @@ Reuse FH1's D3D12 backend and current shader/resource infrastructure; this is
 not a Vulkan port or a new renderer abstraction. Rayman's GPL source is an
 architectural reference, not code to copy into this BSD repository.
 
+## Delivery discipline
+
+The scripted RAY-03 takeover works, but the authoritative ordered replay is
+still gated to one selected trace frame. Continuous native race presentation
+uses the live scene snapshot. Treat selected-frame passes as diagnostic until
+their work runs across moving live frames and improves the displayed result.
+Do not equate another captured intermediate, shader binding or passing probe
+with progress on RAY-04 or RAY-05.
+
+For each visible gap, capture a final native/compatibility pair from the same
+run with frame identity and promotion state recorded. Confirm the guest image
+has not inherited a previously promoted native buffer. Rank gaps by effect
+on driving and HUD readability, then name one target region before editing.
+Use intermediate comparisons to locate the cause; accept a change only after
+the final frame improves across multiple moving frames, the HUD stays stable,
+and whole-frame fallback still works. Pixel MAE is supporting evidence, not
+a quality gate: matching a dark guest intermediate made the final race worse
+in the [main-color trial](RAYMAN_MAIN_COLOR_SOURCE_COMPARE_2026-09-26.md).
+
+After two inconclusive trials on one gap, record the result and re-rank the
+gap or change the capture/replay seam. Keep known `DEVICE_HUNG` indexed
+families out of live admission until a single draw's GPU failure is explained
+and a longer route survives. Defer optional postprocessing and exact texture
+parity when neither improves the playable final frame. Keep the complete
+ordered stream and original shaders as the long-term ownership path; do not
+grow a second set of title-specific material guesses.
+
 ## Work already available
 
 - `graphics_hooks.cpp` observes prepared/final GPU draws, has exact current-
@@ -216,7 +243,9 @@ against the final guest frame, not an intermediate alone.
   retaining draw order, targets, clears, depth, resolves, viewport, scissor,
   blending and texture versions needed by this race frame. Start with the
   existing native geometry path and one useful original pixel-shader pair;
-  expand only when a visible region requires it.
+  expand only when a visible region requires it. A selected-frame replay is
+  a fixture; move the useful slice to the rolling live path before claiming
+  a continuous renderer improvement.
 - [ ] Render UI/fonts from the **same** stream and frame as the world. Do not
   recover them with a fixed screen rectangle or a previous-frame guest copy.
   Record unsupported events by count and visible effect, and keep the guest
@@ -413,76 +442,32 @@ not a prerequisite for the first usable renderer.
 
 ## Next implementation slice
 
-Use the continuous opt-in run as the RAY-03 test bed. The isolated
-track-texture resolution miss did not recur on the next route and is covered
-by whole-frame fallback. Use the new ordered color-tile replay as the
-target-copy pilot. Compare the initial offscreen RGBA target against the
-pinned guest version at the same ordinal; restore the target and depth
-history needed to make its scene image coherent before binding it to
-consumers. This mismatch is not a blocker to a usable first renderer: keep
-the pinned guest version while issuing remaining visible world draws.
-Preserve the tiled color texture's retained starting version, replace the
-initial guest depth texture when its producer is ready, and route owned
-color/depth versions to later consumers. Use the stream's owned geometry,
-pinned textures and final state to issue remaining visible main-scene draws.
-Choose the next draw family by visible missing coverage, not merely by a
-small input shape: the first three-draw textured strip ran successfully but
-did not visibly change the saved race image.
-The [main-scene family isolation](RAYMAN_MAIN_SCENE_FAMILY_TRIALS_2026-09-26.md)
-used the retained-HUD frame to test the 8,700-index atlas and a distinct
-one-texture indexed strip separately. Both caused D3D12 `DEVICE_HUNG` after
-submission and were removed. Stop admitting large indexed families by input
-shape alone. Diagnose one draw's GPU bindings and translated shader under
-the D3D12 debug layer and DRED, then retry only when its cause is addressed.
-The [tile isolation](RAYMAN_LARGE_SCENE_TILE_ISOLATION_2026-09-26.md)
-now shows the 8,700-index family is safe for a full first tile and the first
-two tiles together, but its third tile alone removes the device. A first-tile
-NDC/viewport mapping lets the third tile finish alone; all three still hang
-together. Measure the translated vertex path and per-tile GPU duration before
-admitting this family. Its safe trial images did not visibly close the
-background gap.
-Until that path is stable, prioritize the already captured offscreen
-color/depth history and its pinned guest consumer comparison rather than
-admitting another large scene family.
-The uncontaminated shadow-only comparison makes the first full-scene color
-history and its lighting/road consumers the immediate visual priority.
-Recheck native output against a near-aligned guest reference with promotion
-off before claiming a visible gap closed; a later guest buffer may contain
-an earlier promoted native frame.
-Directly seeding the main scene from the pinned first color resolve produced
-a white sky and washed-out HUD, so trace the later tiled color and lighting
-chain instead of using that early resolve as a backdrop.
-The selected shadow-only stream ends its main color tiles at ordinal
-`11822064`, then reaches two 1280×360 five-texture composite draws at
-`11822215`/`11822216` just before the HUD suffix. A bounded replay trial
-confirmed rectangle expansion and stage-specific descriptor mappings, but
-its detailed output sampled a pinned guest 1280×720 color texture and was
-rotated 180 degrees. The trial was removed; see the
-[shadow comparison](RAYMAN_SHADOW_ONLY_FRAME_COMPARISON_2026-09-26.md).
-The [owned-input trial](RAYMAN_COMPOSITE_INPUT_CHAIN_2026-09-26.md) completed
-that trace: fetch 0 is the same three-tile color resolve already assembled in
-native `color_tiles`. Replacing it and using an unrotated blit gave an upright,
-recognizable shadow, but harsh color artifacts made it worse than the current
-native output. Fetches 2 and 5 still came from guest-produced 320×192 and
-640×360 target versions. The trial was removed. The first 320×192 draw and
-its two smaller reductions now run from owned color, but guest probes show
-that their brightness already diverges at 320×192. Defer the remaining
-feedback and 640×360 effects while the visible world is rough. Before
-retrying the final composite, use the main-color comparison to identify
-missing lighting and road/background producers, and validate a change
-against the final displayed guest frame. A composite of the guest scene
-does not count as native coverage.
-The seeded second native color version now matches the pinned guest second
-version closely in one sampled region, and one car draw consumes it under
-the existing whole-frame fallback. Expand replacement only to a consumer
-whose pinned version and sampled region are verified. Do not use the
-pre-draw full-resource cache snapshot as the starting image: it is nearly
-white because the EDRAM history has not been materialized there. The first
-native version still lacks that history; keep the guest first version for
-feedback until its native source can be made complete.
-Save the resulting full-frame image and integrate the same-frame HUD at its ordered
-suffix.
-Treat `0x00030000` and `0x000C0000` as format aliases over one EDRAM base,
-not separate color targets.
-Perform the longer unscripted drive required by
-RAY-04 before profiling duplicate work.
+1. **Establish the live baseline.** Use `continuous-race.fh1test` and the
+   existing mode-boundary and hot-toggle routes. Save final native shadow and
+   guest references from one run at several moving frames, with output/source
+   frame IDs, promotion state and fallback reason. Review road, car, lighting,
+   HUD and scenery regions. Do not use a cross-run intermediate MAE to choose
+   the next fix.
+2. **Choose one visible blocker.** Start with road/background lighting or car
+   readability, whichever the final-frame pair and a short drive show is
+   worse. Map its draw/copy lineage in the ordered stream, then make the
+   smallest useful producer slice run in the continuous native route. Preserve
+   guest-visible target versions and whole-frame fallback. Verify a visible
+   final-frame gain at multiple moments, not just source frame 5001. If that
+   slice depends on a `DEVICE_HUNG` family, isolate and time one draw before
+   further admission; otherwise choose a safe visible gap.
+3. **Prove playability.** Run a longer unscripted drive plus mode-boundary,
+   hot-toggle and UI stress checks. Record visible remaining gaps, fallback
+   frequency, blank/stale frames and responsiveness. RAY-04 closes when the
+   race is coherent enough to drive with stable HUD; optional effects may
+   remain approximate.
+4. **Measure and optimize.** Only after the playability gate, compare live
+   native and compatibility frame times with existing CPU/GPU instrumentation.
+   Remove the largest proven duplicate visual cost while preserving guest
+   side effects and repeat the driving and fallback checks for RAY-05.
+
+The selected-frame post-scene reductions, final-composite trials, depth and
+color-version experiments, and large-index isolation remain documented above
+and in their linked evidence files. Reopen one only when a live final-frame
+gap requires it. Keep the 1280×720 color-format aliases `0x00030000` and
+`0x000C0000` over their shared EDRAM base when that work resumes.
