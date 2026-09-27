@@ -34,3 +34,12 @@ earlier color resolve at guest base `484626432`, but the continuous path
 skips that producer and its copies. The capture records many later readers
 of this resolve. Recheck the flat region after carrying that producer across
 moving frames before expanding any other road material.
+
+A trace-off repeat (`.local/ray-live-trace-off-20260926/`) exited normally,
+but the two runs diverged visibly before the comparison frame (their guest
+`live-5040.ppm` images differ by 18.25/255 mean RGB). It cannot isolate the
+producer's effect. In the original same-run pair, the ground-region error at
+the selected ordered frame 5040 is close to the adjacent continuous frames.
+The earlier resolve is thus a concrete missing dependency, not yet a proven
+cause of the flat ground. Require a same-run on/off probe or live final-frame
+gain before expanding its executor.
