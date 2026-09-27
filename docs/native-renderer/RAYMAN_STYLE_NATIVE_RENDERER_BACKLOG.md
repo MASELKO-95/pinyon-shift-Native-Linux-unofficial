@@ -163,6 +163,12 @@ eleven depth-tested color draws. The selected-frame pilot now snapshots the
 1× source at the depth resolve and binds a copied DSV. Its diagnostic preview
 shows some new structure but still lacks most lower-scene detail, pointing
 to missing starting color history.
+The [feedback seed pilot](RAYMAN_INITIAL_COLOR_OFFSCREEN_2026-09-26.md)
+found that a pre-draw full-resource cache snapshot is nearly white despite
+the guest's complete first resolved version. It now seeds the second native
+version from that pinned first version before the original feedback draw.
+The diagnostic second version has recognizable crowd, scenery and car;
+visible consumers still use the guest texture until same-frame comparison.
 The [main-scene original draw pilot](RAYMAN_MAIN_SCENE_ORIGINAL_DRAW_2026-09-26.md)
 also issues one captured textured strip in each of the three color tiles at
 its stream ordinal. A short native race passed with readable HUD, but the
@@ -405,11 +411,13 @@ the D3D12 debug layer and DRED, then retry only when its cause is addressed.
 Until that path is stable, prioritize the already captured offscreen
 color/depth history and its pinned guest consumer comparison rather than
 admitting another large scene family.
-Capture the compatibility 1× color target after the 4× clear transfers into
-it and before the first 1× color draw. Initialize native offscreen replay
-from that color version, then compare with the pinned guest preview before
-replacing its visible consumer texture. The depth snapshot and copied DSV
-are already in the selected-frame pilot.
+Compare the seeded second native color version against the pinned guest
+second version at the same frame and ordinal. If coherent, bind it to one
+later consumer under the existing whole-frame fallback. Do not use the
+pre-draw full-resource cache snapshot as the starting image: it is nearly
+white because the EDRAM history has not been materialized there. The first
+native version still lacks that history; keep the guest first version for
+feedback until its native source can be made complete.
 Save the resulting full-frame image and integrate the same-frame HUD at its ordered
 suffix.
 Treat `0x00030000` and `0x000C0000` as format aliases over one EDRAM base,

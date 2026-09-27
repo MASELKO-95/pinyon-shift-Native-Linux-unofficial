@@ -196,7 +196,8 @@ struct TrackGraphics {
       pixel_car;
   ComPtr<ID3D12PipelineState> manager_pipeline, manager_original_pipeline;
   ComPtr<ID3D12RootSignature> blit_root;
-  ComPtr<ID3D12PipelineState> blit_pipeline, scene_blit_pipeline;
+  ComPtr<ID3D12PipelineState> blit_pipeline, scene_blit_pipeline,
+      seed_pipeline;
   std::map<PipelineKey, ComPtr<ID3D12PipelineState>> pipelines;
   std::map<std::tuple<uint64_t, uint64_t, bool>,
            ComPtr<ID3D12PipelineState>> item_pipelines;
@@ -222,6 +223,7 @@ struct TrackGraphics {
       blit_root.Reset();
       blit_pipeline.Reset();
       scene_blit_pipeline.Reset();
+      seed_pipeline.Reset();
       device = current;
     }
     if (root && pixel && pixel_textured && pixel_road && pixel_foliage &&
@@ -625,7 +627,7 @@ struct TrackGraphics {
   }
 
   bool BlitReady() {
-    if (blit_pipeline && scene_blit_pipeline) return true;
+    if (blit_pipeline && scene_blit_pipeline && seed_pipeline) return true;
     constexpr char vertex[] =
         "float4 main(uint id : SV_VertexID) : SV_Position {"
         " float2 p[3] = {float2(-1,-1),float2(-1,3),float2(3,-1)};"
@@ -650,14 +652,21 @@ struct TrackGraphics {
         "Texture2D<float4> scene : register(t0);"
         "float4 main(float4 p : SV_Position) : SV_Target0 {"
         " return scene.Load(int3(1279-int(p.x),719-int(p.y),0)); }";
-    ComPtr<ID3DBlob> vs, ps, scene_ps, errors, serialized;
+    constexpr char seed_fragment[] =
+        "Texture2DArray<float4> source : register(t0);"
+        "float4 main(float4 p : SV_Position) : SV_Target0 {"
+        " return source.Load(int4(int(p.x),int(p.y),0,0)); }";
+    ComPtr<ID3DBlob> vs, ps, scene_ps, seed_ps, errors, serialized;
     if (FAILED(D3DCompile(vertex, sizeof(vertex) - 1, nullptr, nullptr,
                           nullptr, "main", "vs_5_1", 0, 0, &vs, &errors)) ||
         FAILED(D3DCompile(fragment, sizeof(fragment) - 1, nullptr, nullptr,
                           nullptr, "main", "ps_5_1", 0, 0, &ps, &errors)) ||
         FAILED(D3DCompile(scene_fragment, sizeof(scene_fragment) - 1,
                           nullptr, nullptr, nullptr, "main", "ps_5_1", 0, 0,
-                          &scene_ps, &errors)))
+                          &scene_ps, &errors)) ||
+        FAILED(D3DCompile(seed_fragment, sizeof(seed_fragment) - 1,
+                          nullptr, nullptr, nullptr, "main", "ps_5_1", 0, 0,
+                          &seed_ps, &errors)))
       return false;
     D3D12_DESCRIPTOR_RANGE range{};
     range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
@@ -699,6 +708,10 @@ struct TrackGraphics {
       blit_root.Reset();
       return false;
     }
+    desc.PS = {seed_ps->GetBufferPointer(), seed_ps->GetBufferSize()};
+    desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    if (FAILED(device->CreateGraphicsPipelineState(
+            &desc, IID_PPV_ARGS(&seed_pipeline)))) return false;
     return true;
   }
 };
@@ -1615,6 +1628,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         if (!prepare_producer(sequence, draw, false)) return false;
       }
       return producer_bindings.size() == 12 &&
+          producer_bindings[11].feedback &&
           std::count_if(producer_bindings.begin(), producer_bindings.end(),
                         [](const auto& binding) {
                           return binding.feedback;
@@ -1795,10 +1809,6 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
         view.Texture2DArray.ResourceMinLODClamp = 0;
         ID3D12Resource* resource = frame.material_resources[
             binding.materials[j] * 2 + 1].Get();
-        if (binding.feedback) {
-          resource = frame.initial_color_versions[0].Get();
-          view.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        }
         auto slot = frame.materials->GetCPUDescriptorHandleForHeapStart();
         slot.ptr += SIZE_T(binding.view_offset + j * 2) * stride;
         device->CreateShaderResourceView(resource, &view, slot);
@@ -2356,6 +2366,25 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
           barrier.Transition.StateAfter =
               D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
           list->D3DResourceBarrier(1, &barrier);
+          // The guest resolve owns tiles not materialized by the first 1x
+          // draw. Seed untouched feedback pixels from its pinned version.
+          list->D3DOMSetRenderTargets(1, &offscreen_rtv, FALSE, nullptr);
+          list->RSSetViewport({0, 0, 1280, 720, 0, 1});
+          list->RSSetScissorRect({0, 0, 1280, 720});
+          list->SetDescriptorHeaps(material_heap, nullptr);
+          list->D3DSetGraphicsRootSignature(graphics.blit_root.Get());
+          list->D3DSetPipelineState(graphics.seed_pipeline.Get());
+          auto seed_view = material_gpu_start;
+          seed_view.ptr += SIZE_T(producer_bindings[11].view_offset) *
+                           material_stride;
+          list->D3DSetGraphicsRootDescriptorTable(0, seed_view);
+          list->D3DIASetPrimitiveTopology(
+              D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+          list->D3DDrawInstanced(3, 1, 0, 0);
+          list->D3DOMSetRenderTargets(1, &offscreen_rtv, FALSE,
+                                     &offscreen_dsv);
+          list->SetDescriptorHeaps(material_heap, sampler_heap);
+          list->D3DSetGraphicsRootSignature(graphics.root.Get());
         } else {
           list->D3DOMSetRenderTargets(1, &rtv, FALSE, &dsv);
         }

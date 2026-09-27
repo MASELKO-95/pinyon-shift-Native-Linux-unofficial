@@ -36,10 +36,12 @@ exited normally with the snapshot, both offscreen copies and selected-frame
 promotion. A diagnostic blit of the second native color version shows new
 upper-scene structure compared with the depth-disabled pilot, but still has
 a largely blank lower scene. The pinned guest version has extensive detail
-there. The next missing input is the 1× color target's starting history;
-capture it after the 4× clear transfers into the 1× target and before the
-first 1× color draw. Keep the compatibility texture as the visible consumer
-input until the previews match closely enough.
+there. A later full-resource snapshot before the first 1× color draw was
+nearly white because the cache had not materialized the complete EDRAM tile
+history. The bounded feedback pilot now seeds its second native version from
+the pinned first guest version via a fullscreen shader; see the
+[offscreen producer record](RAYMAN_INITIAL_COLOR_OFFSCREEN_2026-09-26.md).
+Visible consumers remain compatibility-backed pending same-frame comparison.
 
 Source evidence: `ordered-frame-5001.csv` and `ordered-frame-6782.csv` under
 the local `ray-ui-native-promotion-20260925` directory. The normal-exit run
