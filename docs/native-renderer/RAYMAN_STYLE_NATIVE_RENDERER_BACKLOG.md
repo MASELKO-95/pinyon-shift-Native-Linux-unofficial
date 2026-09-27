@@ -450,12 +450,16 @@ not a prerequisite for the first usable renderer.
    covers frames 5040–5044; repeat at a different race moment if the chosen
    fix depends on it. Do not use a cross-run intermediate MAE to choose the
    next fix.
-2. **Choose one visible blocker.** Start with road/ground readability: the
-   paired baseline shows broad flat green/gray areas absent from the guest
-   output. Map its draw/copy lineage in the ordered stream, then make the
-   smallest useful producer slice run in the continuous native route. Preserve
-   guest-visible target versions and whole-frame fallback. Verify a visible
-   final-frame gain at multiple moments, not just source frame 5001. If that
+2. **Choose one visible blocker.** Start with the missing earlier color
+   producer and its two resolves at guest base `484626432`: the paired
+   baseline shows broad flat green/gray areas absent from the guest, while
+   the existing road family already samples asphalt. Capture only the
+   producer draws and their state for consecutive moving frames; reuse the
+   selected-frame ordered executor with per-frame shape checks and whole-frame
+   fallback. First establish that its output changes the live final image,
+   then compare the green/gray region against the same-run guest reference.
+   Preserve guest-visible target versions and whole-frame fallback. Verify a
+   visible final-frame gain at multiple moments, not just source frame 5001. If that
    slice depends on a `DEVICE_HUNG` family, isolate and time one draw before
    further admission; otherwise choose a safe visible gap.
 3. **Prove playability.** Run a longer unscripted drive plus mode-boundary,

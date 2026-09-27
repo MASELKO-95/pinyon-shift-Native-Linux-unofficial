@@ -25,3 +25,12 @@ producer slice in the continuously presented native path. Compare several
 moving final frames and repeat the HUD/fallback route before accepting it.
 Keep the known large indexed `DEVICE_HUNG` families quarantined unless this
 region's lineage specifically requires one.
+
+Follow-up triage: the 30-draw `1193B16753866698`/`93961AB9BDF347DD`
+road family already samples its asphalt texture in the continuous path. The
+flat green area is therefore not evidence that this material needs another
+shader trial. The selected-frame ordered path builds two versions of the
+earlier color resolve at guest base `484626432`, but the continuous path
+skips that producer and its copies. The capture records many later readers
+of this resolve. Recheck the flat region after carrying that producer across
+moving frames before expanding any other road material.
