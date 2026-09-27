@@ -54,6 +54,27 @@ the native families. Two final draws at `11822215` and `11822216` use the same
 original vertex/pixel pair and five pinned textures each, with 1280×360
 upper/lower viewports. Earlier in that interval, two 640×360 single-texture
 draws and many small resolves build intermediate inputs. This is a bounded
-post-scene composite candidate. Replay those two final draws with their exact
-pins and state in shadow first; compare their output with the guest target,
-then replace an input with an owned native version only after it matches.
+post-scene composite candidate.
+
+A shadow-only trial of that pair identified the necessary bindings but did not
+produce an owned native scene. The original Xenos primitive is a rectangle
+list, so drawing its three vertices as a D3D triangle produced diagonal
+wedges. Expanding the fourth corner filled the frame, but the image was a
+flat olive gradient. The installed shader manifest explains this: the pixel
+shader `614588022744BF6B` assigns descriptor slots to fetches 5, 0, 2 and 7
+in that order, while the capture lists fetches 0, 2, 5, 7 and 17. The vertex
+shader `20A41D46F34D238E` uses fetch 17 at slots that overlap the pixel
+stage's slots, so the two stages need separate descriptor constant buffers.
+Correcting those bindings restored a detailed scene, but it appeared rotated
+180 degrees while the separately replayed HUD stayed upright. The 1280×720
+scene input was the pinned guest texture at fetch 0, allocation 79 in that
+run. Its detail therefore does not demonstrate native scene ownership.
+The run exited normally in shadow mode. Evidence is in
+`.local/ray-ui-native-promotion-20260925/composite-descriptor-corrected/`.
+The trial was removed and the safe native binary rebuilt.
+
+Next, identify the guest fetch-0 producer and the coordinate convention at
+the two composite draws. Replace that input with the native-owned color
+target before counting the pair as native progress. Keep the earlier 640×360
+passes and small resolves explicit as dependencies, and compare the resulting
+shadow against a same-run guest frame before enabling presentation.

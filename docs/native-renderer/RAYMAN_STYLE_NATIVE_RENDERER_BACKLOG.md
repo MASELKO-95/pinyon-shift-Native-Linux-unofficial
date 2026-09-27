@@ -437,10 +437,16 @@ a white sky and washed-out HUD, so trace the later tiled color and lighting
 chain instead of using that early resolve as a backdrop.
 The selected shadow-only stream ends its main color tiles at ordinal
 `11822064`, then reaches two 1280×360 five-texture composite draws at
-`11822215`/`11822216` just before the HUD suffix. Replay that bounded pair
-with pinned inputs and original shaders in shadow, compare its output target,
-then replace one input with an owned native version. The earlier 640×360
-passes and small resolves remain explicit upstream dependencies.
+`11822215`/`11822216` just before the HUD suffix. A bounded replay trial
+confirmed rectangle expansion and stage-specific descriptor mappings, but
+its detailed output sampled a pinned guest 1280×720 color texture and was
+rotated 180 degrees. The trial was removed; see the
+[shadow comparison](RAYMAN_SHADOW_ONLY_FRAME_COMPARISON_2026-09-26.md).
+Trace fetch 0 to its final color producer, bind the native-owned color target
+in its place, and correct the coordinate convention in shadow before
+promoting this pair. The earlier 640×360 passes and small resolves remain
+explicit upstream dependencies. A composite of the guest scene does not
+count as native coverage.
 The seeded second native color version now matches the pinned guest second
 version closely in one sampled region, and one car draw consumes it under
 the existing whole-frame fallback. Expand replacement only to a consumer
