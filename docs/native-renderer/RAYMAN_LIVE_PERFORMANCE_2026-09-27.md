@@ -13,6 +13,7 @@ so the numbers rank CPU work rather than prove a synchronized visual A/B.
 | Native before reuse | 187.81 ms | 201.20 ms | 143 | 132.99 ms | 41.56 ms |
 | Native with exact-version reuse | 118.34 ms | 128.59 ms | 6 | 61.30 ms | 41.23 ms |
 | Native with CPU upload scratch reuse | 104.31 ms | 123.43 ms | 6 | 57.17 ms | 30.02 ms |
+| Native without redundant manager rehash | 94.88 ms | 106.54 ms | 6 | 48.85 ms | 29.95 ms |
 
 The original live path made a committed GPU texture and copy for every new
 material key in every frame. The retained change reuses a previous frame's
@@ -58,9 +59,25 @@ Artifacts are under `.local/ray-arena-reuse-profile-20260927/`,
 `.local/ray-arena-live-20260927/`, `.local/ray-arena-mode-20260927/` and
 `.local/ray-arena-toggle-20260927/`.
 
-At about 104 ms per frame, responsiveness remains open. The prepared
-snapshot/observer work is still substantial (about 12 and 25 ms median in
-the earlier native window). Keep the whole-frame fallback and repeat the
-presentation checks after each change. A longer unscripted drive remains
-open; scripted movement and static screenshots do not prove control
-responsiveness.
+The manager observer also rehashed every previously copied geometry range on
+each draw, after the first copy had passed its hash check and the repeated
+copy had passed an exact byte comparison. Removing that redundant hash lowered
+prepared-observer CPU from 22.18 to 14.50 ms and the frame median from
+104.31 to 94.88 ms. All 25 measured native frames promoted. The extended
+scripted route exited normally and promoted at 5040, 5100, 5200 and 5290;
+a late capture retained the race HUD. A mode-boundary repeat passed. Its first
+attempt entered a different car/camera state and correctly fell back with
+`missing remainder car draw`, so that attempt cannot prove native mode
+coverage. Both hot-toggle runs passed after the verifier checked their valid
+`race-moving` HUD checkpoint rather than the pre-race cinematic at 4080.
+Artifacts are under `.local/ray-manager-hash-profile-20260927/`,
+`.local/ray-manager-hash-live-20260927/`,
+`.local/ray-manager-hash-mode-repeat-20260927/` and
+`.local/ray-manager-hash-toggle-repeat-20260927/`.
+
+At about 95 ms per frame, responsiveness remains open. Prepared snapshot
+work still takes about 11 ms, prepared observation about 15 ms, and native
+output about 30 ms median in the measured window. Keep the whole-frame
+fallback and repeat presentation checks after each change. A longer
+unscripted drive remains open; scripted movement and static screenshots do
+not prove control responsiveness.

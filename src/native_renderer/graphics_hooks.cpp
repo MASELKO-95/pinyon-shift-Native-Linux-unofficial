@@ -1317,8 +1317,7 @@ bool Snr03OwnRange(
   if (status != 1 || !bytes || !key.second) return false;
   if (const auto existing = ranges.find(key); existing != ranges.end()) {
     return existing->second.size() == key.second &&
-           std::equal(existing->second.begin(), existing->second.end(), bytes) &&
-           Snr03SnapshotHashBytes(existing->second) == hash;
+           std::equal(existing->second.begin(), existing->second.end(), bytes);
   }
   if (owned_bytes > limit || key.second > limit - owned_bytes) return false;
   auto& owned = ranges[key];

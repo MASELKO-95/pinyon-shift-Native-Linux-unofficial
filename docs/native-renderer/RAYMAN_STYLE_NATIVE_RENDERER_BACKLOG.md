@@ -494,8 +494,9 @@ not a prerequisite for the first usable renderer.
    repeated draw preparation and frame-resource creation, not CPU issuance
    of already-prepared native draws. CPU upload scratch reuse reduced the
    measured native window to 104.31 ms while keeping promotion and fallback.
-   Prepared snapshot/observer work (about 12/25 ms median in the earlier
-   window) remains a candidate. Remove one proven repeated cost at a time,
+   Removing redundant hashing of exact-byte-checked manager ranges reduced it
+   further to 94.88 ms. Prepared snapshot/observer work (about 11/15 ms
+   median) remains a candidate. Remove one proven repeated cost at a time,
    checking live promotion, HUD and fallback after each. This work precedes
    secondary visual fixes because the remaining native frame is not a usable
    driving cadence.
