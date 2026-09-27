@@ -503,10 +503,11 @@ Use the following gates to avoid another sequence of isolated pilots:
    stability, fallback frequency, blank/stale frames and the first visible
    defect that interferes with driving. Repeat the scripted sustained,
    hot-toggle and mode-boundary checks after ownership or suppression
-   changes. The latest hot toggle and mode boundary exit normally, but
-   `title-settled` still shows pre-existing saturated background noise;
-   establish a compatibility-only control and reliable title checkpoint
-   before signing off that boundary. The drive is the RAY-04 gate.
+   changes. The [paired mode-boundary control](RAYMAN_MODE_BOUNDARY_CONTROL_2026-09-27.md)
+   confirms that `title-settled` background noise also occurs with native
+   disabled; the current native route passed its boundary verifier. The
+   underlying title artifact remains a compatibility-renderer issue. The
+   drive is the RAY-04 gate.
 5. [ ] **Fix the next observed driving blocker.** Use a same-run final-frame
    pair and its exact source inputs. The
    [same-output color trace](RAYMAN_LIVE_SCENE_COLOR_CHAIN_2026-09-27.md)
@@ -523,10 +524,12 @@ Use the following gates to avoid another sequence of isolated pilots:
    moving frames improve. The 320×192 and 640×360 composite inputs remain
    separate dependencies.
 6. [ ] **Attack the measured frame-time blocker.** The latest repeated native
-   medians are about 91–95 ms versus 23.54 ms compatibility. Profile a
-   promoted live window and remove the largest cost with a paired frame and
-   short driving check. Do not spend another slice on snapshot micro-tuning:
-   its measured ceiling cannot make the renderer responsive.
+   medians are about 91–95 ms versus 23.54 ms compatibility. The
+   [current trace checkpoint](RAYMAN_POST_STENCIL_PROFILE_2026-09-27.md)
+   confirms about 93 ms with large guest draw-issue and native output CPU
+   slices. Remove the largest qualified cost with a paired promoted frame
+   and short driving check. Do not spend another slice on snapshot
+   micro-tuning: its measured ceiling cannot make the renderer responsive.
 7. [ ] **Qualify one duplicate guest pass only with dependency proof.** The
    [guest-visible dependency ledger](GUEST_VISIBLE_RENDER_DEPENDENCIES.md)
    does not yet qualify any target for suppression. For one candidate, prove
