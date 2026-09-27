@@ -482,12 +482,14 @@ Use the following gates to avoid another sequence of isolated pilots:
    only if a new trace shows it blocks live ordered ownership.
 2. [ ] **Trace the chosen live gap to its source input.** The
    [late-race paired capture](RAYMAN_LATE_RACE_UI_LINEAGE_2026-09-27.md)
-   identifies dark native navigation as a driving-cue defect and places it
-   in the first original UI draw or its two pinned textures. The opt-in
+   identifies dark native navigation as a driving-cue defect. The first UI
+   draw consumes allocation 43/generation 3599 immediately after a 256×256
+   copy to its base; an independent guest RenderDoc frame shows the bright
+   green route already present in that input before the UI shader. The opt-in
    pre-UI handoff renders the game's green navigation on producer frames,
-   but late replay still supplies dark frames between them. Compare the
-   first draw's actual input contents and generation at guest execution and
-   native replay, then name the missing producer/resolve or wrong binding.
+   but late replay still supplies dark frames between them. Read back that
+   exact pinned version at guest execution and native replay, then repair
+   the copy/snapshot path or the shader binding indicated by the comparison.
    Two blend/sampler trials did not help and were removed; do not repeat
    state guesses. Keep known `DEVICE_HUNG` families out of admission until
    one isolated draw survives.
