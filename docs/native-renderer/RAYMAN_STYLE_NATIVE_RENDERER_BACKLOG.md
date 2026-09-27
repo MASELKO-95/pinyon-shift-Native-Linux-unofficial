@@ -119,6 +119,11 @@ then captured the 18 selected producer inputs on moving frames and executed
 them in 15 consecutive native shadows. This removes the selected-frame-only
 gate for that narrow path, but the saved image still has major world and car
 gaps; the complete frame is not owned.
+Later live diagnostics alternated between full ordered promotion and
+`ordered_small_copy` rejection, while a same-session hot toggle confirmed
+that successful ordered output still has the flat sky, unlit world and dark
+car. Keep the executor shadow-only until a final-image improvement and a
+stable copy contract are demonstrated.
 
 - [ ] From one moving-race frame and one known HUD-gap frame, record one
   ordered stream of draw, clear, resolve and output-target events. Each event

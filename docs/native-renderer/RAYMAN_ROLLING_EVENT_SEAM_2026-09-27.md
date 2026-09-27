@@ -64,6 +64,20 @@ After that gate, the same visible-output route promoted 29 consecutive
 sampled frames (outputs 5001–5029) with no ordered-copy rejection and exited
 normally; see `.local/ray-rolling-probe-native-fallback-20260927/`.
 
+Two further diagnostic runs temporarily removed that gate. One promoted
+ordered output through source frame 5030; another completed the existing
+native/compatibility/native hot-toggle route, promoting both native segments
+and returning cleanly from compatibility. This contrasts with the earlier
+all-frame `ordered_small_copy` rejection, so the exact copy contract varies
+across otherwise similar runs. The temporary change was removed. The
+same-session captures `native-on.ppm`, `compatibility-off.ppm`, and
+`native-on-again.ppm` show that the ordered path still has a flat sky,
+unlit road/buildings, and dark car despite readable HUD. Evidence is under
+`.local/ray-ordered-small-copy-diagnostic-20260927/` and
+`.local/ray-rolling-ordered-toggle-diagnostic-20260927/`. Keep the
+shadow-only gate until a bounded target/resolve correction produces a
+clear final-image gain across moving frames.
+
 Keep this replay opt-in while testing the scene color/resolve mismatch at a
 single visible region. Do not expand the producer list or promote this ordered
 path by default until a same-run final-frame comparison improves across moving
