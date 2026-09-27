@@ -200,6 +200,11 @@ brightness mismatch is visible at the first 320×192 stage, so defer further
 small-target replay until the visible world source is improved. The next
 320×192 feedback draw reads prior-frame history. Neither that feedback
 version nor the final composite is owned.
+The [main-color source comparison](RAYMAN_MAIN_COLOR_SOURCE_COMPARE_2026-09-26.md)
+shows the native scene is already much brighter than the pinned guest input
+to that first downsample. A source-fitted color scale improved intermediate
+MAE but made the final race too dark and was removed. Judge visible changes
+against the final guest frame, not an intermediate alone.
 
 - [ ] Diagnose the shared `DEVICE_HUNG` in large indexed scene draws: isolate
   one draw with the D3D12 debug layer and DRED, verify index/vertex bounds,
@@ -463,10 +468,10 @@ native output. Fetches 2 and 5 still came from guest-produced 320×192 and
 its two smaller reductions now run from owned color, but guest probes show
 that their brightness already diverges at 320×192. Defer the remaining
 feedback and 640×360 effects while the visible world is rough. Before
-retrying the final composite, compare the main native color tiles with the
-pinned guest version at the same ordinal and fix the first material or
-source-color mismatch that affects the playable view. A composite of the
-guest scene does not count as native coverage.
+retrying the final composite, use the main-color comparison to identify
+missing lighting and road/background producers, and validate a change
+against the final displayed guest frame. A composite of the guest scene
+does not count as native coverage.
 The seeded second native color version now matches the pinned guest second
 version closely in one sampled region, and one car draw consumes it under
 the existing whole-frame fallback. Expand replacement only to a consumer

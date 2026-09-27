@@ -34,7 +34,10 @@ All three guest-probe routes exited normally. This locates the visible
 brightness divergence no later than the first native 320×192 pass; debugging
 the white 32×32 result alone would miss the earlier mismatch. The source
 native scene is already visibly rough and bright, so compare its main-color
-tile against the guest tile before changing the downsample shader.
+tile against the guest tile before changing the downsample shader. That
+[source comparison](RAYMAN_MAIN_COLOR_SOURCE_COMPARE_2026-09-26.md) confirms
+a large upstream color difference and rules out a source-fitted display
+scale as a final-frame fix.
 
 The next draw (`11782910`, PS `ED74D20BC7DFB0F7`) combines the 32×32
 target with another guest texture. The following 320×192 feedback draw

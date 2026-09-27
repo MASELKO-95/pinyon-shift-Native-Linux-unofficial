@@ -32,7 +32,7 @@
 
 REXCVAR_DEFINE_INT32(pinyon_shift_native_small_target_probe, 0,
                      "Pinyon Shift",
-                     "Shadow probe: 1-3=native small targets, 4-6=guest 32/64/320 targets")
+                     "Shadow probe: 1-3=native small, 4-6=guest small, 7/8=guest/native scene")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 namespace pinyon_shift::native_renderer {
@@ -1551,7 +1551,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   const bool ordered_tiles = trace_frame && live.source_frame + 1 == trace_frame;
   const int32_t small_probe = ordered_tiles
       ? REXCVAR_GET(pinyon_shift_native_small_target_probe) : 0;
-  if (small_probe < 0 || small_probe > 6)
+  if (small_probe < 0 || small_probe > 8)
     return reject("small_probe_range");
   if (small_probe &&
       rex::cvar::GetFlagByName("pinyon_shift_native_race") == "true")
@@ -1786,7 +1786,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
           }
           return false;
         })) return reject("guest_second_color");
-    if (small_probe >= 4) {
+    if (small_probe >= 4 && small_probe <= 6) {
       const auto input_copy = small_probe == 6 ? std::find_if(
           ordered_operations->begin(), ordered_operations->end(),
           [](const auto& event) {
@@ -1828,6 +1828,8 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
             return false;
           })) return reject("guest_small_color");
     }
+    if (small_probe == 7)
+      guest_small_color_index = producer_bindings[15].materials[0];
   }
   TrackFrame frame;
   if (!CreateFrame(device, output, arena, scene_only, ordered_tiles,
@@ -2110,8 +2112,8 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
   auto scene_srv_gpu = frame.srv->GetGPUDescriptorHandleForHeapStart();
   if (ordered_tiles)
-    scene_srv_gpu.ptr += (small_probe >= 4 ? 7 :
-                          small_probe ? 3 + small_probe : 2) * material_stride;
+    scene_srv_gpu.ptr += std::array<uint32_t, 9>{2, 4, 5, 6, 7, 7, 7, 7, 2}[
+        small_probe] * material_stride;
   graphics.submitted.emplace_back(context.submission, std::move(frame));
 
   // Snapshot before any later cache upload can refresh the same allocation.
