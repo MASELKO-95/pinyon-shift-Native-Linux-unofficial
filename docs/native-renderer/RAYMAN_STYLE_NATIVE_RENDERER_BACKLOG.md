@@ -507,7 +507,10 @@ Use the following gates to avoid another sequence of isolated pilots:
    confirms that `title-settled` background noise also occurs with native
    disabled; the current native route passed its boundary verifier. The
    underlying title artifact remains a compatibility-renderer issue. The
-   drive is the RAY-04 gate.
+   [output-paced stability run](RAYMAN_OUTPUT_STABILITY_2026-09-27.md)
+   presented 1,920 logged native frames with readable HUD, but its car sat
+   against a barrier for most of that window. An interactive drive is still
+   the RAY-04 gate.
 5. [ ] **Fix the next observed driving blocker.** Use a same-run final-frame
    pair and its exact source inputs. The
    [same-output color trace](RAYMAN_LIVE_SCENE_COLOR_CHAIN_2026-09-27.md)
