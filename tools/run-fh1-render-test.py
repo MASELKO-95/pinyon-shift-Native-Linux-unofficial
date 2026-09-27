@@ -515,6 +515,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "-RenderTestTimeoutSeconds",
         str(timeout),
     ]
+    if args.configuration:
+        command += ["-Configuration", args.configuration]
+    if args.hidden:
+        command.append("-Hidden")
     if args.collect_pass_inventory:
         command.append("-CollectFh1PassInventory")
     if args.shader_capture_dir:
@@ -841,6 +845,14 @@ def main() -> int:
     parser.add_argument("--require-zero-shader-misses", action="store_true")
     parser.add_argument("--include-opening-movies", action="store_true")
     parser.add_argument("--timeout", type=int)
+    parser.add_argument(
+        "--configuration", choices=("Release", "RelWithDebInfo"),
+        help="preview build to launch (launch-preview.ps1 default: Release)",
+    )
+    parser.add_argument(
+        "--hidden", action="store_true",
+        help="hide the window; frame pacing then matches routes recorded hidden",
+    )
     parser.add_argument("--game-argument", action="append", default=[])
     args = parser.parse_args()
     try:

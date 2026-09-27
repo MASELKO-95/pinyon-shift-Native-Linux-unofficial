@@ -31,8 +31,27 @@ Do not silently replace a pack midway through a comparison. The direct launcher
 produces captures/logs; run the appropriate clock, workload and image checks
 separately before accepting the run. In-game autosaves remain normal gameplay.
 
-The separate `tools/run-fh1-render-test.py` runner supports disposable test seeds
-where copying is permitted; it is not the AppData-save procedure above. Each
+The separate `tools/run-fh1-render-test.py` runner runs from a disposable seed,
+so routes keep reaching the same event while the live save progresses. Pin a
+seed from the AppData save once (the game must be closed):
+
+```powershell
+python tools/create-render-seed.py appdata-2026-09-27 `
+  --state-root "$env:LOCALAPPDATA\PinyonShift\source\0.1.0\.local\preview" `
+  --note "Native race routes reach a point-to-point PROGRESS event"
+python tools/run-fh1-render-test.py config/render-tests/fh1-native-race-profile.fh1test `
+  --state-root .local/render-seeds/appdata-2026-09-27 --configuration RelWithDebInfo --hidden `
+  --shader-pack "$env:LOCALAPPDATA\PinyonShift\source\0.1.0\.local\preview\cache\shaders\shareable\4D5309C9.fh1-native-v2.10DE.09.1x1.pnsp" `
+  --seed-pipeline-prewarm --game-argument=--pinyon_shift_native_race=true `
+  --game-argument=--pinyon_shift_native_ui_live=true
+```
+
+The seed holds `user`, `config`, the FH1 shader catalogs and a `seed.json`
+manifest with profile hashes; `create-render-seed.py` refuses to overwrite
+one. Output-paced routes are sensitive to frame rate because menus advance in
+wall time: the committed routes were recorded with `--hidden` (about 100
+frames/s here), and a visible window at 120 Hz ran about 143 frames/s and
+missed the menu inputs. Use `--hidden` until routes wait on game state. Each
 runner invocation copies only `user` and `config` from its seed into a private
 sibling directory beside its output. FH1 may autosave in the private copy, but
 the selected seed is never written. Cache contents

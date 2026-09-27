@@ -254,6 +254,12 @@ Sizes are relative scope, not time estimates. XR-08 and XR-09 can overlap.
   `tools/run-fh1-render-test.py` with a disposable seed whose event is
   pinned. Save progress already moved the AppData route from Recaro Rush to
   another event, which silently changed what "native race" tested.
+  `tools/create-render-seed.py` and the runner's `--configuration` and
+  `--hidden` options now exist, and the native race profile passes from seed
+  `appdata-2026-09-27`. Remaining: routes still count output frames while
+  menus run on wall time (a visible 120 Hz window missed menu inputs), so
+  add state-aware waits to the script format (for example, wait for the race
+  admission signal or a mode change) before relying on unattended routes.
 - [ ] Add missing mode routes: boot with movies, Press Start, main and
   single-player menus, garage/car select, a second race event, loading
   screens, rewind. Reuse the free-roam, map, pause and photo scripts.
