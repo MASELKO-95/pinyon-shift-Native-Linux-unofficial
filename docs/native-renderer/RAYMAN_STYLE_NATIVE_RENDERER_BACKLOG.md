@@ -432,6 +432,15 @@ history and its lighting/road consumers the immediate visual priority.
 Recheck native output against a near-aligned guest reference with promotion
 off before claiming a visible gap closed; a later guest buffer may contain
 an earlier promoted native frame.
+Directly seeding the main scene from the pinned first color resolve produced
+a white sky and washed-out HUD, so trace the later tiled color and lighting
+chain instead of using that early resolve as a backdrop.
+The selected shadow-only stream ends its main color tiles at ordinal
+`11822064`, then reaches two 1280×360 five-texture composite draws at
+`11822215`/`11822216` just before the HUD suffix. Replay that bounded pair
+with pinned inputs and original shaders in shadow, compare its output target,
+then replace one input with an owned native version. The earlier 640×360
+passes and small resolves remain explicit upstream dependencies.
 The seeded second native color version now matches the pinned guest second
 version closely in one sampled region, and one car draw consumes it under
 the existing whole-frame fallback. Expand replacement only to a consumer

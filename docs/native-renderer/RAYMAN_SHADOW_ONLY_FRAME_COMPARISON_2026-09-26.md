@@ -34,8 +34,26 @@ draws, 94 copies, 20 clears and a complete 166-draw HUD suffix. Of the draws,
 2,367 have native support and 2,031 remain unsupported in this run.
 
 Next, prioritize the full-scene color/depth history and its consumers over
-another isolated large indexed family. In particular, identify which initial
-resolved color version carries the lit sky, buildings and asphalt into the
-main scene, then replay or preserve its producer and ordered consumers. Keep
-the third-tile indexed family excluded until its `DEVICE_HUNG` cause is
-measured. Repeat this shadow-only comparison after a visible layer changes.
+another isolated large indexed family. Identify how the later tiled color
+resolves and lighting/postprocessing form the lit sky, buildings and asphalt,
+then replay or preserve their ordered inputs. Keep the third-tile indexed
+family excluded until its `DEVICE_HUNG` cause is measured. Repeat this
+shadow-only comparison after a visible layer changes.
+
+A bounded trial sampled the pinned first `484626432` color version as a
+fullscreen starting image after the main clear, then ran the existing native
+draws. It exited normally, but the native shadow had a nearly white sky and
+washed-out HUD; the near-aligned guest comparison had mean absolute error
+71.29/255. The source is not a suitable final-scene backdrop. That trial was
+removed and the safe binary rebuilt. Trace the later tiled color resolves and
+lighting/postprocessing path instead of directly blitting this early version.
+
+In this same selected stream, the last main color-tile resolve is at ordinal
+`11822064`. Before the first HUD draw at `11822217`, 126 draws remain outside
+the native families. Two final draws at `11822215` and `11822216` use the same
+original vertex/pixel pair and five pinned textures each, with 1280×360
+upper/lower viewports. Earlier in that interval, two 640×360 single-texture
+draws and many small resolves build intermediate inputs. This is a bounded
+post-scene composite candidate. Replay those two final draws with their exact
+pins and state in shadow first; compare their output with the guest target,
+then replace an input with an owned native version only after it matches.
