@@ -32,7 +32,7 @@
 
 REXCVAR_DEFINE_INT32(pinyon_shift_native_small_target_probe, 0,
                      "Pinyon Shift",
-                     "Shadow probe: 1=320x192, 2=64x32, 3=32x32")
+                     "Shadow probe: 1-3=native small targets, 4-6=guest 32/64/320 targets")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 namespace pinyon_shift::native_renderer {
@@ -1161,7 +1161,7 @@ bool CreateFrame(ID3D12Device* device, ID3D12Resource* output,
   }
   heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
   heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-  heap_desc.NumDescriptors = ordered_tiles ? 7 : 2;
+  heap_desc.NumDescriptors = ordered_tiles ? 8 : 2;
   if (FAILED(device->CreateDescriptorHeap(&heap_desc,
                                           IID_PPV_ARGS(&frame.srv))))
     return false;
@@ -1551,7 +1551,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   const bool ordered_tiles = trace_frame && live.source_frame + 1 == trace_frame;
   const int32_t small_probe = ordered_tiles
       ? REXCVAR_GET(pinyon_shift_native_small_target_probe) : 0;
-  if (small_probe < 0 || small_probe > 3)
+  if (small_probe < 0 || small_probe > 6)
     return reject("small_probe_range");
   if (small_probe &&
       rex::cvar::GetFlagByName("pinyon_shift_native_race") == "true")
@@ -1560,6 +1560,7 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
   std::vector<ProducerDrawBinding> producer_bindings;
   uint64_t producer_clear_sequence = 0;
   uint32_t guest_second_color_index = UINT32_MAX;
+  uint32_t guest_small_color_index = UINT32_MAX;
   if (ordered_tiles) {
     ordered_operations = SnapshotOrderedFrameOperations(trace_frame);
     if (!ordered_operations) return reject("ordered_stream");
@@ -1785,6 +1786,48 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
           }
           return false;
         })) return reject("guest_second_color");
+    if (small_probe >= 4) {
+      const auto input_copy = small_probe == 6 ? std::find_if(
+          ordered_operations->begin(), ordered_operations->end(),
+          [](const auto& event) {
+            return event.kind == 'C' && event.dest_base == 480858112 &&
+                event.resolve_width == 320 && event.resolve_height == 192;
+          }) : ordered_operations->begin();
+      if (input_copy == ordered_operations->end())
+        return reject("guest_small_input_copy");
+      const auto guest_small = std::find_if(
+          input_copy, ordered_operations->end(),
+          [small_probe](const auto& event) {
+            return event.kind == 'D' &&
+                (small_probe == 4
+                    ? event.color == 917504 &&
+                      event.pixel_shader == 0xED74D20BC7DFB0F7ull
+                    : event.color == 196608 &&
+                      event.pixel_shader == (small_probe == 5
+                          ? 0xAE59F518D522BDD1ull
+                          : 0xE17BECBE8BE65806ull));
+          });
+      if (guest_small == ordered_operations->end() ||
+          !WithOrderedFrameDraws(trace_frame, guest_small->sequence,
+                                 guest_small->sequence,
+                                 [&](const auto& draws) {
+            if (draws.size() != 1) return false;
+            for (const auto& texture : draws.begin()->second.textures) {
+              if (texture.fetch_constant != 0 ||
+                  (texture.fetch_words[1] >> 12) !=
+                      ((small_probe == 6 ? 480858112u : 481103872u) >> 12))
+                continue;
+              Snr04TrackTextureIdentity identity;
+              std::copy_n(texture.fetch_words, 6,
+                          identity.fetch_words.begin());
+              identity.allocation_id = texture.allocation_id;
+              identity.payload_generation = texture.payload_generation;
+              identity.outdated_mask = texture.outdated_mask;
+              return resolve_material(identity, guest_small_color_index, true);
+            }
+            return false;
+          })) return reject("guest_small_color");
+    }
   }
   TrackFrame frame;
   if (!CreateFrame(device, output, arena, scene_only, ordered_tiles,
@@ -1854,6 +1897,13 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       frame.material_resources.push_back(std::move(material.resource));
       frame.material_resources.push_back(std::move(material.snapshot));
       handle.ptr += stride;
+    }
+    if (guest_small_color_index != UINT32_MAX) {
+      auto slot = frame.srv->GetCPUDescriptorHandleForHeapStart();
+      slot.ptr += 7 * stride;
+      device->CreateShaderResourceView(
+          frame.material_resources[guest_small_color_index * 2 + 1].Get(),
+          &materials[guest_small_color_index].view, slot);
     }
     for (const auto& binding : bindings) {
       if (std::get<5>(binding.pipeline) != 3) continue;
@@ -2060,7 +2110,8 @@ bool DrawTrack(const rex::system::NativeGuestOutputRenderContext& context,
       D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
   auto scene_srv_gpu = frame.srv->GetGPUDescriptorHandleForHeapStart();
   if (ordered_tiles)
-    scene_srv_gpu.ptr += (small_probe ? 3 + small_probe : 2) * material_stride;
+    scene_srv_gpu.ptr += (small_probe >= 4 ? 7 :
+                          small_probe ? 3 + small_probe : 2) * material_stride;
   graphics.submitted.emplace_back(context.submission, std::move(frame));
 
   // Snapshot before any later cache upload can refresh the same allocation.

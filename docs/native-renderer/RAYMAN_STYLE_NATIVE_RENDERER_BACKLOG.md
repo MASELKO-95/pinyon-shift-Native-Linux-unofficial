@@ -194,9 +194,12 @@ The [first owned post-scene downsample](RAYMAN_NATIVE_DOWNSAMPLE_2026-09-26.md)
 and [small reductions](RAYMAN_NATIVE_SMALL_REDUCTIONS_2026-09-26.md) now
 execute original 320×192, 64×32 and 32×32 draws from native targets at their
 copy ordinals. The 64×32 probe shows a bright but recognizable race image;
-the 32×32 output is solid white and needs a guest intermediate comparison.
-The next 320×192 feedback draw also reads prior-frame history. Neither the
-later feedback version nor the final composite is owned.
+the 32×32 output is solid white. Matched guest intermediate probes show dark,
+coherent 320×192 and 64×32 images and a nearly black 32×32 image. The
+brightness mismatch is visible at the first 320×192 stage, so defer further
+small-target replay until the visible world source is improved. The next
+320×192 feedback draw reads prior-frame history. Neither that feedback
+version nor the final composite is owned.
 
 - [ ] Diagnose the shared `DEVICE_HUNG` in large indexed scene draws: isolate
   one draw with the D3D12 debug layer and DRED, verify index/vertex bounds,
@@ -255,13 +258,15 @@ opt-in promotion beyond the 24-frame pilot. Scripted runs covered more than
 300 moving frames, hot toggle, pause/resume and return to compatibility.
 The native road and car remain visibly rough; the supported world draws now
 follow backend order, but the complete frame does not yet consume one
-authoritative ordered event stream.
+authoritative ordered event stream. The scripted RAY-03 presentation and
+fallback milestone is met; unscripted playability and visible gaps remain
+RAY-04 work.
 
-- [ ] Route the complete native frame through the existing guest-output hook
+- [x] Route the complete native frame through the existing guest-output hook
   and hot toggle. Select one output target from the captured target/resolve
   chain. Admit only a current, complete frame; otherwise show the **entire**
   compatibility frame. Keep non-race modes on compatibility output.
-- [ ] Run a scripted moving race, toggle both ways, pause/resume, and leave the
+- [x] Run a scripted moving race, toggle both ways, pause/resume, and leave the
   race. Check for blank/stale frames and world/HUD alternation. Validate the
   intended resolution first; reject unsupported output modes cleanly.
 
@@ -454,13 +459,14 @@ that trace: fetch 0 is the same three-tile color resolve already assembled in
 native `color_tiles`. Replacing it and using an unrotated blit gave an upright,
 recognizable shadow, but harsh color artifacts made it worse than the current
 native output. Fetches 2 and 5 still came from guest-produced 320×192 and
-640×360 target versions. The trial was removed. The first 320×192 draw from
-owned color now runs in the selected ordered frame. Next, replay its smaller
-reduction and 320×192 feedback passes, preserving exact target versions;
-then replay the depth/color-fed 640×360 pair. Compare each intermediate to
-its guest version before retrying the final composite with only owned
-scene-dependent inputs. A composite of the guest scene does not count as
-native coverage.
+640×360 target versions. The trial was removed. The first 320×192 draw and
+its two smaller reductions now run from owned color, but guest probes show
+that their brightness already diverges at 320×192. Defer the remaining
+feedback and 640×360 effects while the visible world is rough. Before
+retrying the final composite, compare the main native color tiles with the
+pinned guest version at the same ordinal and fix the first material or
+source-color mismatch that affects the playable view. A composite of the
+guest scene does not count as native coverage.
 The seeded second native color version now matches the pinned guest second
 version closely in one sampled region, and one car draw consumes it under
 the existing whole-frame fallback. Expand replacement only to a consumer

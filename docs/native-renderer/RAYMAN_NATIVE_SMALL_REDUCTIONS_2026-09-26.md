@@ -24,11 +24,24 @@ does not establish that its pixels match the guest intermediate. The ordinary
 shadow route with these three reductions and the probe off exited normally
 with a full scene and readable HUD.
 
+The same shadow probe can display the pinned guest inputs consumed by the
+next pass: `4` for 32×32, `5` for 64×32 and `6` for 320×192. The guest
+32×32 input is nearly black, and the guest 64×32 input is a dark but
+recognizable race image. The guest 320×192 image is also dark and coherent,
+including the car and roadside signs. Crops are saved under
+`.local/ray-ui-native-promotion-20260925/guest-reduction-{32-probe-2,64-probe,320-probe}/`.
+All three guest-probe routes exited normally. This locates the visible
+brightness divergence no later than the first native 320×192 pass; debugging
+the white 32×32 result alone would miss the earlier mismatch. The source
+native scene is already visibly rough and bright, so compare its main-color
+tile against the guest tile before changing the downsample shader.
+
 The next draw (`11782910`, PS `ED74D20BC7DFB0F7`) combines the 32×32
 target with another guest texture. The following 320×192 feedback draw
 (`11782912`) reads guest base `501600256` before this frame's first copy
 to that address (`11782913`), so its first input is retained history.
-Compare the native 32×32 pixels with the guest's image at copy `11782909`
-before routing them into that chain. Then provide an explicit history seed
-or persistent native version for the 320×192 feedback pass. Neither the
-remaining feedback chain nor the final composite is owned yet.
+Improve the visible native scene first. If this effect chain is still needed
+for the usable race target, compare its first input and 320×192 output at
+matched game time, then provide an explicit history seed or persistent native
+version for the feedback pass. Neither the remaining feedback chain nor the
+final composite is owned yet.
