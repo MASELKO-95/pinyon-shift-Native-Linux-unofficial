@@ -101,3 +101,45 @@ reimplementing it adds no test reliability. Map and race traces still require a
 known progressed local seed at their expected location. The runner copies that
 seed before launch; unknown or locked scene state fails before it can become a
 visual baseline.
+
+## Native race pilot controls
+
+These drive the frozen six-family race pilot described in the
+[Xenos retirement backlog](XENOS_RETIREMENT_BACKLOG.md). They apply only to
+an unpaused race; every other mode stays on the Xenos renderer. Pass them
+with `-GameArguments`:
+
+| Setting | Effect |
+| --- | --- |
+| `--pinyon_shift_native_race=true` | Native race output; hot-reloadable master switch |
+| `--pinyon_shift_native_ui_live=true` | Replays the race HUD and promotes complete native frames; needed for continuous output |
+| `--pinyon_shift_native_race_capture_start_frame=N` | First captured source frame; 1 when unset and native race is on |
+| `--pinyon_shift_native_ordered_live_probe=true` | Diagnostic: 64-frame rolling ordered draw/copy/clear capture |
+| `--pinyon_shift_snr01_trace_source_frame=N` | Diagnostic: ordered frame CSV, UI/state artifacts and selected-frame replay for frame N |
+| `--pinyon_shift_native_ui_replay_source_frame=N` | Diagnostic: one-frame ordered HUD replay pilot (render tests only) |
+| `--pinyon_shift_native_ui_shadow_start_frame=N` | Diagnostic: 24-frame shadow pilot starting at N |
+| `--pinyon_shift_native_small_target_probe=1..8` | Diagnostic shadow probe: 1–3 native and 4–6 guest reduction targets, 7/8 guest/native scene |
+| `--perf_critical_path_trace=true` | Correlated title/PM4/submission/present trace; also logs native stage timings |
+| `PINYON_SHIFT_SNR04_RENDERDOC_TRIGGER_FILE` (environment) | Triggers a same-output RenderDoc capture |
+
+A script can switch native output at an output frame with
+`native-race <frame> <true|false>`; frames must increase.
+
+| Route | Purpose |
+| --- | --- |
+| `fh1-native-race-profile` | Race start and a short moving window for timing |
+| `fh1-native-race-output-stability` | Output-paced race to output frame 6920 |
+| `fh1-native-race-toggle`, `fh1-native-race-hot-toggle` | Native/Xenos/native switching |
+| `fh1-native-race-mode-boundary` | Race → pause → free roam → title hand-back |
+| `fh1-native-ui-admission-stress` | Dense HUD admission and no-UI-producer frames |
+| `fh1-native-scene-continuous`, `fh1-native-scene-exact`, `fh1-native-output-adjacent`, `fh1-snr04-adjacent`, `fh1-snr02-title-reload` | Earlier scene-capture and handoff checks |
+
+Verifiers: `verify-native-race-mode-boundary.py` and
+`verify-native-race-toggle.py` (they detect native frames by the pilot's
+flat sky color and need replacing, see XR-00), `verify-ordered-frame.py`
+and `verify-ordered-ui-capture.py` (ordered-capture artifacts), and
+`verify-native-output-seam.py`, `verify-native-scene-handoff.py`,
+`verify-native-track-output.py` and `verify-native-ui-clear-probe.py` for
+the earlier probes. The routes use the AppData save; its progress now
+reaches a different event than Recaro Rush, so XR-00 moves them to pinned
+disposable seeds.

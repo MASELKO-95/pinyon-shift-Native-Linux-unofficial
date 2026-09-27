@@ -1,10 +1,11 @@
 # Native renderer research reference
 
-This consolidates the retired discovery/replay documents at `93742f2`.
-It preserves architectural findings and failed leads, not a list of current
-runtime features. For shipping behavior and remaining priorities, start with
-[development findings](../DEVELOPMENT.md) and the
-[migration checklist](NATIVE_RESOURCE_MIGRATION_CHECKLIST.md).
+This consolidates the retired discovery/replay documents at `93742f2` and
+the scene-native/Rayman-era journals and plans at `02dfad0`. It preserves
+architectural findings and failed leads, not a list of current runtime
+features. For the active plan, start with the
+[Xenos retirement backlog](XENOS_RETIREMENT_BACKLOG.md) and
+[development findings](../DEVELOPMENT.md).
 
 The old NR-00–NR-05 and prototype Phase C labels describe historical milestones;
 they are not the current resource-migration A/B/C completion gates. Many of
@@ -134,9 +135,9 @@ needs its own side-effect and ordering proof.
   population's null resource is an expected missing-resource outcome, not a
   mapped-read fault. It remains ineligible without metadata and renderer joins.
 
-The [combined C1/C2 profile](C1_C2_BATCH_QUALIFICATION.md) retains the historical
-qualification procedure and its incomplete gates. It is not current C-epic
-Xenos-retirement qualification.
+The combined C1/C2 batch profile (`C1_C2_BATCH_QUALIFICATION.md`, archived
+at `02dfad0`) recorded the historical qualification procedure and its
+incomplete gates. It is not Xenos-retirement qualification.
 
 ## Vehicles and shadow epochs
 
@@ -168,17 +169,91 @@ Do not confuse that prototype with the currently retained
 [owned depth chain](OWNED_DEPTH_CHAIN_CONTRACT.md) or
 [reflection mip replacement](REFLECTION_MIPMAP_REPLACEMENT.md).
 
+## Rayman and scene-native era, 2026-09-22 to 2026-09-27
+
+**Scene-native (SNR) capture.** Following Skate 3 Recomp, the renderer
+captured six semantic families — track, procedural items, vegetation,
+procedural characters, character manager and a car/animated/presentation
+remainder — by joining title-side records to prepared GPU draws through
+exact draw-packet addresses and command-buffer targets. Same-frame joins
+were exact (for example all 2,192 selected draws owned in six verified
+fixtures), and an opt-in live race pilot presented them. The lessons:
+exact joins do not generalize across events, and capture through the
+prepared-draw observer is expensive — the capture-only control cut consumed
+swaps in a matched 30-second interval from about 1,200 to 715. Serialized
+fixtures with stage waits and readback are diagnostics, not a live feed.
+
+**Rayman-style complete frame.** The consumed-command seam was chosen
+because title D3D wrappers saw only EDRAM copies and every sampled prepared
+draw came from an indirect buffer. An ordered stream of draws, clears and
+copies with one ordinal, same-frame UI replay (166 draws, 16 pinned
+textures), retained-HUD handling for frames with no UI pass, whole-frame
+takeover with fallback and a hot toggle followed within two days.
+Continuous race presentation, original pixel programs for car body, glass,
+track structures, terrain, buildings and crowd, and a cost ledger (187.8 ms
+reduced to 91–95 ms against 23.5 ms Xenos) came next. The visible gaps
+(flat sky, unlit world, dark car) traced to the float 4× MSAA scene color
+and its resolve chain, which the pilot never owned. On 2026-09-27 a
+different race event produced zero vegetation items, so every frame fell
+back while capture still ran. The [Xenos retirement backlog](XENOS_RETIREMENT_BACKLOG.md)
+explains why this architecture was frozen and what replaces it; its frame
+facts section keeps the measured FH1 details.
+
+**Skate 3 milestone order.** Skate's public history showed a rough live
+world replacement first, then recognizable textures and characters, then
+broader coverage, then performance work, and only then native by default.
+That order, not its semantic capture, carried into the Rayman-style plan.
+
+**Performance program PERF-00–15 (2026-09-20 to 21).** Retained: PERF-02
+owned depth clear at 1x only, PERF-05 direct reflection-cube import,
+PERF-09 one submission per frame, PERF-11 correlated critical-path trace and
+PERF-14 deadline-driven vblank; see [retained changes](../DEVELOPMENT.md#retained-changes).
+PERF-01 measured no repeated geometry-admission rejections, so its memo
+stays opt-in (`fh1_cache_geometry_rejections`). Rejected: PERF-04 dirty
+geometry uploads, PERF-06/07 reflection-mip decoder and static stream
+bypass, PERF-08 constant-buffer reuse, PERF-10's simple post-chain handoff
+(the target is a temporal, partially updated surface) and PERF-12 native
+title emitter. PERF-03 texture reloads folded into PERF-10; PERF-13 direct
+D3D12 recording and PERF-15 VMX byte shifts were deferred by their entry
+gates. The measured windows and gates now live in the retirement backlog's
+XR-00.
+
+**Trials that failed or were withdrawn** — do not repeat them unchanged:
+
+- A source-fitted scene color scale improved intermediate MAE but made the
+  final race too dark.
+- One original one-texture pixel program over 269 procedural draws did not
+  close the flat-ground gap.
+- A float-scratch-only alias trial, and a single-sample float plus
+  quarter-scale resolve, both darkened or failed to improve the frame;
+  neither reproduced the guest's four samples or float producer contract.
+- Adding the two large main-color families together removed the D3D12
+  device; the sky writer's isolated third-band attempt caused backend
+  failures. Both stayed out of live admission.
+- A minimum UI draw-count gate misclassified a guest-authored UI state.
+- Removing live texture pinning measured faster but fell back, because
+  dynamic texture generations changed before output.
+- An upload-buffer pool was inconclusive and removed.
+
 ## Recovering exact historical evidence
 
-All 83 consolidated documents, their per-run hashes, schemas, offsets, commands
-and original cross-links remain in the
+All 83 documents consolidated at `93742f2`, their per-run hashes, schemas,
+offsets, commands and original cross-links remain in the
 [native renderer directory at 93742f2](https://github.com/arcanite24/pinyon-shift/tree/93742f2/docs/native-renderer).
 Browse by topic prefix: `VEHICLE_`, `STATIC_WORLD_`, `TRACK_`, `PROCEDURAL_MODEL_`,
 `VISIBILITY_`, `SEMANTIC_`, `SHADOW_` and `INDIRECT_`. Capture/replay/publication
-documents use the corresponding names. Retrieve any original locally with:
+documents use the corresponding names.
+
+The documents retired at `02dfad0` use the prefixes `RAYMAN_`,
+`SCENE_NATIVE_`, `PERFORMANCE_` and `CPU_HOTSPOT_RESULTS_`, plus the
+scene-native, Rayman and performance backlogs and the resource migration
+checklist. They are in the
+[native renderer directory at 02dfad0](https://github.com/arcanite24/pinyon-shift/tree/02dfad07fc1236625520a948bb5cd2afe74bfbb3/docs/native-renderer)
+once `dev` is pushed. Retrieve any original locally with:
 
 ```powershell
 git show 93742f2:docs/native-renderer/RESOURCE_IDENTITY.md
+git show 02dfad0:docs/native-renderer/SCENE_NATIVE_RENDERER_BACKLOG.md
 ```
 
 Historical “next” instructions and measured FPS apply to their exact builds and

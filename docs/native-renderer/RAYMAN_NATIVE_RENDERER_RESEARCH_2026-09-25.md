@@ -115,10 +115,10 @@ the pinned implementation and latest renderer notes when following it.
 
 ## Recommended FH1 milestones
 
-This is a proposal from the research, not a replacement of the active backlog.
-Keep the existing D3D12 device, shader pack, texture ownership, route runner,
-native scene pilot and compatibility mode. Do not add a Vulkan backend or
-general RHI as part of this work.
+This was the original proposal. The active plan built on this study is the
+[Xenos retirement backlog](XENOS_RETIREMENT_BACKLOG.md). Keep the existing
+D3D12 device, shader pack, route runner and compatibility mode. Do not add a
+Vulkan backend or general RHI as part of this work.
 
 | Order | Concrete deliverable | Completion check |
 | --- | --- | --- |
@@ -134,12 +134,45 @@ justify discarding the working FH1 native world feed or installing a null
 backend before we cover FH1's GPU-produced dependencies.
 
 FH1 evidence informing this recommendation: [draw census](RENDER_PASS_CENSUS.md),
-[guest-visible dependencies](GUEST_VISIBLE_RENDER_DEPENDENCIES.md),
-[current backlog](SCENE_NATIVE_RENDERER_BACKLOG.md) and
-[earlier Skate milestone study](SKATE3_NATIVE_RENDERER_MILESTONES_2026-09-24.md).
+[guest-visible dependencies](GUEST_VISIBLE_RENDER_DEPENDENCIES.md) and the
+[research reference](RESEARCH.md), which also summarizes the retired
+scene-native backlog and Skate milestone study.
 In particular, the historical census recorded 132,568 exact matches from the
 candidate title draw wrappers as EDRAM copies, not the hoped-for prepared
 geometry path. That prevents assuming Rayman's three draw hooks cover FH1.
+
+## Code-level details (re-reviewed 2026-09-27)
+
+A second read of the pinned source clarified what the renderer handles and
+what it can omit only because of the game it serves:
+
+- The hooks record and then **still call** the original D3D functions, so
+  the game keeps writing PM4 and the null backend keeps consuming it. The
+  renderer reads the device's register shadow at each draw and resolves the
+  draw immediately (vertex copy, index conversion, constants, texture
+  decode, pipeline); `EndFrame` replays the operations into one command
+  buffer and waits on its fence each frame.
+- Targets are keyed by EDRAM base, format and pitch but are always RGBA8,
+  single-sample, with no depth/stencil, scissor, alpha test or bool/loop
+  constants. Resolves are blits whose destinations permanently replace later
+  fetches of that base; nothing is written back to guest memory.
+- Textures decode on the CPU (top mip, a handful of formats) and change
+  detection hashes 32 sampled spans; unsupported textures fall back to the
+  first registered one. Unknown shaders, layouts or primitives skip the draw
+  with a logged reason.
+- The null backend overrides six command-processor functions to do no
+  rendering. Fences, waits, interrupts, swap counting and vblank continue in
+  the base class; occlusion queries get the base fake count; memexport
+  never runs.
+- The whole renderer took about five hours on 2026-09-25: capture, a frame
+  dump with software reconstruction, offline replay, a live shadow window,
+  the null backend and native window, then movies, widescreen, and finally
+  render targets, clears and resolves.
+
+FH1 cannot take these shortcuts: its scene depends on depth/stencil, 4×
+MSAA float targets in EDRAM bands, resolve chains with history and real
+query counts. The [retirement backlog](XENOS_RETIREMENT_BACKLOG.md#target-architecture)
+maps each shortcut to the FH1 requirement that replaces it.
 
 ## Reuse boundary
 

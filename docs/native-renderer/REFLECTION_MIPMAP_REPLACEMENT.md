@@ -177,8 +177,8 @@ The broader B1 scene/family inventory, B2 geometry/texture migrations and sustai
 streaming/tails, B3 upstream packet removal (including the mip lists), B4 quality
 profiles/NPC/UI timing and the stopped HUD/recycling comparisons remain open.
 C's full Xenos retirement and actual lower-hardware qualification also remain open.
-Continue from the [backlog](NATIVE_RESOURCE_MIGRATION_CHECKLIST.md) when the user
-resumes that work; do not automatically restart the other experiments.
+That work now continues in the [Xenos retirement backlog](XENOS_RETIREMENT_BACKLOG.md);
+do not automatically restart the other experiments.
 
 ## User follow-up: Carson and green reflection flashes
 

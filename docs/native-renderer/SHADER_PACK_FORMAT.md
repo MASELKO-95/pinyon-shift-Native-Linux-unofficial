@@ -125,7 +125,11 @@ The pack does not enable guest draw or resolve suppression.
 
 The initial `.xsh` / `.xpso` proof produced 721-entry packs at every supported
 integer scale. The asset-derived producer supersedes those observed-cache packs.
-The complete current NVIDIA packs are:
+The table below records the September 4 qualification. The developer's
+installed 1x NVIDIA pack, produced 2026-09-21 and verified on 2026-09-27, has
+24,763 entries (530,928,192 bytes, content SHA-256
+`7DE1D7AC973399CBD30EB164B2C535A8E91F7F9617AD1411A04EF2AC1F63CE85`).
+The September 4 NVIDIA packs were:
 
 | Scale | Entries | Bytes | SHA-256 |
 | --- | ---: | ---: | --- |

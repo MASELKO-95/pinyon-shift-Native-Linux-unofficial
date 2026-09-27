@@ -130,7 +130,10 @@ marker and writes both JSON and Markdown, ranked by total sampled CPU or wait
 time. The JSON includes individual frame CPU and wait totals. Both metrics add
 time across concurrent game threads; neither is wall-clock frame latency.
 Waits include idle workers. Keep the ETL beside the report so stacks can be
-inspected before changing code. See the [first measured result](CPU_HOTSPOT_RESULTS_2026-09-21.md).
+inspected before changing code. The first measured results are summarized in
+the [Xenos retirement backlog](XENOS_RETIREMENT_BACKLOG.md#target-architecture);
+the full report is archived as `CPU_HOTSPOT_RESULTS_2026-09-21.md` at
+checkpoint `02dfad0` (see the [research reference](RESEARCH.md#recovering-exact-historical-evidence)).
 
 ## Escalate only when the trace calls for it
 

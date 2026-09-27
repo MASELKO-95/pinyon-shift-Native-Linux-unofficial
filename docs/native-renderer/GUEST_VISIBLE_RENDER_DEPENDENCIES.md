@@ -3,6 +3,10 @@
 This is a bounded historical qualification contract, not the current migration
 status. See [current findings](../DEVELOPMENT.md) and the
 [consolidated research](RESEARCH.md) before using its milestone gates.
+The census settings were removed from the runtime at `e91a1cf`, so the
+capture workflow below no longer runs as written. Its classification matrix
+and title side-effect boundaries remain the starting inventory for XR-06 of
+the [Xenos retirement backlog](XENOS_RETIREMENT_BACKLOG.md).
 
 This is the evidence ledger for NR-00D on the supported USA retail MS-2505
 executable. It describes what the renderer census proves, what remains unknown,

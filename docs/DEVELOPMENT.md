@@ -12,12 +12,12 @@ older binary hashes in individual experiment reports describe those experiments.
 | --- | --- |
 | Build or recover an installation | [Building](BUILDING.md), [troubleshooting](TROUBLESHOOTING.md) |
 | Configure experimental graphics | [Graphics recovery/settings](TROUBLESHOOTING.md) |
-| Primary renderer roadmap | [Scene-native renderer backlog](native-renderer/SCENE_NATIVE_RENDERER_BACKLOG.md): authoritative FH1 scene capture, complete rendering slices, qualification and upstream bypass |
-| Current findings and ownership acceptance | This document and the [resource migration checklist](native-renderer/NATIVE_RESOURCE_MIGRATION_CHECKLIST.md) |
-| Previous performance experiments | [Performance backlog](native-renderer/PERFORMANCE_BACKLOG.md): PERF-00–15 outcomes and evidence gates; [latest CPU findings](native-renderer/CPU_HOTSPOT_RESULTS_2026-09-21.md) |
+| Primary renderer roadmap | [Xenos retirement backlog](native-renderer/XENOS_RETIREMENT_BACKLOG.md): a content-generic FH1 native renderer that replaces the Xenos backend, following the [Rayman reference](native-renderer/RAYMAN_NATIVE_RENDERER_RESEARCH_2026-09-25.md) |
+| Current findings and retained changes | This document |
+| Previous renderer and performance work | [Research reference](native-renderer/RESEARCH.md): retired plans, journals, failed trials and their Git checkpoints; [CPU profiling procedure](native-renderer/CPU_HOTSPOT_PROFILING.md) |
 | Extend the original game UI | [UI API research and implementation tasks](UI_API_PLAN.md) |
 | Reproduce retained renderer changes | [Owned depth](native-renderer/A6_OWNED_DEPTH_RETENTION.md), [reflection mips](native-renderer/REFLECTION_MIPMAP_REPLACEMENT.md), [Carson cache fix](native-renderer/CARSON_GEOMETRY_CACHE_FIX.md) |
-| Produce and validate artifacts | [Artifact production](native-renderer/P1_ARTIFACT_PRODUCTION.md), [shader pack contract](native-renderer/SHADER_PACK_FORMAT.md), [render tests](native-renderer/FH1_RENDER_TEST_AUTOMATION.md) |
+| Produce and validate artifacts | [Artifact production](native-renderer/P1_ARTIFACT_PRODUCTION.md), [shader pack contract](native-renderer/SHADER_PACK_FORMAT.md), [shader capture](native-renderer/CANDIDATE_SHADER_CAPTURE.md), [render tests and native controls](native-renderer/FH1_RENDER_TEST_AUTOMATION.md) |
 | Investigate user reports | [September 10 issue review (historical)](https://github.com/arcanite24/pinyon-shift/blob/53f9bf91b470f37cf7efb21c64dc1f8cce50c4c5/docs/GITHUB_ISSUE_TRIAGE_2026-09-10.md) |
 | Release behavior and distribution | [Changelog](../CHANGELOG.md), [preview notes](releases/0.1.2-preview.3.md), [legal](LEGAL.md) |
 
@@ -40,12 +40,15 @@ translated shaders where suitable; measure both removed work and whole-frame
 cost. Independent native draws or a correct screenshot do not prove a complete
 native scene. Full Xenos retirement and lower hardware requirements remain open.
 
-The new implementation direction is an FH1 scene-native D3D12 renderer, informed
-by Skate 3 Recomp's title-level capture and broad draw/resolve replacement. Follow
-the [scene-native backlog](native-renderer/SCENE_NATIVE_RENDERER_BACKLOG.md) for
-execution. Compatibility remains the reference and default until an authoritative,
-faithful rendering slice passes its performance and fallback gates; creating the
-plan does not implement that renderer or revive rejected experiments.
+An opt-in native race pilot exists: six captured scene families replayed at
+swap time on the Recaro Rush route, with HUD replay, hot toggle and whole-frame
+fallback. It runs after Xenos rather than instead of it (about 93 ms against
+23.5 ms per race frame) and falls back on events it was not built for, so it is
+frozen. The direction is now a content-generic native renderer that executes
+every consumed draw, clear and resolve in guest order, following the Rayman
+approach; see the [Xenos retirement backlog](native-renderer/XENOS_RETIREMENT_BACKLOG.md).
+Xenos remains the reference and default until that renderer passes the route
+matrix; the plan does not revive rejected experiments.
 
 ### Retained changes
 
@@ -60,8 +63,9 @@ plan does not implement that renderer or revive rejected experiments.
   failed North Carson p99 retention (+24.46% initially, +90.09% in the longer
   comparison). [Contract](native-renderer/OWNED_DEPTH_CHAIN_CONTRACT.md) and
   [retention evidence](native-renderer/A6_OWNED_DEPTH_RETENTION.md).
-- **Reflection mipmaps:** enabled for validated symmetric 1x/2x inputs, with
-  fallback and `--fh1_native_reflection_mips=false` as the control. Removes 48
+- **Reflection mipmaps:** enabled for validated symmetric 1x/2x/3x inputs
+  (3x added 2026-09-12), with fallback and `--fh1_native_reflection_mips=false`
+  as the control. Removes 48
   original draws and 48 resolve copies per admitted cube. All six guest lists,
   2,352 packet decodes, state packets, scratch clears and transfers remain.
   Eight clean comparisons show small/mixed whole-frame changes: median +2.15%
@@ -73,6 +77,25 @@ plan does not implement that renderer or revive rejected experiments.
   improves from 100.499 to 33.494 ms median with native mips off and nearly equal
   draw counts. Mips-on 1x/2x smoke also passes. This is not sustained town/race
   acceptance. [Cause, test and limits](native-renderer/CARSON_GEOMETRY_CACHE_FIX.md).
+- **Direct reflection-cube import (PERF-05):** changed cubes are written
+  directly into the persistent 256×256, six-face, nine-level R10G10B10A2
+  texture array with nine compute dispatches instead of a scratch untile and
+  54 copies. Median/p95/p99 improved 3.66%/1.42%/6.25%. Default on; rollback
+  `--fh1_direct_reflection_cube_import=false`. The owned 1x depth clear
+  (PERF-02) stays 1x-only after its 2x retry regressed p95/p99.
+- **One submission per frame (PERF-09):** D3D12 keeps each frame in one
+  command-list submission instead of submitting at every PM4 primary-buffer
+  end: median/p95/p99 −3.4%/−3.7%/−13.6% at 1x and −7.1%/−8.1%/−15.5% at 2x.
+  Rollback `--d3d12_submit_on_primary_buffer_end=true`.
+- **Deadline-driven guest vblank (PERF-14):** replaces polling; −3.20% median
+  and −5.60% p95, 62% fewer dropped presents in the measured route. Rollback
+  `--pinyon_shift_fh1_vblank_deadline_wait=false`.
+- **Critical-path trace (PERF-11):** default-off
+  `--perf_critical_path_trace=true` correlates title emission, PM4
+  publication, deferred replay, submission/fence completion, guest vblank and
+  present across rotated logs.
+- **Opt-in native race pilot (frozen):** see the renderer direction above
+  and the [pilot controls](native-renderer/FH1_RENDER_TEST_AUTOMATION.md#native-race-pilot-controls).
 
 ### Rejected and unqualified paths
 
@@ -160,14 +183,15 @@ is justified by these experiments.
    by exact adapter/driver. Keep production separate from compiler-free runtime.
    Qualify 1x/2x/3x and AMD/Intel on actual hardware; NVIDIA results do not qualify
    those vendors. Follow the [P1 gates](native-renderer/P1_ARTIFACT_PRODUCTION.md).
-4. **Renderer migration:** broader B1–B4 and C work is deferred, not complete.
-   The [single migration checklist](native-renderer/NATIVE_RESOURCE_MIGRATION_CHECKLIST.md)
-   retains its scope and acceptance gates. The new
-   [performance backlog](native-renderer/PERFORMANCE_BACKLOG.md) breaks the supplied
-   research into gated experiments, starting with a current baseline, geometry
-   admission, dirty uploads, and constant-buffer reuse. Planning does not resume
-   deferred implementations. The focused mipmap/cache fixes do
-   not reopen the stopped HUD/recycling comparisons automatically.
+4. **Renderer:** execute the [Xenos retirement backlog](native-renderer/XENOS_RETIREMENT_BACKLOG.md)
+   from XR-00. It replaces the resource-migration checklist (A1–A6 remain
+   complete for the 1x owned depth chain; the incremental B items are closed
+   in favor of the native backend) and the closed PERF-00–15 program. Manual
+   slowdown sites from the September discovery playtest — Horizon Outpost
+   entrance and the town plaza (about 44 ms median, 100–113 ms p95) and a
+   wooded junction near the Gladstone Canyon sign (155 ms p95) — remain
+   useful stress locations. The focused mipmap/cache fixes do not reopen the
+   stopped HUD/recycling comparisons automatically.
 
 ## Validation and evidence
 
@@ -227,3 +251,4 @@ temporary handoffs under `.local`, rather than adding another roadmap version.
 | XBOX360 NATIVE RENDERER RESEARCH | [View record](https://github.com/arcanite24/pinyon-shift/blob/53f9bf91b470f37cf7efb21c64dc1f8cce50c4c5/docs/native-renderer/XBOX360_NATIVE_RENDERER_RESEARCH.md) |
 | PLAYTEST FEEDBACK 2026-09-07 | [View record](https://github.com/arcanite24/pinyon-shift/blob/53f9bf91b470f37cf7efb21c64dc1f8cce50c4c5/docs/native-renderer/PLAYTEST_FEEDBACK_2026-09-07.md) |
 | 2026-09-07-area-performance-drop | [View record](https://github.com/arcanite24/pinyon-shift/blob/53f9bf91b470f37cf7efb21c64dc1f8cce50c4c5/docs/native-renderer/screenshots/2026-09-07-area-performance-drop.png) |
+| Scene-native, Rayman and performance backlogs, the resource migration checklist and their 2026-09-08–27 journals (`RAYMAN_*`, `SCENE_NATIVE_*`, `PERFORMANCE_*`, `CPU_HOTSPOT_RESULTS_*`, discovery findings, Skate milestones, C1/C2 profile) | [View directory](https://github.com/arcanite24/pinyon-shift/tree/02dfad07fc1236625520a948bb5cd2afe74bfbb3/docs/native-renderer) — resolves once `dev` is pushed; locally `git show 02dfad0:<path>` |
