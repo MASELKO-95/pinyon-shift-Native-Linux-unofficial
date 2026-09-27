@@ -11,7 +11,8 @@ reference architecture and its limits for FH1.
 
 Ship a **usable, opt-in native race renderer quickly**: one continuous moving
 race with coherent world, cars and readable HUD. Approximate nonessential
-effects are acceptable. Measure and optimize frame time after this works.
+effects are acceptable. Measure frame time once the live image works; fix a
+measured responsiveness blocker before spending more time on visual polish.
 Menus, free roam and unsupported race states can use the existing compatibility
 renderer. A rough or incomplete frame is acceptable in offline/shadow bring-up,
 but never replace a visible compatibility frame with stale, blank or
@@ -436,7 +437,15 @@ pass. This is a playability correction, not full material parity.
 play, with stable HUD and whole-frame fallback. No all-mode, exact-match or
 performance percentage gate.
 
-### RAY-05 — optimize after the renderer is usable
+### RAY-05 — remove proven duplicate rendering cost
+
+The first [live performance comparison](RAYMAN_LIVE_PERFORMANCE_2026-09-27.md)
+found 187.81 ms median native frames against 23.54 ms compatibility frames
+on the same scripted race window. Exact-version texture snapshot reuse
+reduced native time to 118.34 ms while preserving native promotion and
+fallback. This is still too slow for the intended drive. Treat the next
+measured duplicate-work slice as part of the RAY-04 playability gate; defer
+secondary sky/material polish until responsiveness is credible.
 
 - [ ] Profile the live native route against compatibility with existing CPU
   and GPU tools. Remove the largest measured cost first, especially duplicate
@@ -479,15 +488,19 @@ not a prerequisite for the first usable renderer.
    car/navigation detail is the next playability blocker. If a slice depends
    on a `DEVICE_HUNG` family, isolate and time one draw before further
    admission.
-3. **Prove playability.** Run a longer unscripted drive plus mode-boundary,
+3. **Remove the measured responsiveness blocker.** The first native/compatibility
+   comparison and safe texture-snapshot reuse are documented above. Isolate
+   the 41 ms native output callback and the prepared snapshot/observer work
+   next; change one proven cost at a time, checking live promotion, HUD and
+   fallback after each. This measured work now precedes secondary visual
+   fixes because the remaining roughly 118 ms native frame is not a usable
+   driving cadence.
+4. **Prove playability.** Run a longer unscripted drive plus mode-boundary,
    hot-toggle and UI stress checks. Record visible remaining gaps, fallback
    frequency, blank/stale frames and responsiveness. RAY-04 closes when the
    race is coherent enough to drive with stable HUD; optional effects may
-   remain approximate.
-4. **Measure and optimize.** Only after the playability gate, compare live
-   native and compatibility frame times with existing CPU/GPU instrumentation.
-   Remove the largest proven duplicate visual cost while preserving guest
-   side effects and repeat the driving and fallback checks for RAY-05.
+   remain approximate. Recheck matched performance after the drive for
+   RAY-05; suppress guest visual work only after proving its side effects.
 
 The selected-frame post-scene reductions, final-composite trials, depth and
 color-version experiments, and large-index isolation remain documented above
