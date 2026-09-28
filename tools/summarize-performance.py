@@ -51,25 +51,6 @@ XMA_STALL_COLUMNS = (
     "xma_no_progress_stalls",
     "xma_stall_recoveries",
 )
-ZPD_COLUMNS = (
-    "zpd_reports_started",
-    "zpd_reports_ended",
-    "zpd_report_segments",
-    "zpd_same_slot_reuse",
-    "zpd_fast_speculative_writes",
-    "zpd_async_result_patches",
-    "zpd_strict_waits",
-    "zpd_strict_wait_time_ns",
-    "zpd_retire_timeouts",
-    "zpd_fake_fallbacks",
-    "zpd_malformed_records",
-    "zpd_stale_result_rejections",
-    "zpd_classified_begins",
-    "zpd_classified_ends",
-    "zpd_classified_orphaned_ends",
-    "zpd_policy_fallbacks",
-    "zpd_watchdog_recoveries",
-)
 PRESENTATION_COLUMNS = (
     "guest_vblank_count",
     "guest_vblank_delta_ns",
@@ -148,10 +129,6 @@ def summarize(path: pathlib.Path) -> dict[str, Any]:
         if available_xma_stalls and available_xma_stalls != set(XMA_STALL_COLUMNS):
             missing_xma_stalls = sorted(set(XMA_STALL_COLUMNS) - available_xma_stalls)
             raise CaptureError("capture has an incomplete XMA stall counter set: " + ", ".join(missing_xma_stalls))
-        available_zpd = columns.intersection(ZPD_COLUMNS)
-        if available_zpd and available_zpd != set(ZPD_COLUMNS):
-            missing_zpd = sorted(set(ZPD_COLUMNS) - available_zpd)
-            raise CaptureError("capture has an incomplete ZPD counter set: " + ", ".join(missing_zpd))
         available_presentation = columns.intersection(PRESENTATION_COLUMNS)
         if available_presentation and available_presentation != set(PRESENTATION_COLUMNS):
             missing_presentation = sorted(set(PRESENTATION_COLUMNS) - available_presentation)
@@ -191,7 +168,6 @@ def summarize(path: pathlib.Path) -> dict[str, Any]:
         resolve_totals = ({name: 0.0 for name in RESOLVE_READBACK_COLUMNS}
                           if available_resolve else None)
         xma_stall_totals = {name: 0.0 for name in XMA_STALL_COLUMNS} if available_xma_stalls else None
-        zpd_totals = {name: 0.0 for name in ZPD_COLUMNS} if available_zpd else None
         presentation_totals = (
             {name: 0.0 for name in PRESENTATION_COLUMNS}
             if available_presentation else None
@@ -225,8 +201,6 @@ def summarize(path: pathlib.Path) -> dict[str, Any]:
                             for name in RESOLVE_READBACK_COLUMNS} if resolve_totals is not None else {})
             row_xma_stalls = ({name: finite_number(row[name], column=name, row_number=row_number)
                                for name in XMA_STALL_COLUMNS} if xma_stall_totals is not None else {})
-            row_zpd = ({name: finite_number(row[name], column=name, row_number=row_number)
-                        for name in ZPD_COLUMNS} if zpd_totals is not None else {})
             row_presentation = ({
                 name: finite_number(row[name], column=name, row_number=row_number)
                 for name in PRESENTATION_COLUMNS
@@ -252,8 +226,6 @@ def summarize(path: pathlib.Path) -> dict[str, Any]:
                 resolve_totals[name] += value
             for name, value in row_xma_stalls.items():
                 xma_stall_totals[name] += value
-            for name, value in row_zpd.items():
-                zpd_totals[name] += value
             for name, value in row_presentation.items():
                 presentation_totals[name] += value
                 if name in presentation_delta_samples and value > 0:
@@ -311,10 +283,6 @@ def summarize(path: pathlib.Path) -> dict[str, Any]:
     if xma_stall_totals is not None:
         result["xma_stall_counters"] = {
             name: int(value) if value.is_integer() else value for name, value in xma_stall_totals.items()
-        }
-    if zpd_totals is not None:
-        result["zpd_counters"] = {
-            name: int(value) if value.is_integer() else value for name, value in zpd_totals.items()
         }
     if presentation_totals is not None:
         duration_seconds = sum(frame_times) / 1_000_000.0

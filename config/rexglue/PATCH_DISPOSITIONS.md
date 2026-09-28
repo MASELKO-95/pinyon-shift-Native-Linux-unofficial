@@ -110,7 +110,10 @@ the reusable D3D12 heap, fast mode retires asynchronously, and strict mode has
 a 2 ms backstop. Sample counts are normalized for internal-resolution scaling,
 all EPIC-04 counters are exported, and `occlusion_query = "legacy"` remains the
 shipping default and immediate rollback path. Removing `0039` restores the
-previous synchronous D3D12 query implementation.
+previous synchronous D3D12 query implementation. Retired in NP-0.3 (SDK
+`bff9860`): `legacy` was the only mode ever shipped, so the lifecycle, the
+`fast`, `strict` and `fake` modes and `occlusion_query` itself were removed;
+the EPIC-04 notes are in git history at `ca3281a`.
 
 `0040-fh1-zpd-end-policy-and-telemetry` isolates the END-classification signal
 reported in Xenia Canary issue `#1099` and commit `8a49c03`. It adds
@@ -120,6 +123,11 @@ watchdog. Title-scoped `auto` selects report layout plus pairwise fallback only
 for FH1 title ID `4D5309C9`; the project separately gates the supported retail
 executable hash. The legacy query path is unchanged and remains the shipping
 default until the six-run matrix and ten-cold-boot admission gate pass.
+Retired with `0039` in NP-0.3 (SDK `bff9860`): without host queries the
+fallback now reports the fixed sample count when the report holds the END
+sentinel, which is what the host-query path already does, and
+`zpd_end_policy`, `zpd_end_fallback` and `tools/qualify-zpd.ps1` are gone; the
+EPIC-05 notes are in git history at `ca3281a`.
 Removing `0040` restores EPIC-04 classification behavior without removing its
 logical/physical report lifecycle.
 

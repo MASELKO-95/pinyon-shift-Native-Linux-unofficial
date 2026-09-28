@@ -7,8 +7,7 @@ from pathlib import Path
 COUNTERS = ('draw_calls', 'command_buffer_stalls', 'texture_cache_hits',
             'texture_cache_misses', 'memexport_bytes', 'memexport_sync_fallbacks',
             'resolve_readback_requests', 'resolve_readback_bytes',
-            'resolve_readback_full_waits', 'resolve_readback_wait_time_ns',
-            'zpd_strict_waits', 'zpd_strict_wait_time_ns', 'zpd_fake_fallbacks')
+            'resolve_readback_full_waits', 'resolve_readback_wait_time_ns')
 
 TEXTURE_COUNTERS = ('texture_request_cpu_time_ns', 'texture_request_timing_samples',
                     'texture_dirty_load_attempts')

@@ -598,9 +598,8 @@ and no fallback, and passes the route acceptance against Xenos captures.
   draws that are likely query probes). Implement native counts written at
   ZPD end without a blocking GPU-thread wait — Xenos `legacy` mode waits on
   a fence today — or prove the fake-count policy is visually equivalent per
-  consumer. Keep the ZPD fixes recorded in
-  [`EPIC_04`](../../config/rexglue/EPIC_04_ZPD_LIFECYCLE_D3D12.md) and
-  [`EPIC_05`](../../config/rexglue/EPIC_05_ZPD_POLICY_GUARD.md).
+  consumer. Keep the ZPD fixes recorded in `EPIC_04` and `EPIC_05` (retired
+  in NP-0.3; `git show ca3281a:config/rexglue/EPIC_04_ZPD_LIFECYCLE_D3D12.md`).
   Proven equivalent rather than reimplemented: `native` answers ZPD through
   the same `legacy` host-query path as Xenos (host occlusion queries count
   samples of the command processor's draws whatever target is bound), and

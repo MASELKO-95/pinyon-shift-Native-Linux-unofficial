@@ -8,24 +8,11 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 TOOL = ROOT / "tools/set-graphics-experiment.ps1"
-QUALIFY_ZPD = ROOT / "tools/qualify-zpd.ps1"
 POWERSHELL = shutil.which("powershell")
 
 
 @unittest.skipUnless(POWERSHELL, "Windows PowerShell is required")
 class GraphicsSettingsTests(unittest.TestCase):
-    def test_zpd_qualification_plan_covers_required_matrix(self):
-        completed = subprocess.run(
-            [POWERSHELL, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
-             "-File", str(QUALIFY_ZPD), "-Action", "Plan", "-Json"],
-            capture_output=True, text=True,
-        )
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        plan = json.loads(completed.stdout)
-        self.assertEqual(len(plan["matrix"]), 6)
-        self.assertEqual(plan["admission"]["required_cold_boots"], 10)
-        self.assertEqual(plan["matrix"][2]["label"], "fast-layout")
-
     def run_tool(self, state, *arguments):
         completed = subprocess.run(
             [POWERSHELL, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
@@ -45,9 +32,6 @@ class GraphicsSettingsTests(unittest.TestCase):
             result = self.run_tool(
                 state, "-Action", "Apply", "-Anisotropy", "16",
                 "-PostEffect", "fxaa", "-ResolutionScale", "2",
-                "-OcclusionQuery", "fast",
-                "-ZpdEndPolicy", "pairwise_sentinel",
-                "-ZpdEndFallback", "none",
                 "-PresentationFps", "30",
                 "-RenderFps", "120",
                 "-Preset", "experimental_2x",
@@ -56,14 +40,11 @@ class GraphicsSettingsTests(unittest.TestCase):
             )
             updated = config.read_text(encoding="utf-8")
             self.assertEqual(result["settings"]["anisotropy"], 16)
-            self.assertIn("pinyon_shift_config_schema = 24", updated)
+            self.assertIn("pinyon_shift_config_schema = 25", updated)
             self.assertNotIn("fh1_renderer", updated)
             self.assertNotIn("renderer", result["settings"])
             self.assertIn("xma_relaxed_padding_admission = false", updated)
-            self.assertEqual(result["settings"]["occlusion_query"], "fast")
-            self.assertIn('occlusion_query = "fast"', updated)
-            self.assertEqual(result["settings"]["zpd_end_policy"], "pairwise_sentinel")
-            self.assertEqual(result["settings"]["zpd_end_fallback"], "none")
+            self.assertNotIn("occlusion_query", result["settings"])
             self.assertEqual(result["settings"]["host_present_fps_limit"], 30)
             self.assertEqual(result["settings"]["fh1_render_fps_limit"], 120)
             self.assertIn("pinyon_shift_fh1_render_fps_limit = 120", updated)
@@ -90,16 +71,15 @@ class GraphicsSettingsTests(unittest.TestCase):
             self.assertIn("disable_depth_of_field = false", text)
             self.assertIn("draw_resolution_scale_x = 1", text)
             self.assertIn("xma_relaxed_padding_admission = false", text)
-            self.assertIn('occlusion_query = "legacy"', text)
-            self.assertIn('zpd_end_policy = "report_layout"', text)
-            self.assertIn('zpd_end_fallback = "pairwise_sentinel"', text)
+            self.assertNotIn('occlusion_query', text)
+            self.assertNotIn('zpd_end', text)
             self.assertNotIn('readback_resolve', text)
             self.assertIn('clear_memory_page_state = true', text)
             self.assertIn('host_present_fps_limit = 0', text)
             self.assertIn('host_present_sleep_spin = true', text)
             self.assertIn('pinyon_shift_fh1_render_fps_limit = 0', text)
             self.assertIn('pinyon_shift_fh1_source_presentation = true', text)
-            self.assertIn("pinyon_shift_config_schema = 24", text)
+            self.assertIn("pinyon_shift_config_schema = 25", text)
             self.assertNotIn("fh1_renderer", text)
             self.assertEqual(result["settings"]["preset"], "shipping_1x")
             self.assertTrue(pathlib.Path(result["backup_path"]).is_file())
@@ -151,6 +131,10 @@ class GraphicsSettingsTests(unittest.TestCase):
             "native_stencil_value_output = true",
             "native_stencil_value_output_d3d12_intel = true",
             "pinyon_shift_native_renderer_census = false",
+            # Schema 25: one occlusion-query path.
+            'occlusion_query = "strict"',
+            'zpd_end_policy = "report_layout"',
+            'zpd_end_fallback = "pairwise_sentinel"',
         )
         with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:
             state = pathlib.Path(temporary)
@@ -162,7 +146,7 @@ class GraphicsSettingsTests(unittest.TestCase):
             )
             result = self.run_tool(state, "-Action", "Apply")
             text = config.read_text(encoding="utf-8")
-            self.assertIn("pinyon_shift_config_schema = 24", text)
+            self.assertIn("pinyon_shift_config_schema = 25", text)
             self.assertIn("custom_value = 77", text)
             for line in retired:
                 self.assertNotIn(line.split(" =")[0] + " =", text)
@@ -182,12 +166,12 @@ class GraphicsSettingsTests(unittest.TestCase):
             self.assertNotEqual(completed.returncode, 0)
             self.assertFalse((pathlib.Path(temporary) / "config/pinyon_shift.toml").exists())
 
-    def test_get_accepts_schema_24(self):
+    def test_get_accepts_schema_25(self):
         with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:
             state = pathlib.Path(temporary)
             config = state / "config/pinyon_shift.toml"
             config.parent.mkdir(parents=True)
-            config.write_text("pinyon_shift_config_schema = 24\nvsync = true\n", encoding="utf-8")
+            config.write_text("pinyon_shift_config_schema = 25\nvsync = true\n", encoding="utf-8")
             result = self.run_tool(state, "-Action", "Get")
             self.assertEqual(result["operation"], "get")
 

@@ -10,12 +10,6 @@ param(
     [int]$ResolutionScale = 1,
     [ValidateSet('custom', 'shipping_1x', 'experimental_2x', 'experimental_3x')]
     [string]$Preset = 'custom',
-    [ValidateSet('legacy', 'fake', 'fast', 'strict')]
-    [string]$OcclusionQuery = 'legacy',
-    [ValidateSet('report_layout', 'pairwise_sentinel', 'relaxed_sentinel')]
-    [string]$ZpdEndPolicy = 'report_layout',
-    [ValidateSet('none', 'pairwise_sentinel', 'relaxed_sentinel')]
-    [string]$ZpdEndFallback = 'pairwise_sentinel',
     [ValidateSet(0, 30, 60, 120, 240)]
     [int]$PresentationFps = 0,
     [ValidateRange(0, 240)]
@@ -44,8 +38,8 @@ $backupDirectory = Join-Path $configDirectory 'backups'
 function Get-DefaultConfigText {
     @'
 # Pinyon Shift host configuration.
-# Schema 24 retires the renderer choice; the native renderer is the only one.
-pinyon_shift_config_schema = 24
+# Schema 25 keeps one occlusion-query path; schema 24 retired the renderer choice.
+pinyon_shift_config_schema = 25
 input_backend = "sdl"
 hid_mappings_file = "gamecontrollerdb.txt"
 mnk_mode = true
@@ -67,9 +61,6 @@ disable_depth_of_field = false
 draw_resolution_scale_x = 1
 draw_resolution_scale_y = 1
 clear_memory_page_state = true
-occlusion_query = "legacy"
-zpd_end_policy = "report_layout"
-zpd_end_fallback = "pairwise_sentinel"
 '@
 }
 
@@ -135,7 +126,10 @@ $retiredSettings = @(
     'pinyon_shift_snr04_live_handoff',
     'pinyon_shift_snr04_live_source_frame',
     'pinyon_shift_snr04_live_worker',
-    'pinyon_shift_snr_m02_trace_source_frame'
+    'pinyon_shift_snr_m02_trace_source_frame',
+    'occlusion_query',
+    'zpd_end_policy',
+    'zpd_end_fallback'
 )
 
 function New-ConfigBackup {
@@ -226,9 +220,6 @@ function Get-SettingsResult([string]$Text, [string]$BackupPath, [string]$Operati
             fh1_render_fps_limit = $renderFps
             host_present_sleep_spin =
                 (Get-TomlValue $Text 'host_present_sleep_spin' 'true') -eq 'true'
-            occlusion_query = Get-TomlValue $Text 'occlusion_query' 'legacy'
-            zpd_end_policy = Get-TomlValue $Text 'zpd_end_policy' 'report_layout'
-            zpd_end_fallback = Get-TomlValue $Text 'zpd_end_fallback' 'pairwise_sentinel'
         }
         restart_required = $Operation -ne 'Get'
     }
@@ -242,7 +233,7 @@ switch ($Action) {
             Get-Content -LiteralPath $configPath -Raw
         } else { Get-DefaultConfigText }
         $schema = Get-SchemaVersion $text
-        if ($schema -lt 1 -or $schema -gt 24) { throw "Unsupported host configuration schema: $schema" }
+        if ($schema -lt 1 -or $schema -gt 25) { throw "Unsupported host configuration schema: $schema" }
     }
     'Reset' {
         $backup = New-ConfigBackup
@@ -259,7 +250,7 @@ switch ($Action) {
         $backup = New-ConfigBackup
         $text = Get-Content -LiteralPath $source.FullName -Raw
         $schema = Get-SchemaVersion $text
-        if ($schema -lt 1 -or $schema -gt 24) { throw "Backup uses unsupported schema: $schema" }
+        if ($schema -lt 1 -or $schema -gt 25) { throw "Backup uses unsupported schema: $schema" }
         Write-Config $text
     }
     'Apply' {
@@ -267,19 +258,16 @@ switch ($Action) {
             Get-Content -LiteralPath $configPath -Raw
         } else { Get-DefaultConfigText }
         $schema = Get-SchemaVersion $text
-        if ($schema -lt 1 -or $schema -gt 24) { throw "Unsupported host configuration schema: $schema" }
+        if ($schema -lt 1 -or $schema -gt 25) { throw "Unsupported host configuration schema: $schema" }
         $backup = New-ConfigBackup
         foreach ($retired in $retiredSettings) {
             $text = Remove-TomlValue $text $retired
         }
-        $text = Set-TomlValue $text 'pinyon_shift_config_schema' '24'
+        $text = Set-TomlValue $text 'pinyon_shift_config_schema' '25'
         $text = Set-TomlValue $text 'pinyon_shift_fh1_render_fps_limit' '0'
         $text = Set-TomlValue $text 'pinyon_shift_fh1_source_presentation' 'true'
         if (-not [regex]::IsMatch($text, '(?m)^\s*xma_relaxed_padding_admission\s*=')) {
             $text = Set-TomlValue $text 'xma_relaxed_padding_admission' 'false'
-        }
-        if (-not [regex]::IsMatch($text, '(?m)^\s*occlusion_query\s*=')) {
-            $text = Set-TomlValue $text 'occlusion_query' '"legacy"'
         }
         $effectiveResolution = switch ($Preset) {
             'shipping_1x' { 1 }
@@ -299,9 +287,6 @@ switch ($Action) {
         $text = Set-TomlValue $text 'pinyon_shift_fh1_render_fps_limit' ([string]$RenderFps)
         $text = Set-TomlValue $text 'host_present_sleep_spin' 'true'
         $text = Set-TomlValue $text 'clear_memory_page_state' 'true'
-        $text = Set-TomlValue $text 'occlusion_query' ('"' + $OcclusionQuery + '"')
-        $text = Set-TomlValue $text 'zpd_end_policy' ('"' + $ZpdEndPolicy + '"')
-        $text = Set-TomlValue $text 'zpd_end_fallback' ('"' + $ZpdEndFallback + '"')
         Write-Config $text
     }
 }

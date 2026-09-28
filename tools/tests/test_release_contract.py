@@ -339,7 +339,7 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
 
     def test_graphics_schema_and_diagnostics_contract(self):
         app = (ROOT / "src/pinyon_shift_app.cpp").read_text(encoding="utf-8")
-        self.assertIn("constexpr uint32_t kConfigSchema = 24", app)
+        self.assertIn("constexpr uint32_t kConfigSchema = 25", app)
         self.assertIn(".schema", app)
         for setting in ("anisotropic_override", "swap_post_effect", "draw_resolution_scale_x"):
             self.assertIn(setting, app)
@@ -357,8 +357,9 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
                         "'xenos'"):
             self.assertNotIn(retired, crash_report)
         sdk = ROOT / "thirdparty/shiftglue-sdk"
-        self.assertIn("ZPDLifecycle", (sdk / "include/rex/graphics/zpd_lifecycle.h").read_text())
-        self.assertIn("ZPDClassification", (sdk / "include/rex/graphics/zpd_policy.h").read_text())
+        # One occlusion-query path: the modern ZPD lifecycle and classifier are gone.
+        for retired in ("zpd_lifecycle.h", "zpd_policy.h", "zpd_report.h"):
+            self.assertFalse((sdk / "include/rex/graphics" / retired).exists())
         counters = (sdk / "src/core/perf/counter.cpp").read_text()
         for counter in ("resolve_readback_requests", "resolve_readback_bytes",
                         "resolve_readback_full_waits", "resolve_readback_wait_time_ns"):
@@ -397,11 +398,11 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         launcher_xaml = (ROOT / "launcher/PinyonShift.Launcher/MainWindow.xaml").read_text(
             encoding="utf-8"
         )
-        self.assertIn("constexpr uint32_t kConfigSchema = 24;", app)
-        self.assertRegex(app, r"pinyon_shift_config_schema,\s*24,")
+        self.assertIn("constexpr uint32_t kConfigSchema = 25;", app)
+        self.assertRegex(app, r"pinyon_shift_config_schema,\s*25,")
         self.assertIn('"pinyon_shift_stabilize_vehicle_presentation = false\\n"', app)
         self.assertIn('"keybind_a = \\"LMB,Space\\"\\n"', app)
-        # Schemas 1..23 migrate; the current schema is accepted unchanged.
+        # Schemas 1..24 migrate; the current schema is accepted unchanged.
         self.assertIn("schema < 1 || schema >= kConfigSchema", app)
         self.assertNotIn('"fh1_renderer = \\"native\\"\\n"', app)
         self.assertNotIn('\\"xenos\\"', app)
@@ -424,8 +425,8 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         ):
             self.assertIn(f'"{retired}"', retired_block)
         graphics_tool = (ROOT / "tools/set-graphics-experiment.ps1").read_text(encoding="utf-8")
-        self.assertIn("pinyon_shift_config_schema = 24", graphics_tool)
-        self.assertIn("-gt 24", graphics_tool)
+        self.assertIn("pinyon_shift_config_schema = 25", graphics_tool)
+        self.assertIn("-gt 25", graphics_tool)
         self.assertNotIn("-gt 23", graphics_tool)
         # Apply writes the current schema and so bypasses the game's
         # migration: it must drop every setting that migration retires.
@@ -441,8 +442,8 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         self.assertIn("REXCVAR_GET(video_mode_refresh_rate)", graphics)
         self.assertNotIn("render_fps_limit ? double(render_fps_limit) * 2.0 : 1000.0", graphics)
         self.assertIn("pinyon_shift_native_renderer_texture_bridge", app)
-        self.assertIn('"occlusion_query = \\"legacy\\"\\n"', app)
-        self.assertIn('"zpd_end_policy = \\"report_layout\\"\\n"', app)
+        self.assertNotIn('"occlusion_query = \\"legacy\\"\\n"', app)
+        self.assertNotIn('"zpd_end_policy = \\"report_layout\\"\\n"', app)
         self.assertNotIn('"readback_resolve = \\"none\\"\\n"', app)
         self.assertNotIn("REXCVAR_DEFINE_BOOL(pinyon_shift_fh1_native_v4", app)
         self.assertNotIn("pinyon_shift_fh1_require_precompiled_shaders", app)

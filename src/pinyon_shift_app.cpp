@@ -33,7 +33,7 @@
 extern "C" int __llvm_profile_dump(void);
 #endif
 
-REXCVAR_DEFINE_UINT32(pinyon_shift_config_schema, 24, "Pinyon Shift",
+REXCVAR_DEFINE_UINT32(pinyon_shift_config_schema, 25, "Pinyon Shift",
                       "Pinyon Shift host configuration schema version");
 REXCVAR_DEFINE_BOOL(pinyon_shift_capture_performance, true, "Pinyon Shift",
                     "Capture lightweight per-frame performance counters to a session CSV");
@@ -42,8 +42,10 @@ namespace {
 // Schema 22 added the renderer choice (fh1_renderer) and schema 23 made the
 // native renderer its default. Schema 24 retires the choice: the native
 // renderer is the only renderer, so migration drops fh1_renderer and the other
-// renderer-era settings the runtime no longer registers.
-constexpr uint32_t kConfigSchema = 24;
+// renderer-era settings the runtime no longer registers. Schema 25 drops the
+// occlusion-query mode and ZPD classification settings: the host-query path
+// is the only occlusion path.
+constexpr uint32_t kConfigSchema = 25;
 
 bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
                            bool& migrated) {
@@ -80,10 +82,7 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
               "disable_depth_of_field = false\n"
               "draw_resolution_scale_x = 1\n"
               "draw_resolution_scale_y = 1\n"
-              "clear_memory_page_state = true\n"
-              "occlusion_query = \"legacy\"\n"
-              "zpd_end_policy = \"report_layout\"\n"
-              "zpd_end_fallback = \"pairwise_sentinel\"\n";
+              "clear_memory_page_state = true\n";
     created = true;
     return output.good();
   }
@@ -206,7 +205,11 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
              "pinyon_shift_snr04_live_handoff",
              "pinyon_shift_snr04_live_source_frame",
              "pinyon_shift_snr04_live_worker",
-             "pinyon_shift_snr_m02_trace_source_frame"}) {
+             "pinyon_shift_snr_m02_trace_source_frame",
+             // Schema 25: one occlusion-query path.
+             "occlusion_query",
+             "zpd_end_policy",
+             "zpd_end_fallback"}) {
       migrated_text = std::regex_replace(
           migrated_text,
           std::regex("(?:^|\\n)\\s*" + std::string(retired_setting) +
@@ -254,9 +257,6 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
         {"host_present_fps_limit", "host_present_fps_limit = 0\n"},
         {"host_present_sleep_spin", "host_present_sleep_spin = true\n"},
         {"clear_memory_page_state", "clear_memory_page_state = true\n"},
-        {"occlusion_query", "occlusion_query = \"legacy\"\n"},
-        {"zpd_end_policy", "zpd_end_policy = \"report_layout\"\n"},
-        {"zpd_end_fallback", "zpd_end_fallback = \"pairwise_sentinel\"\n"},
         {"pinyon_shift_fh1_render_fps_limit",
          "pinyon_shift_fh1_render_fps_limit = 0\n"},
         {"pinyon_shift_fh1_source_presentation",
@@ -421,9 +421,6 @@ void PinyonShiftApp::OnPostInitLogging() {
                         {"fh1_source_presentation",
                          rex::cvar::GetFlagByName(
                              "pinyon_shift_fh1_source_presentation")},
-                        {"occlusion_query", rex::cvar::GetFlagByName("occlusion_query")},
-                        {"zpd_end_policy", rex::cvar::GetFlagByName("zpd_end_policy")},
-                        {"zpd_end_fallback", rex::cvar::GetFlagByName("zpd_end_fallback")},
                         {"xma_relaxed_padding_admission",
                          rex::cvar::GetFlagByName(
                              "xma_relaxed_padding_admission")},

@@ -152,18 +152,6 @@ try {
         no_progress = [uint64]0
         recoveries = [uint64]0
     }
-    $zpdColumns = @(
-        'zpd_reports_started', 'zpd_reports_ended', 'zpd_report_segments',
-        'zpd_same_slot_reuse', 'zpd_fast_speculative_writes',
-        'zpd_async_result_patches', 'zpd_strict_waits',
-        'zpd_strict_wait_time_ns', 'zpd_retire_timeouts', 'zpd_fake_fallbacks',
-        'zpd_malformed_records', 'zpd_stale_result_rejections',
-        'zpd_classified_begins', 'zpd_classified_ends',
-        'zpd_classified_orphaned_ends', 'zpd_policy_fallbacks',
-        'zpd_watchdog_recoveries'
-    )
-    $zpdCounters = [ordered]@{ available = $false }
-    foreach ($column in $zpdColumns) { $zpdCounters[$column] = [uint64]0 }
     $presentationColumns = @(
         'guest_vblank_count', 'guest_vblank_delta_ns',
         'simulation_tick_count', 'present_count', 'present_delta_ns',
@@ -187,14 +175,6 @@ try {
                 $xmaStalls.recoveries += [uint64]$row.xma_stall_recoveries
             }
             $xmaStalls.available = $true
-        }
-        if (@($zpdColumns | Where-Object { $_ -notin $columns }).Count -eq 0) {
-            foreach ($row in Import-Csv -LiteralPath $perfLog.FullName) {
-                foreach ($column in $zpdColumns) {
-                    $zpdCounters[$column] += [uint64]$row.$column
-                }
-            }
-            $zpdCounters.available = $true
         }
         if (@($presentationColumns | Where-Object { $_ -notin $columns }).Count -eq 0) {
             foreach ($row in Import-Csv -LiteralPath $perfLog.FullName) {
@@ -237,8 +217,7 @@ try {
         'host_present_sleep_spin',
         'anisotropic_override', 'swap_post_effect',
         'disable_motion_blur', 'disable_depth_of_field',
-        'draw_resolution_scale_x', 'draw_resolution_scale_y', 'occlusion_query',
-        'zpd_end_policy', 'zpd_end_fallback', 'clear_memory_page_state'
+        'draw_resolution_scale_x', 'draw_resolution_scale_y', 'clear_memory_page_state'
     )
     $configPath = Join-Path $resolvedStateRoot 'config/pinyon_shift.toml'
     $settings = [ordered]@{}
@@ -318,7 +297,6 @@ try {
         graphics = [ordered]@{
             # The native renderer is the only renderer; there is no choice to report.
             renderer = 'native'
-            zpd = $zpdCounters
             resolve_readback = $resolveCounters
             presentation = $presentationCounters
         }
