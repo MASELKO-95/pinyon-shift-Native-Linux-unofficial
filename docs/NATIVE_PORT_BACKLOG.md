@@ -468,6 +468,65 @@ long and how Windows-specific that is.
 - **Crash reporting.** Keep the sanitised bundle and prefilled issue; the
   POSIX reporter from NP-12.2 joins it.
 
+## Pending to formalize
+
+Accepted directions that still need research before they become numbered
+slices with items, sizes and gates.
+
+### Loading times on modern storage
+
+Make boot, title-to-world, event entry and fast travel as short as a PC on
+an SSD or NVMe drive allows, instead of paced for the Xbox 360's DVD and
+memory budget.
+
+- **Measure first.** Add load-phase markers (boot to title, title to free
+  roam, event entry, event exit, fast travel) to the render-test JSONL and
+  the critical-path trace, and record a baseline per phase on
+  `fh1-race-sync` and a free-roam route.
+- **Known evidence.** Host file I/O is small: an archived run read 189 MB
+  in 4,538 reads for 91 ms of total read time, and 1,203 opens took 108 ms
+  (`xboxkrnl_io.cpp` reads are synchronous; `HostPathDevice` does one
+  `ReadFile` per call). Load time is therefore expected to sit in guest work
+  rather than the drive: guest-code asset decompression, texture reloads (a
+  single transition frame reloaded 75-350 textures and took 212-343 ms in a
+  2026-09-28 play session), shader and pipeline availability, and title
+  waits paced by frames or vblank.
+- **Candidates once measured.** Unthrottled frame pacing while a loading
+  screen is up (NP-3.7's variable-delta work may cover part); parallel or
+  asynchronous `NtReadFile`/`NtReadFileScatter` and read-ahead of the
+  archives a load touches; caching decompressed archives or assets on disk
+  between runs; batching the texture uploads of a load; skipping the
+  remaining intro and legal screens by default; and finding any minimum
+  loading-screen durations in the title that exist only for disc streaming.
+- **Guardrails.** Loads must still produce the same world state (vehicle
+  pose baseline, save payload), and nothing may change the AppData save.
+
+### Compile uncached shaders on the fly
+
+A shader missing from the pack drops its draws until the next graphics
+preparation: a 2026-09-28 play session hit 12 such shaders, and one of them
+failed more than 32,768 draws before the session ended. The misses are
+recorded (`cache/fh1-shader-misses`), but they only reach the pack when the
+launcher reproduces the whole pack, which it does only when the build
+changes.
+
+- **Goal.** Translate and compile a missed shader in the background during
+  play, draw it as soon as it is ready (the draw is skipped until then, as
+  with a pipeline still being created), and keep the result in a local
+  delta cache next to the pack so later sessions and later builds with the
+  same translator version reuse it instead of recompiling.
+- **Open questions.** NP-0.1 took the translator out of the runtime DLL, so
+  on-the-fly translation needs the producer loaded on demand (or a separate
+  translator module) rather than re-linking it into `rexgpu-fh1`; the delta
+  cache has to be keyed like the pack (translator version, vendor, flags and
+  scale) and should fold into NP-9.4's pack format v3; a preparation run
+  should merge the delta into the pack and drop it; background compilation
+  must not stall the GPU commands thread.
+- **Gate idea.** A play session that hits a pack miss renders the missing
+  draws within a few frames and logs no repeated `Failed in backend`
+  errors, and the next launch loads those shaders from the delta cache
+  without a preparation run.
+
 ## Parking lot
 
 Ideas considered and not scheduled; add to a slice when a train has room.
