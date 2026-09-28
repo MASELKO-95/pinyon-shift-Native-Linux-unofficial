@@ -37,6 +37,26 @@ class Fh1RenderTestRunnerTests(unittest.TestCase):
         self.assertEqual(actions(scenarios / "fh1-race.fh1test"),
                          actions(scenarios / "fh1-owned-depth-race.fh1test"))
 
+    def test_accepts_state_waits_and_rejects_malformed_ones(self):
+        header = MODULE.HEADER + "\ninput 0 0000 0 0 0 0 0 0\n"
+        tail = "capture 20 shot\nstop 30\n"
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "route.fh1test"
+            for wait in ("wait 10 600 vehicle", "wait 10 600 vehicle-moved 30",
+                         "wait 10 600 movie pressstart"):
+                script.write_text(header + wait + "\n" + tail, encoding="utf-8")
+                self.assertEqual([(20, "shot")], MODULE.parse_scenario(script)[0])
+            for wait in ("wait 10 600 vehicle-moved", "wait 10 0 vehicle",
+                         "wait 10 600 teleport", "wait 10 600 vehicle-moved 0"):
+                script.write_text(header + wait + "\n" + tail, encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    MODULE.parse_scenario(script)
+
+    def test_race_start_wait_route_parses(self):
+        scenarios = Path(__file__).parents[2] / "config" / "render-tests"
+        captures = MODULE.parse_scenario(scenarios / "fh1-race-start-wait.fh1test")[0]
+        self.assertIn((4330, "race-moving"), captures)
+
     def test_resolves_disc_corpus_ucode_directory(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

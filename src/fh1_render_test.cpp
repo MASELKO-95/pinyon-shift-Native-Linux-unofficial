@@ -49,13 +49,39 @@ struct NativeRaceStep {
   bool enabled = false;
 };
 
+// `wait <frame> <max-frames> <condition> [argument]`: at <frame> the script
+// clock stops (inputs hold their state) until the game reaches the condition,
+// then continues, so later steps keep their spacing from that point.
+struct WaitStep {
+  enum class Condition { kVehicle, kVehicleMoved, kMovie };
+  uint64_t frame = 0;
+  uint64_t max_frames = 0;
+  Condition condition = Condition::kVehicle;
+  float distance = 0.0f;  // kVehicleMoved, in world units.
+  std::string text;       // kMovie: substring of the lower-case guest path.
+};
+
 struct Capture {
   uint64_t frame = 0;
   std::string name;
   uint64_t trigger_output_frame = 0;
   uint64_t trigger_elapsed_us = 0;
   uint64_t capture_begin_elapsed_us = 0;
+  // Renderer that produced the triggering output frame.
+  rex::system::NativeGuestOutputPresenter presenter =
+      rex::system::NativeGuestOutputPresenter::kXenos;
 };
+
+const char* PresenterName(rex::system::NativeGuestOutputPresenter presenter) {
+  switch (presenter) {
+    case rex::system::NativeGuestOutputPresenter::kPilot:
+      return "pilot";
+    case rex::system::NativeGuestOutputPresenter::kNativeExecutor:
+      return "native";
+    default:
+      return "xenos";
+  }
+}
 
 struct TestState {
   bool enabled = false;
@@ -63,6 +89,14 @@ struct TestState {
   std::vector<InputStep> inputs;
   std::vector<NativeRaceStep> native_race_steps;
   size_t next_native_race_step = 0;
+  std::vector<WaitStep> waits;
+  size_t next_wait = 0;
+  // Output frames spent in completed and active waits.
+  uint64_t wait_offset = 0;
+  bool wait_active = false;
+  uint64_t wait_start_output = 0;
+  uint64_t wait_start_vehicle_updates = 0;
+  uint64_t wait_start_movie_opens = 0;
   std::vector<Capture> captures;
   uint64_t stop_frame = 0;
   uint32_t clock_hz = 0;
@@ -84,6 +118,14 @@ struct TestState {
   float vehicle_x = 0.0f;
   float vehicle_y = 0.0f;
   float vehicle_z = 0.0f;
+  uint64_t vehicle_pose_updates = 0;
+  // First pose seen during the active wait.
+  bool wait_pose_valid = false;
+  float wait_x = 0.0f;
+  float wait_y = 0.0f;
+  float wait_z = 0.0f;
+  uint64_t movie_opens = 0;
+  std::string last_movie;
 };
 
 TestState g_test;
@@ -207,6 +249,29 @@ void LoadScript(const std::filesystem::path& path) {
         Fail("script_native_race_order");
       g_test.native_race_steps.push_back({at, value == "true"});
       previous_native_race_frame = at;
+    } else if (command == "wait") {
+      if (g_test.clock_hz) Fail("script_wait_needs_output_clock");
+      std::string frame, max_frames, condition, argument, extra;
+      if (!(row >> frame >> max_frames >> condition)) Fail("script_wait_columns");
+      WaitStep wait;
+      wait.frame = ParseUnsigned(frame, 10, "wait_frame");
+      wait.max_frames = ParseUnsigned(max_frames, 10, "wait_max_frames");
+      if (condition == "vehicle") {
+        wait.condition = WaitStep::Condition::kVehicle;
+      } else if (condition == "vehicle-moved" && row >> argument) {
+        wait.condition = WaitStep::Condition::kVehicleMoved;
+        wait.distance = float(ParseUnsigned(argument, 10, "wait_distance"));
+      } else if (condition == "movie" && row >> argument) {
+        wait.condition = WaitStep::Condition::kMovie;
+        wait.text = argument;
+      } else {
+        Fail("script_wait_condition");
+      }
+      if (row >> extra || !wait.max_frames ||
+          (!g_test.waits.empty() && wait.frame <= g_test.waits.back().frame)) {
+        Fail("script_wait_order");
+      }
+      g_test.waits.push_back(std::move(wait));
     } else if (command == "capture") {
       std::string frame, name, extra;
       if (!(row >> frame >> name) || row >> extra || name.empty() ||
@@ -383,6 +448,8 @@ bool WritePpm(const Capture& capture, const rex::ui::RawImage& image,
        {"width", std::to_string(image.width)},
        {"height", std::to_string(image.height)},
        {"source", source},
+       {"presenter", PresenterName(capture.presenter)},
+       {"session_renderer", rex::cvar::GetFlagByName("fh1_renderer")},
        {"vehicle_pose_valid", vehicle_pose_valid ? "1" : "0"},
        {"vehicle_x", std::to_string(vehicle_x)},
        {"vehicle_y", std::to_string(vehicle_y)},
@@ -395,6 +462,78 @@ bool WritePpm(const Capture& capture, const rex::ui::RawImage& image,
         }()}});
   }
   return true;
+}
+
+bool WaitSatisfied(const WaitStep& wait) {
+  switch (wait.condition) {
+    case WaitStep::Condition::kVehicle: {
+      std::lock_guard lock(g_test.vehicle_pose_mutex);
+      return g_test.vehicle_pose_updates > g_test.wait_start_vehicle_updates;
+    }
+    case WaitStep::Condition::kVehicleMoved: {
+      std::lock_guard lock(g_test.vehicle_pose_mutex);
+      if (g_test.vehicle_pose_updates <= g_test.wait_start_vehicle_updates) return false;
+      if (!g_test.wait_pose_valid) {
+        g_test.wait_pose_valid = true;
+        g_test.wait_x = g_test.vehicle_x;
+        g_test.wait_y = g_test.vehicle_y;
+        g_test.wait_z = g_test.vehicle_z;
+        return false;
+      }
+      const float dx = g_test.vehicle_x - g_test.wait_x;
+      const float dy = g_test.vehicle_y - g_test.wait_y;
+      const float dz = g_test.vehicle_z - g_test.wait_z;
+      return dx * dx + dy * dy + dz * dz >= wait.distance * wait.distance;
+    }
+    case WaitStep::Condition::kMovie: {
+      std::lock_guard lock(g_test.vehicle_pose_mutex);
+      return g_test.movie_opens > g_test.wait_start_movie_opens &&
+             g_test.last_movie.find(wait.text) != std::string::npos;
+    }
+  }
+  return false;
+}
+
+// Returns the script frame for an output frame, holding it at an active
+// wait's frame until the wait's condition holds.
+uint64_t ApplyWaits(uint64_t output_frame) {
+  uint64_t script = output_frame - g_test.wait_offset;
+  while (g_test.next_wait < g_test.waits.size() &&
+         script >= g_test.waits[g_test.next_wait].frame) {
+    const WaitStep& wait = g_test.waits[g_test.next_wait];
+    if (!g_test.wait_active) {
+      g_test.wait_active = true;
+      g_test.wait_start_output = output_frame;
+      std::lock_guard lock(g_test.vehicle_pose_mutex);
+      g_test.wait_start_vehicle_updates = g_test.vehicle_pose_updates;
+      g_test.wait_start_movie_opens = g_test.movie_opens;
+      g_test.wait_pose_valid = false;
+    }
+    if (WaitSatisfied(wait)) {
+      diagnostics::RecordEvent(
+          "fh1.render_test.wait",
+          {{"frame", std::to_string(wait.frame)},
+           {"waited_frames", std::to_string(output_frame - g_test.wait_start_output)},
+           {"output_frame", std::to_string(output_frame)}});
+      g_test.wait_active = false;
+      ++g_test.next_wait;
+      continue;
+    }
+    if (output_frame - g_test.wait_start_output > wait.max_frames) {
+      std::lock_guard lock(g_test.mutex);
+      if (!g_test.stopping) {
+        g_test.stopping = true;
+        diagnostics::RecordEvent("fh1.render_test.failure",
+                                 {{"reason", "wait_timeout"},
+                                  {"frame", std::to_string(wait.frame)}});
+        g_test.condition.notify_all();
+        RequestClose();
+      }
+    }
+    g_test.wait_offset = output_frame - wait.frame;
+    return wait.frame;
+  }
+  return script;
 }
 
 void Worker() {
@@ -485,7 +624,10 @@ bool ObserveOutput(
   if (!g_test.enabled) {
     return false;
   }
-  uint64_t frame = context.frame_sequence;
+  // Script frame: the output frame less the frames spent waiting.
+  const uint64_t sequence = ApplyWaits(context.frame_sequence);
+  if (g_test.stopping) return false;
+  uint64_t frame = sequence;
   const auto now = std::chrono::steady_clock::now();
   if (g_test.clock_origin == std::chrono::steady_clock::time_point{}) {
     g_test.clock_origin = now;
@@ -499,8 +641,7 @@ bool ObserveOutput(
   }
   g_test.frame.store(frame, std::memory_order_release);
   while (g_test.next_native_race_step < g_test.native_race_steps.size() &&
-         context.frame_sequence >=
-             g_test.native_race_steps[g_test.next_native_race_step].frame) {
+         sequence >= g_test.native_race_steps[g_test.next_native_race_step].frame) {
     const auto& step = g_test.native_race_steps[g_test.next_native_race_step++];
     if (!rex::cvar::SetFlagByName("pinyon_shift_native_race",
                                   step.enabled ? "true" : "false"))
@@ -508,15 +649,14 @@ bool ObserveOutput(
   }
   std::unique_lock lock(g_test.mutex);
   if (!g_test.clock_hz && g_test.next_capture < g_test.captures.size() &&
-      context.frame_sequence > g_test.captures[g_test.next_capture].frame + 1) {
+      sequence > g_test.captures[g_test.next_capture].frame + 1) {
     const auto& capture = g_test.captures[g_test.next_capture];
     g_test.stopping = true;
     diagnostics::RecordEvent("fh1.render_test.failure",
                              {{"reason", "capture_frame_missed"},
                               {"name", capture.name},
                               {"frame", std::to_string(capture.frame)},
-                              {"observed",
-                               std::to_string(context.frame_sequence)}});
+                              {"observed", std::to_string(sequence)}});
     g_test.condition.notify_all();
     RequestClose();
     return false;
@@ -524,10 +664,10 @@ bool ObserveOutput(
   if (g_test.next_capture < g_test.captures.size() &&
       (g_test.clock_hz
            ? frame >= g_test.captures[g_test.next_capture].frame
-           : context.frame_sequence ==
-                 g_test.captures[g_test.next_capture].frame + 1)) {
+           : sequence == g_test.captures[g_test.next_capture].frame + 1)) {
     auto& capture = g_test.captures[g_test.next_capture];
     capture.trigger_output_frame = context.frame_sequence;
+    capture.presenter = context.presenter;
     rex::perf::TraceCriticalPath(
         "render_test_capture",
         rex::perf::GetTotalCounter(rex::perf::CounterId::kSourceFrameCount),
@@ -543,7 +683,7 @@ bool ObserveOutput(
     });
   }
   if ((g_test.clock_hz ? frame >= g_test.stop_frame
-                       : context.frame_sequence >= g_test.stop_frame + 1) &&
+                       : sequence >= g_test.stop_frame + 1) &&
       g_test.next_capture == g_test.captures.size() && !g_test.stopping) {
     g_test.stopping = true;
     diagnostics::RecordEvent(
@@ -556,6 +696,13 @@ bool ObserveOutput(
   return false;
 }
 
+void ObserveMovieOpened(std::string_view guest_path) {
+  if (!g_test.enabled) return;
+  std::lock_guard lock(g_test.vehicle_pose_mutex);
+  g_test.last_movie.assign(guest_path);
+  ++g_test.movie_opens;
+}
+
 void ObserveVehiclePose(float x, float y, float z) {
   if (!g_test.enabled) {
     return;
@@ -565,6 +712,7 @@ void ObserveVehiclePose(float x, float y, float z) {
   g_test.vehicle_x = x;
   g_test.vehicle_y = y;
   g_test.vehicle_z = z;
+  ++g_test.vehicle_pose_updates;
 }
 
 uint64_t CurrentFrame() {

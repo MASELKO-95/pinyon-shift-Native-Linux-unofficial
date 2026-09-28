@@ -225,6 +225,16 @@ def parse_scenario(
             previous_input = frame
             if first_input is None:
                 first_input = frame
+        elif fields[0] == "wait" and (
+            (len(fields) == 4 and fields[3] == "vehicle")
+            or (len(fields) == 5 and fields[3] in ("vehicle-moved", "movie"))
+        ):
+            # wait <frame> <max-frames> <condition> [argument]: the script
+            # clock holds at <frame> until the game reaches the condition.
+            if int(fields[1]) <= 0 or int(fields[2]) <= 0:
+                raise ValueError(f"line {number}: invalid wait")
+            if fields[3] == "vehicle-moved" and int(fields[4]) <= 0:
+                raise ValueError(f"line {number}: invalid wait distance")
         elif fields[0] == "capture" and len(fields) == 3:
             captures.append((int(fields[1]), fields[2]))
         elif fields[0] == "stop" and len(fields) == 2:

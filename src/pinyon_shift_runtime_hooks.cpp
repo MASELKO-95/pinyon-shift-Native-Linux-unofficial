@@ -610,6 +610,7 @@ void PinyonShiftObserveGuestFileOpen(std::string_view guest_path) {
   }
   const bool splash = path.find("splash_intros") != std::string::npos;
   g_opening_movie_is_splash.store(splash, std::memory_order_release);
+  pinyon_shift::fh1_render_test::ObserveMovieOpened(path);
   if (OpeningMovieSkipRequested()) {
     pinyon_shift::diagnostics::RecordEvent(
         "opening_movie.opened", {{"path", path}, {"skip", splash ? "1" : "0"}});

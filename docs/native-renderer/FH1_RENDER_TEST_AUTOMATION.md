@@ -81,6 +81,23 @@ captures, blank output, renderer/GPU/device-loss errors, a missed capture frame,
 or an abnormal process exit. The PowerShell launcher owns the exact child PID
 and terminates it if the render-test timeout expires.
 
+`wait <frame> <max-frames> <condition> [argument]` makes an output-paced
+route wait on game state instead of timing: at `<frame>` the script clock
+holds (inputs keep their state) until the condition holds, and later steps
+keep their spacing from that point. Conditions are `vehicle` (a vehicle pose
+update arrives), `vehicle-moved <units>` (the car has moved that far since
+the wait began, e.g. once a race countdown ends) and `movie <text>` (the
+guest opens a movie whose lower-case path contains the text). Each wait
+records `fh1.render_test.wait` with the frames waited; exceeding
+`<max-frames>` fails the run with `wait_timeout`. `fh1-race-start-wait`
+uses it to capture the race only after the car moves.
+
+Choose the renderer with `--game-argument=--fh1_renderer=<xenos|native-shadow|native>`.
+Every `fh1.render_test.capture` event records `presenter` (`xenos`, `pilot`
+or `native`) and `session_renderer`, so verifiers read which renderer
+produced a frame (`tools/render_test_events.py`) instead of inferring it
+from pixels.
+
 `# expect-distinct-presentation <minimum-hz>` rejects repeated host presents;
 only distinct completed FH1 frames count. Use repeatable
 `--game-argument=<cvar>` options for cadence and resolution qualification. The
@@ -154,8 +171,9 @@ A script can switch native output at an output frame with
 | `fh1-native-scene-continuous`, `fh1-native-scene-exact`, `fh1-native-output-adjacent`, `fh1-snr04-adjacent`, `fh1-snr02-title-reload` | Earlier scene-capture and handoff checks |
 
 Verifiers: `verify-native-race-mode-boundary.py` and
-`verify-native-race-toggle.py` (they detect native frames by the pilot's
-flat sky color and need replacing, see XR-00), `verify-ordered-frame.py`
+`verify-native-race-toggle.py` (pass `--events <run.jsonl>` to use the
+recorded presenter; without it they fall back to the pilot's flat sky
+color), `verify-ordered-frame.py`
 and `verify-ordered-ui-capture.py` (ordered-capture artifacts), and
 `verify-native-output-seam.py`, `verify-native-scene-handoff.py`,
 `verify-native-track-output.py` and `verify-native-ui-clear-probe.py` for

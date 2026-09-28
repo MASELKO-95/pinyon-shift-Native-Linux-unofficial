@@ -1,15 +1,30 @@
-"""Check in-race native/compatibility switching on captured guest output."""
+"""Check in-race native/compatibility switching on captured guest output.
+
+Usage: verify-native-race-toggle.py <captures> [--cold-start] [--events <run.jsonl>]
+
+With --events, the presenter recorded in each capture event decides whether
+the frame was native; older runs fall back to the pilot's flat sky color.
+"""
 
 import sys
 from pathlib import Path
+
+from render_test_events import load_presenters
 
 
 output = Path(sys.argv[1])
 header = b"P6\n1280 720\n255\n"
 sky = bytes((28, 56, 110))
+presenters = (
+    load_presenters(Path(sys.argv[sys.argv.index("--events") + 1]))
+    if "--events" in sys.argv else {}
+)
 
 
 def sky_count(name: str) -> int:
+    if name in presenters:
+        # Stand-in pixel count: a native presenter counts as a full native frame.
+        return 1280 * 720 if presenters[name] != "xenos" else 0
     image = (output / f"{name}.ppm").read_bytes()
     assert image.startswith(header) and len(image) == len(header) + 1280 * 720 * 3
     return image.count(sky)
