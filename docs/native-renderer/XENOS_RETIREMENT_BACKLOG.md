@@ -683,8 +683,14 @@ or proven unused on every matrix route, with overflow-safe accounting.
   when its route reaches them: a pack produced now from an empty profile with
   `fh1-shader-preparation` misses 20 variants on `fh1-buy-car` and 35 on
   `fh1-race-sync` (the installed pack, produced earlier, misses 5 and 1).
-  Covering save-dependent screens needs either routes that reach them from
-  an empty profile or reproducing the title's shader generation offline.
+  Those are disc shaders the title patches (vertex fetches for layouts the
+  extractor does not know, relinked exports). Shipping builds now record
+  each pack miss's microcode under the state's `cache/fh1-shader-misses`,
+  and graphics preparation reruns once to translate every recorded pair
+  (SDK `feat(renderer): record FH1 shader pack misses`, app `be7d537`).
+  Two rounds from the recorded misses took `fh1-race-sync`,
+  `fh1-buy-car` and `fh1-rewind-sync` to zero pack misses. A draw of a
+  shader the pack lacks is still dropped the first time it is seen.
 
 **Done when** every matrix mode passes the acceptance rules with an explicit
 list of accepted differences.

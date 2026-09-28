@@ -42,5 +42,4 @@ input 2776 0000 0 0 0 0 0 0
 capture 2820 saving
 wait 2830 3000 file thumbnail_7
 capture 2900 after-thumbnail
-capture 3100 later
 stop 3150
