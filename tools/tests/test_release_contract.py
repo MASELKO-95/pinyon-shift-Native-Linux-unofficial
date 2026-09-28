@@ -420,8 +420,6 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         self.assertNotIn("state_desc.PS = {shaders::fh1_world_lit_ps", pipeline_cache)
         self.assertIn("native_guest_output_gpu_timing_active_ = true;", command_processor)
         self.assertIn("EndNativeGuestOutputGpuTimingFrame();", command_processor)
-        self.assertIn("frame % 60", command_processor)
-        self.assertIn("prepared_observation.index_count = index_count;", command_processor)
         self.assertNotIn("fh1_world_lit_native_draw", command_processor)
         self.assertNotIn("IsFh1WorldLitNativeActive", command_processor)
         self.assertIn('\\"index_buffer_guest_base\\":{}', (

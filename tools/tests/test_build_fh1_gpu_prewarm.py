@@ -143,19 +143,5 @@ class BuildFh1GpuPrewarmTests(unittest.TestCase):
         self.assertNotIn("pipeline/shader/translator_disasm.cpp", runtime_sources)
         self.assertIn("${REXGPU_FH1_SHADER_ANALYSIS_SOURCES}", source)
 
-    def test_fh1_execution_identity_excludes_streamed_resource_addresses(self):
-        source = (
-            ROOT
-            / "thirdparty/shiftglue-sdk/src/graphics/d3d12/command_processor.cpp"
-        ).read_text(encoding="utf-8")
-        key_block = source.split("fh1_key.resource_state =", 1)[1].split(
-            "fh1_key.dynamic_state =", 1
-        )[0]
-
-        self.assertIn("words[1] &= 0xFFF", key_block)
-        self.assertIn("words[5] &= 0xFFF", key_block)
-        self.assertIn("words[0] & 0x3", key_block)
-        self.assertNotIn("index_buffer_info->guest_base", key_block)
-
 if __name__ == "__main__":
     unittest.main()

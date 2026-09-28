@@ -70,18 +70,15 @@ struct Capture {
   uint64_t capture_begin_elapsed_us = 0;
   // Renderer that produced the triggering output frame.
   rex::system::NativeGuestOutputPresenter presenter =
-      rex::system::NativeGuestOutputPresenter::kXenos;
+      rex::system::NativeGuestOutputPresenter::kNativeExecutor;
 };
 
 const char* PresenterName(rex::system::NativeGuestOutputPresenter presenter) {
   switch (presenter) {
-    case rex::system::NativeGuestOutputPresenter::kPilot:
-      return "pilot";
     case rex::system::NativeGuestOutputPresenter::kNativeExecutor:
       return "native";
-    default:
-      return "xenos";
   }
+  return "unknown";
 }
 
 struct TestState {
@@ -449,7 +446,7 @@ bool WritePpm(const Capture& capture, const rex::ui::RawImage& image,
        {"height", std::to_string(image.height)},
        {"source", source},
        {"presenter", PresenterName(capture.presenter)},
-       {"session_renderer", rex::cvar::GetFlagByName("fh1_renderer")},
+       {"session_renderer", "native"},
        {"vehicle_pose_valid", vehicle_pose_valid ? "1" : "0"},
        {"vehicle_x", std::to_string(vehicle_x)},
        {"vehicle_y", std::to_string(vehicle_y)},

@@ -18,10 +18,6 @@ REXCVAR_DEFINE_BOOL(pinyon_shift_fh1_gpu_corpus, false, "Pinyon Shift",
                     "Record the local FH1 V4 GPU execution corpus")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
-REXCVAR_DEFINE_BOOL(pinyon_shift_fh1_scene_dump, false, "Pinyon Shift",
-                    "Record expensive scene bindings/producers alongside the GPU corpus")
-    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
-
 REXCVAR_DEFINE_INT32(pinyon_shift_fh1_corpus_checkpoint_seconds, 0, "Pinyon Shift",
                     "Periodic coverage checkpoint interval (0 = exit only)");
 
@@ -47,8 +43,6 @@ struct CorpusEntry {
   uint32_t index_count = 0;
   uint32_t index_buffer_guest_base = 0;
   uint32_t index_buffer_length = 0;
-  rex::system::GraphicsCopyObservation copy;
-  bool has_copy = false;
 };
 
 struct PassEntry {
@@ -175,75 +169,6 @@ bool ResetFh1GpuCorpus() {
 }
 
 void RecordFh1GpuExecution(
-    const rex::system::GraphicsPreparedDrawObservation& observation) {
-  // Check the clock once per source frame, not once per draw.
-  static uint64_t checkpoint_frame = UINT64_MAX;
-  static auto last_checkpoint = std::chrono::steady_clock::now();
-  if (checkpoint_frame != observation.frame_sequence) {
-    checkpoint_frame = observation.frame_sequence;
-    const auto interval = REXCVAR_GET(pinyon_shift_fh1_corpus_checkpoint_seconds);
-    if (interval > 0) {
-      const auto now = std::chrono::steady_clock::now();
-      if (now - last_checkpoint >= std::chrono::seconds(interval)) {
-        FlushFh1GpuCorpus(false);
-        last_checkpoint = std::chrono::steady_clock::now();
-      }
-    }
-  }
-  const size_t mode = static_cast<size_t>(observation.fh1_execution_mode);
-  const size_t fallback = static_cast<size_t>(observation.fh1_fallback_reason);
-  if (mode < g_mode_counts.size()) {
-    g_mode_counts[mode].fetch_add(1, std::memory_order_relaxed);
-  }
-  if (fallback < g_fallback_counts.size()) {
-    g_fallback_counts[fallback].fetch_add(1, std::memory_order_relaxed);
-  }
-  g_runtime_shader_translations.store(
-      observation.fh1_runtime_shader_translations,
-      std::memory_order_relaxed);
-  g_runtime_sync_pipeline_creations.store(
-      observation.fh1_runtime_sync_pipeline_creations,
-      std::memory_order_relaxed);
-  const auto& key = observation.fh1_execution_key;
-  if (!g_enabled.load(std::memory_order_acquire) ||
-      key.version != rex::system::GraphicsFh1ExecutionKey::kVersion ||
-      !key.identity || key.identity != key.ComputeIdentity()) {
-    return;
-  }
-  std::lock_guard lock(g_mutex);
-  if (const auto pass =
-          g_pass_tracker.ObserveDraw(key, observation.frame_sequence,
-                                     observation.fh1_prepare_cpu_time_ns)) {
-    RecordPassLocked(*pass);
-  }
-  RecordKeyLocked(key, observation.frame_sequence,
-                  observation.vertex_shader_hash,
-                  observation.pixel_shader_hash, observation.index_count,
-                  observation.index_buffer_guest_base,
-                  observation.index_buffer_length);
-}
-
-void RecordFh1GpuCopy(
-    const rex::system::GraphicsCopyObservation& observation) {
-  const auto& key = observation.fh1_execution_key;
-  if (!g_enabled.load(std::memory_order_acquire) ||
-      key.version != rex::system::GraphicsFh1ExecutionKey::kVersion ||
-      !key.identity || key.identity != key.ComputeIdentity()) {
-    return;
-  }
-  std::lock_guard lock(g_mutex);
-  if (const auto pass =
-          g_pass_tracker.ObserveCopy(key, observation.frame_sequence)) {
-    RecordPassLocked(*pass);
-  }
-  if (auto* entry =
-          RecordKeyLocked(key, observation.frame_sequence, 0, 0)) {
-    entry->copy = observation;
-    entry->has_copy = true;
-  }
-}
-
-void RecordFh1GpuExecution(
     const rex::system::GraphicsFh1ExecutionKey& key, uint64_t frame,
     uint64_t vertex_shader, uint64_t pixel_shader) {
   if (!g_enabled.load(std::memory_order_acquire) ||
@@ -306,7 +231,7 @@ void FlushFh1GpuCorpus(bool final) {
   }
   stream << "{\n  \"schema\": \"pinyon-shift.fh1-gpu-corpus.v3\",\n"
          << "  \"observation_frame_stride\": "
-         << (rex::cvar::GetFlagByName("fh1_discovery_sampling") == "true" ? 60 : 1)
+         << 1
          << ",\n"
          << "  \"key_version\": "
          << rex::system::GraphicsFh1ExecutionKey::kVersion << ",\n"
@@ -351,53 +276,6 @@ void FlushFh1GpuCorpus(bool final) {
         entry.key.attachment_state, entry.key.resource_state,
         entry.key.dynamic_state, entry.key.operation_state,
         entry.key.hazard_flags, entry.key.flags);
-    if (entry.has_copy) {
-      const auto& copy = entry.copy;
-      stream << fmt::format(
-          ",\"copy\":{{\"written_address\":{},\"written_length\":{},"
-          "\"rb_copy_control\":{},\"rb_copy_dest_base\":{},"
-          "\"rb_copy_dest_info\":{},\"rb_copy_dest_pitch\":{},"
-          "\"surface_info\":{},\"source_resource_width\":{},"
-          "\"source_resource_height\":{},\"source_resource_format\":{},"
-          "\"source_sample_count\":{},\"source_guest_msaa_samples\":{},"
-          "\"draw_resolution_scale_x\":{},\"draw_resolution_scale_y\":{},"
-          "\"source_target_base_tiles\":{},"
-          "\"source_target_pitch_tiles_at_32bpp\":{},"
-          "\"resolve_source_base_tiles\":{},"
-          "\"resolve_source_pitch_tiles\":{},"
-          "\"resolve_source_format\":{},"
-          "\"resolve_source_guest_msaa_samples\":{},"
-          "\"resolve_guest_offset_x\":{},\"resolve_guest_offset_y\":{},"
-          "\"resolve_guest_width\":{},\"resolve_guest_height\":{},"
-          "\"resolve_physical_offset_x\":{},"
-          "\"resolve_physical_offset_y\":{},"
-          "\"resolve_physical_width\":{},\"resolve_physical_height\":{},"
-          "\"resolve_dest_offset_x\":{},\"resolve_dest_offset_y\":{},"
-          "\"resolve_dest_pitch\":{},\"resolve_dest_height\":{},"
-          "\"resolve_sample_select\":{},\"resolve_info_valid\":{},"
-          "\"source_target_available\":{},\"native_2x_msaa\":{},"
-          "\"succeeded\":{}}}",
-          copy.written_address, copy.written_length, copy.rb_copy_control,
-          copy.rb_copy_dest_base, copy.rb_copy_dest_info,
-          copy.rb_copy_dest_pitch, copy.surface_info,
-          copy.source_resource_width, copy.source_resource_height,
-          copy.source_resource_format, copy.source_sample_count,
-          copy.source_guest_msaa_samples, copy.draw_resolution_scale_x,
-          copy.draw_resolution_scale_y, copy.source_target_base_tiles,
-          copy.source_target_pitch_tiles_at_32bpp,
-          copy.resolve_source_base_tiles, copy.resolve_source_pitch_tiles,
-          copy.resolve_source_format,
-          copy.resolve_source_guest_msaa_samples,
-          copy.resolve_guest_offset_x, copy.resolve_guest_offset_y,
-          copy.resolve_guest_width, copy.resolve_guest_height,
-          copy.resolve_physical_offset_x, copy.resolve_physical_offset_y,
-          copy.resolve_physical_width, copy.resolve_physical_height,
-          copy.resolve_dest_offset_x, copy.resolve_dest_offset_y,
-          copy.resolve_dest_pitch, copy.resolve_dest_height,
-          copy.resolve_sample_select, copy.resolve_info_valid,
-          copy.source_target_available, copy.native_2x_msaa,
-          copy.succeeded);
-    }
     stream << "}";
   }
   stream << "\n  ],\n  \"passes\": [\n";

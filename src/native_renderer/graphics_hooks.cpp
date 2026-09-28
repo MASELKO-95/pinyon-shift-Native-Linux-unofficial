@@ -28,19 +28,6 @@ thread_local uint64_t title_packet_count = 0;
 thread_local int64_t title_first_packet_ns = 0;
 thread_local int64_t title_last_packet_ns = 0;
 
-void ObservePreparedDraw(
-    const rex::system::GraphicsPreparedDrawObservation& observation) {
-  static const bool corpus_enabled =
-      rex::cvar::GetFlagByName("pinyon_shift_fh1_gpu_corpus") == "true";
-  if (corpus_enabled) {
-    RecordFh1GpuExecution(observation);
-  }
-}
-
-void ObserveCopy(const rex::system::GraphicsCopyObservation& observation) {
-  RecordFh1GpuCopy(observation);
-}
-
 }  // namespace
 
 void InstallGraphicsCensus(rex::system::IGraphicsSystem* graphics_system,
@@ -48,16 +35,13 @@ void InstallGraphicsCensus(rex::system::IGraphicsSystem* graphics_system,
   if (!graphics_system) {
     return;
   }
-  const bool enabled = ResetFh1GpuCorpus();
-  graphics_system->SetPreparedDrawObserver(&ObservePreparedDraw);
-  graphics_system->SetCopyObserver(enabled ? &ObserveCopy : nullptr);
+  // The FH1 native executor produces no draw or copy observations; the
+  // corpus keeps its reset/flush lifecycle and file output.
+  ResetFh1GpuCorpus();
 }
 
 void UninstallGraphicsCensus(rex::system::IGraphicsSystem* graphics_system) {
-  if (graphics_system) {
-    graphics_system->SetPreparedDrawObserver(nullptr);
-    graphics_system->SetCopyObserver(nullptr);
-  }
+  (void)graphics_system;
   FlushFh1GpuCorpus();
 }
 
