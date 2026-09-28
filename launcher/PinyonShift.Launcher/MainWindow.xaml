@@ -296,8 +296,8 @@
                         <ComboBox x:Name="RendererComboBox" Margin="0,8,0,0" SelectedIndex="0"
                                   SelectionChanged="RendererComboBox_SelectionChanged"
                                   AutomationProperties.Name="Renderer">
-                            <ComboBoxItem Tag="xenos"><TextBlock Text="Xenos · compatibility" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
-                            <ComboBoxItem Tag="native"><TextBlock Text="Native · experimental (1× only)" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
+                            <ComboBoxItem Tag="native"><TextBlock Text="Native · default (1× only)" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
+                            <ComboBoxItem Tag="xenos"><TextBlock Text="Xenos · rollback" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
                         </ComboBox>
                     </StackPanel>
                     <Border Grid.Row="6" Background="#171B17" BorderBrush="{StaticResource LineBrush}"

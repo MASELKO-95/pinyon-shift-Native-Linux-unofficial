@@ -891,7 +891,7 @@ public partial class MainWindow : Window
             SelectTag(ResolutionComboBox, result.Settings.ResolutionScale.ToString());
             DisableMotionBlurCheckBox.IsChecked = result.Settings.DisableMotionBlur;
             DisableDepthOfFieldCheckBox.IsChecked = result.Settings.DisableDepthOfField;
-            SelectTag(RendererComboBox, result.Settings.Renderer ?? "xenos");
+            SelectTag(RendererComboBox, result.Settings.Renderer ?? "native");
         }
         finally
         {

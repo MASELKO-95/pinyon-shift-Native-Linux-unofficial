@@ -33,14 +33,15 @@
 extern "C" int __llvm_profile_dump(void);
 #endif
 
-REXCVAR_DEFINE_UINT32(pinyon_shift_config_schema, 22, "Pinyon Shift",
+REXCVAR_DEFINE_UINT32(pinyon_shift_config_schema, 23, "Pinyon Shift",
                       "Pinyon Shift host configuration schema version");
 REXCVAR_DEFINE_BOOL(pinyon_shift_capture_performance, true, "Pinyon Shift",
                     "Capture lightweight per-frame performance counters to a session CSV");
 namespace {
 
-// Schema 22 adds the renderer choice (fh1_renderer, Xenos by default).
-constexpr uint32_t kConfigSchema = 22;
+// Schema 22 adds the renderer choice (fh1_renderer). Schema 23 makes the
+// native renderer the default; Xenos stays selectable as the rollback.
+constexpr uint32_t kConfigSchema = 23;
 
 bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
                            bool& migrated) {
@@ -81,7 +82,7 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
               "occlusion_query = \"legacy\"\n"
               "zpd_end_policy = \"report_layout\"\n"
               "zpd_end_fallback = \"pairwise_sentinel\"\n"
-              "fh1_renderer = \"xenos\"\n";
+              "fh1_renderer = \"native\"\n";
     created = true;
     return output.good();
   }
@@ -105,7 +106,7 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
     if (schema == kConfigSchema) {
       return true;
     }
-    if (schema < 1 || schema > 21) {
+    if (schema < 1 || schema > 22) {
       return false;
     }
 
@@ -205,8 +206,14 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
          "pinyon_shift_fh1_render_fps_limit = 0\n"},
         {"pinyon_shift_fh1_source_presentation",
          "pinyon_shift_fh1_source_presentation = true\n"},
-        {"fh1_renderer", "fh1_renderer = \"xenos\"\n"},
+        {"fh1_renderer", "fh1_renderer = \"native\"\n"},
     };
+    // Schema 23: the native renderer becomes the default. Schema 22 only
+    // offered it as an experiment, so its xenos value is the old default.
+    migrated_text = std::regex_replace(
+        migrated_text,
+        std::regex(R"(((?:^|\n)\s*fh1_renderer\s*=\s*)\"xenos\")", std::regex::icase),
+        "$1\"native\"");
     for (const auto& [name, line] : graphics_settings) {
       const std::regex setting_pattern("(?:^|\\n)\\s*" + std::string(name) +
                                        "\\s*=", std::regex::icase);

@@ -336,7 +336,7 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
 
     def test_graphics_schema_and_diagnostics_contract(self):
         app = (ROOT / "src/pinyon_shift_app.cpp").read_text(encoding="utf-8")
-        self.assertIn("constexpr uint32_t kConfigSchema = 22", app)
+        self.assertIn("constexpr uint32_t kConfigSchema = 23", app)
         self.assertIn(".schema", app)
         for setting in ("anisotropic_override", "swap_post_effect", "draw_resolution_scale_x",
                         "fh1_renderer"):
@@ -388,11 +388,12 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         launcher_xaml = (ROOT / "launcher/PinyonShift.Launcher/MainWindow.xaml").read_text(
             encoding="utf-8"
         )
-        self.assertIn("constexpr uint32_t kConfigSchema = 22;", app)
-        self.assertRegex(app, r"pinyon_shift_config_schema,\s*22,")
+        self.assertIn("constexpr uint32_t kConfigSchema = 23;", app)
+        self.assertRegex(app, r"pinyon_shift_config_schema,\s*23,")
         self.assertIn('"pinyon_shift_stabilize_vehicle_presentation = false\\n"', app)
         self.assertIn('"keybind_a = \\"LMB,Space\\"\\n"', app)
-        self.assertIn("schema < 1 || schema > 21", app)
+        self.assertIn("schema < 1 || schema > 22", app)
+        self.assertIn('"fh1_renderer = \\"native\\"\\n"', app)
         self.assertIn("display.refresh.detected", app)
         self.assertIn("EnumDisplaySettingsW", app)
         graphics = (
