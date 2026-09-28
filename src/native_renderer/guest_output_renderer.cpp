@@ -546,13 +546,20 @@ void InstallGuestOutputRenderer(rex::system::IGraphicsSystem* graphics_system) {
   if (graphics_system) {
 #if defined(_WIN32)
     static std::once_flag native_race_callback_once;
+    // The race pilot (admission, pre-UI scene and HUD masks) replaces Xenos
+    // output; it has no place under the native executor.
+    static const bool pilot_allowed = [] {
+      const std::string renderer = rex::cvar::GetFlagByName("fh1_renderer");
+      return renderer.empty() || renderer == "xenos";
+    }();
     std::call_once(native_race_callback_once, [] {
       rex::cvar::RegisterChangeCallback(
           "pinyon_shift_native_race", [](std::string_view, std::string_view value) {
-            native_race_enabled.store(value == "true", std::memory_order_release);
+            native_race_enabled.store(pilot_allowed && value == "true",
+                                      std::memory_order_release);
           });
     });
-    native_race_enabled.store(REXCVAR_GET(pinyon_shift_native_race),
+    native_race_enabled.store(pilot_allowed && REXCVAR_GET(pinyon_shift_native_race),
                               std::memory_order_release);
 #endif
     graphics_system->SetNativeGuestOutputRenderer(&ObserveRenderTestOutput);
