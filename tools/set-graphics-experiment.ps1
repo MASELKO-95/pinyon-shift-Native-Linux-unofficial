@@ -74,7 +74,6 @@ $retiredSettings = @(
     'pinyon_shift_native_renderer_sky_horizon_suppression',
     'pinyon_shift_native_renderer_census',
     'pinyon_shift_fh1_native_v4',
-    'readback_resolve',
     'readback_resolve_half_pixel_offset',
     'readback_memexport',
     'readback_memexport_fast',
@@ -263,6 +262,9 @@ switch ($Action) {
         foreach ($retired in $retiredSettings) {
             $text = Remove-TomlValue $text $retired
         }
+        # readback_resolve is a developer setting; only launchers before
+        # schema 24 wrote it for players (src/pinyon_shift_app.cpp).
+        if ($schema -lt 24) { $text = Remove-TomlValue $text 'readback_resolve' }
         $text = Set-TomlValue $text 'pinyon_shift_config_schema' '25'
         $text = Set-TomlValue $text 'pinyon_shift_fh1_render_fps_limit' '0'
         $text = Set-TomlValue $text 'pinyon_shift_fh1_source_presentation' 'true'

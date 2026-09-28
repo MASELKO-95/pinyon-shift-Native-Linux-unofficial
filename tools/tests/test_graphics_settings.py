@@ -203,6 +203,17 @@ class GraphicsSettingsTests(unittest.TestCase):
             self.assertNotIn("readback_resolve", text)
             self.assertTrue(pathlib.Path(result["backup_path"]).is_file())
 
+    def test_apply_keeps_developer_resolve_readback_on_current_schema(self):
+        with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:
+            state = pathlib.Path(temporary)
+            config = state / "config/pinyon_shift.toml"
+            config.parent.mkdir(parents=True)
+            config.write_text(
+                "pinyon_shift_config_schema = 25\nreadback_resolve = \"full\"\n", encoding="utf-8"
+            )
+            self.run_tool(state, "-Action", "Apply")
+            self.assertIn('readback_resolve = "full"', config.read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()

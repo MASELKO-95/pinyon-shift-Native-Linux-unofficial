@@ -55,7 +55,13 @@ lists what it covers.
 - **Guest-visible resolves:** with `readback_resolve = none`, one-off captures
   the game reads on the CPU (for example the car thumbnails it saves) are
   still copied back to guest memory; `fh1_native_readback_new_resolves=false`
-  turns that off.
+  turns that off. `readback_resolve` itself is a developer setting that no
+  launcher or default config writes: `full` copies every resolve back
+  synchronously (the reference the thumbnail path was checked against, at
+  about three times the frame time), `some` and `fast` hand the game the
+  previous frame's data (`fast` never reaches free roam). Config migration
+  drops it only from files older than schema 24, which older launchers
+  wrote for players.
 - **Diagnostics:** front-buffer dumps (`fh1_native_dump_frames` /
   `fh1_native_dump_dir`), per-resolve dumps (`fh1_resolve_dump_dir`), the
   frame census (`fh1_frame_census`) and offline frame replays

@@ -150,7 +150,6 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
              "pinyon_shift_native_renderer",
              "pinyon_shift_native_renderer_sky_horizon_suppression",
              "pinyon_shift_fh1_native_v4",
-             "readback_resolve",
              "readback_resolve_half_pixel_offset",
              "readback_memexport",
              "readback_memexport_fast",
@@ -215,6 +214,15 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
           std::regex("(?:^|\\n)\\s*" + std::string(retired_setting) +
                          "\\s*=.*(?:\\r?\\n|$)",
                      std::regex::icase),
+          "\n");
+    }
+    // readback_resolve stays a developer setting (none, fast, some, full), but
+    // launchers before schema 24 wrote it for players, and `fast` never
+    // reaches free roam: drop those values only.
+    if (schema < 24) {
+      migrated_text = std::regex_replace(
+          migrated_text,
+          std::regex(R"((?:^|\n)\s*readback_resolve\s*=.*(?:\r?\n|$))", std::regex::icase),
           "\n");
     }
     if (schema == 1) {
