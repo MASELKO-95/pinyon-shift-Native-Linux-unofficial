@@ -64,7 +64,8 @@ class Fh1RenderTestRunnerTests(unittest.TestCase):
     def test_synchronized_routes_parse(self):
         scenarios = Path(__file__).parents[2] / "config" / "render-tests"
         for name in (
-            "fh1-race-sync", "fh1-modes-sync", "fh1-opening-sync", "fh1-long-drive", "fh1-buy-car"
+            "fh1-race-sync", "fh1-modes-sync", "fh1-opening-sync", "fh1-long-drive", "fh1-buy-car",
+            "fh1-rewind-sync",
         ):
             self.assertTrue(MODULE.parse_scenario(scenarios / f"{name}.fh1test")[0])
 

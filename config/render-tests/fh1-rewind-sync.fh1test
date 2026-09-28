@@ -1,0 +1,59 @@
+pinyon-shift-fh1-render-test-v1
+# Output-frame paced, synchronized on game state, from a seed without a
+# profile (fresh-2026-09-28, run with --fresh-profile): the new-player
+# opening as fh1-opening-sync, then drive the Viper (throttle until it has
+# moved), rewind (Y, the default layout's rewind button; the appdata seed's
+# profile uses a layout where Y changes the camera), capture the rewinding
+# camera and the rewind menu, resume from there (A) and capture the drive.
+input 0 0000 0 0 0 0 0 0
+wait 100 1200 movie pressstart
+capture 300 press-start
+input 360 1000 0 0 0 0 0 0
+input 366 0000 0 0 0 0 0 0
+input 660 1000 0 0 0 0 0 0
+input 666 0000 0 0 0 0 0 0
+capture 900 single-player
+input 960 1000 0 0 0 0 0 0
+input 966 0000 0 0 0 0 0 0
+wait 970 2400 file trackroute170
+input 1270 1000 0 0 0 0 0 0
+input 1276 0000 0 0 0 0 0 0
+input 1570 1000 0 0 0 0 0 0
+input 1576 0000 0 0 0 0 0 0
+input 1870 1000 0 0 0 0 0 0
+input 1876 0000 0 0 0 0 0 0
+input 2170 1000 0 0 0 0 0 0
+input 2176 0000 0 0 0 0 0 0
+input 2470 1000 0 0 0 0 0 0
+input 2476 0000 0 0 0 0 0 0
+input 2770 1000 0 0 0 0 0 0
+input 2776 0000 0 0 0 0 0 0
+input 3070 1000 0 0 0 0 0 0
+input 3076 0000 0 0 0 0 0 0
+input 3370 1000 0 0 0 0 0 0
+input 3376 0000 0 0 0 0 0 0
+input 3670 1000 0 0 0 0 0 0
+input 3676 0000 0 0 0 0 0 0
+input 3970 1000 0 0 0 0 0 0
+input 3976 0000 0 0 0 0 0 0
+input 4270 1000 0 0 0 0 0 0
+input 4276 0000 0 0 0 0 0 0
+input 4570 1000 0 0 0 0 0 0
+input 4576 0000 0 0 0 0 0 0
+input 4870 1000 0 0 0 0 0 0
+input 4876 0000 0 0 0 0 0 0
+capture 5700 opening-drive
+capture 5850 opening-drive-later
+input 5900 0000 0 255 0 0 0 0
+wait 5910 1500 vehicle-moved 30
+capture 6100 drive-before-rewind
+input 6150 0000 0 0 0 0 0 0
+input 6160 8000 0 0 0 0 0 0
+input 6166 0000 0 0 0 0 0 0
+capture 6200 rewinding
+capture 6300 rewind-menu
+input 6360 1000 0 0 0 0 0 0
+input 6366 0000 0 0 0 0 0 0
+capture 6450 resumed
+capture 6600 resumed-later
+stop 6650

@@ -188,6 +188,21 @@ from guest memory (BC/DXN/DXT5A block formats, 8-bit movie planes, the
 - Optimized clears: owned-depth and rectangle clears appear in every mode
   with scene rendering.
 
+## Routes added later
+
+`fh1-rewind-sync` (the new-player opening event from `fresh-2026-09-28`,
+driving and rewinding) and `fh1-buy-car` (the autoshow, a purchase and the
+thumbnail studio tracks) were censused the same way on Xenos: 10,980
+frames, zero overflow, no memexport or occlusion-query draws, no new
+primitive types and the same front buffer. Against the tables above they
+add 11 surface configurations (8_8_8_8 color over the 4x D24FS8 scene
+layout for the showroom and studio renders, and small 1x and 4x targets of
+pitch 80 to 800), 10 resolve kinds (8_8_8_8 and 16_16_16_16_FLOAT copies
+of 32x32 to 768x288, the thumbnail among them, and a 4x average of an
+8_8_8_8 scene target) and 47 texture layouts (cube maps of 64 to 512
+texels, more DXT/DXN sizes and mip ranges). None needs new executor code:
+`native` runs both routes with zero executor skips.
+
 ## Census cost
 
 Each record carries `cost_ns`, the time spent inside the census (including
@@ -202,9 +217,9 @@ heaviest race windows reach it. The census is off by default.
 - The installed 1x pack still misses at least two vertex-shader variants in
   plain Xenos runs (`AFF858C659830DD3` modification 1 and `AE8FEE9795590D78`
   modification `0x7F`), so those draws are dropped on both renderers.
-- A second race event, rewind, night, weather, livery and multiplayer
-  screens are not in this census yet (no pinned routes reach them; XR-00).
-  New configurations they bring must enter this contract as named skips.
+- Night, weather, livery and multiplayer screens are not in this census yet
+  (no pinned routes reach them). New configurations they bring must enter
+  this contract as named skips.
 - Window-level mode boundaries mix a few transition frames into neighbouring
   modes.
 - The census records configurations, not per-frame event order; ordering

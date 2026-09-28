@@ -275,7 +275,7 @@ Sizes are relative scope, not time estimates. XR-08 and XR-09 can overlap.
   appears) and `fh1-opening-sync` (Press Start movie, the opening event's
   route file); `fh1-fmv` plays the movies. The wall-clock routes stay for
   their existing checks but are not used for parity.
-- [ ] Add missing mode routes: boot with movies, Press Start, main and
+- [x] Add missing mode routes: boot with movies, Press Start, main and
   single-player menus, garage/car select, a second race event, loading
   screens, rewind. Reuse the free-roam, map, pause and photo scripts.
   Added: Press Start, the single-player menu and a second race event (the
@@ -285,6 +285,11 @@ Sizes are relative scope, not time estimates. XR-08 and XR-09 can overlap.
   Rewind: BACK opens the race map and Y (FH1's rewind button) only
   changed the camera in a Recaro race from the seed, so the profile's
   controls or assists still need checking before a rewind route.
+  Done: the game's controller loading screen maps Y to rewind
+  (`IDS_Mulligan`) in the default layout, so the seed's profile uses
+  another layout. `fh1-rewind-sync` rewinds with Y in the new-player
+  opening from the profile-free seed: the rewinding camera, the rewind menu
+  (resume, rewind further, cancel, view replay) and the resumed drive.
 - [x] Limit `pinyon_shift_skip_opening_movies` (hook at `0x82E5D8AC` in the
   XMedia wrapper `sub_82E5D868`) to `media/ui/videos/splash_intros/`. It
   completed every movie, so scripted runs showed a solid green Press Start
@@ -353,7 +358,10 @@ explicitly unobserved.
 Status: done for every route that exists (17,580 frames, zero overflow,
 memexport zero, ZPD counted per mode; see the
 [contract](NATIVE_FRAME_CONTRACT.md)). The second race event and rewind
-have no pinned route yet (XR-00) and enter the contract when they do.
+(`fh1-rewind-sync`) and the autoshow purchase (`fh1-buy-car`) were added
+later: 10,980 more frames, zero overflow, no memexport, no new primitive
+types, and every new surface, resolve and texture configuration runs in
+`native` with zero executor skips.
 
 ### XR-02 — Native executor: first complete frames in shadow
 
@@ -650,9 +658,9 @@ or proven unused on every matrix route, with overflow-safe accounting.
   depth ties at the far plane or on alpha-tested foliage edges the two
   renderers resolve 2-3/255 apart (sky and tree lines), up to 11/255 in
   small foliage patches; color resolves of the post chain differ by the
-  same amounts. Not compared: rewind (no route) and night (the seed is in
-  daytime); car-select cards show the profile's corrupt thumbnails on both
-  renderers (XR-04).
+  same amounts. Rewind pairs (`fh1-rewind-sync`): at most 0.002% of pixels,
+  max 5/255. Not compared: night (the seed is in daytime); car-select
+  cards show the profile's corrupt thumbnails on both renderers (XR-04).
 - [ ] Unscripted drives (race and free roam) in `native`: record control
   response, stability and the first defect that interferes with driving.
   Scripted stand-ins so far (no person has driven it): `fh1-long-drive`
@@ -745,7 +753,7 @@ differing, largest channel difference out of 255) and full `native` runs.
 | Race: the Gauntlet (event at the seed's spawn) | `fh1-race-sync`, mode boundary | Native; 0.03-0.44%, max 2-3 |
 | Race: other event (new-player opening drive) | `fh1-opening-sync` | Native; 0.07-0.27%, max 2-3 |
 | Pause | `fh1-modes-sync` | Native; 0.028%, max 6 |
-| Rewind | none yet | Not covered: no working rewind input from the seed |
+| Rewind | `fh1-rewind-sync` | Native; 0-0.002%, max 5 |
 | Map | `fh1-modes-sync` | Native; 0% |
 | Photo mode | `fh1-modes-sync` | Native; 0.03-0.065%, max 4-11 |
 | Loading / transitions | `fh1-race-sync`, mode boundary | Native (loading screens are passed, not compared) |
