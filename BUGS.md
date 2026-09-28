@@ -16,8 +16,12 @@
   - Same root cause as the green title (movie skip): stale data in the
     PressStart.wmv planes. Identical in compat-only runs; clean with movies on.
 - [ ] Car selection on an event has either pink correupted textures or mangled car textures/models
-  - Not native and not the movie skip: identical noise in compat-only runs
-    and with movies on, unchanged in every capture since 2026-09-21. The car
-    card images (top-right card, card next to the $ tile) decode as striped
-    pink noise; likely a texture format/tiling decode issue in the texture
-    cache (tracked as NP-0.6 in docs/NATIVE_PORT_BACKLOG.md).
+  - Not a texture decode bug. The cards are the profile's
+    `Thumbnails/Thumbnail_N.xdc` files, which the game renders, resolves and
+    compresses from guest memory when it saves a car. Builds before SDK
+    `e9b293b` never copied that resolve back into guest memory, so the files
+    hold stale memory: the stripes (XR-04 in
+    docs/native-renderer/XENOS_RETIREMENT_BACKLOG.md). New cards are correct
+    (about 34 KB each); cards saved by older builds stay striped (275-845 KB
+    of compressed noise) until the game saves them again. Repairing those is
+    NP-0.6 in docs/NATIVE_PORT_BACKLOG.md.
