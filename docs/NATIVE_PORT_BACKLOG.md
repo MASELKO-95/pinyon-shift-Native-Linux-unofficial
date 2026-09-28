@@ -527,6 +527,47 @@ changes.
   errors, and the next launch loads those shaders from the delta cache
   without a preparation run.
 
+### Faster graphics preparation
+
+Preparing graphics ("Preparing graphics for 1x") takes about ten minutes
+on a modern machine, and it runs far more often than it needs to.
+
+- **Where the time goes** (a 1x production on 2026-09-28, 6.6 minutes
+  without rebuilding the producer): producer build 12 s, shader extraction
+  17 s, producer run 3 min 47 s (translating the disc corpus, 24,660
+  variants, took 1 min 45 s of it; the capture route the rest), pack build
+  14 s, strict validation route 2 min 5 s. A launcher run that also
+  rebuilds the producer takes longer.
+- **Translation is single-threaded.** The disc-corpus loop in
+  `pipeline_cache.cpp` translates every variant in turn with one
+  `DxbcShaderTranslator`. Workers with a translator each (the pattern the
+  shader-storage loader already uses) should bring that stage from 105 s
+  to about ten seconds on eight or more cores; the output must stay
+  byte-identical, so sort entries before writing the pack.
+- **Re-preparation after every rebuild.** The preparation key
+  (`tools/prepare-fh1-shaders.ps1`) hashes `pinyon_shift.exe`,
+  `rexgpu-fh1.dll` and `rexruntime.dll`, so any rebuild reruns the whole
+  pipeline, although NP-0.1's trimmed producer rebuilt the pack
+  byte-identical. Key the pack on what decides its content (translator
+  version, the translator and producer sources, pack format, device and
+  driver, settings, scale) and the startup catalogs on the pipeline
+  description inputs, and reuse them across unrelated rebuilds.
+- **Re-preparation after every new pack miss.** Each recorded miss changes
+  the key and reruns everything for a handful of shaders; translate only
+  the new misses and append them (this meets the on-the-fly compilation
+  entry above).
+- **The two game routes.** The capture route and the strict validation
+  route replay about 9,000 frames each at the game's own pace while hidden.
+  Run them unpaced, capture pipelines only when the catalog inputs change,
+  and move the strict check to a shorter route or to the background after
+  the game starts, keeping it as a gate for release packs.
+- **Smaller steps.** Cache the extracted corpus by dump hash; ship a
+  prebuilt producer with releases (NP-D) instead of building it locally.
+- **Gate idea.** A rebuild that does not touch the translator starts the
+  game with no preparation; a first preparation finishes in under two
+  minutes on an eight-core machine; packs stay byte-identical to the
+  single-threaded producer.
+
 ## Parking lot
 
 Ideas considered and not scheduled; add to a slice when a train has room.
