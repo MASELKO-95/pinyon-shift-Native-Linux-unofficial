@@ -74,10 +74,6 @@ target_include_directories(pinyon_shift_fh1_shader_pack_tests PRIVATE
 target_link_libraries(pinyon_shift_fh1_shader_pack_tests PRIVATE rex::runtime)
 if(WIN32)
     target_link_libraries(pinyon_shift_fh1_shader_pack_tests PRIVATE bcrypt)
-    # Standalone D3D12 conformance test: no renderer/runtime library dependency.
-    add_executable(pinyon_shift_fh1_owned_geometry_tests EXCLUDE_FROM_ALL
-        tests/native_renderer/fh1_owned_geometry_test.cpp)
-    target_link_libraries(pinyon_shift_fh1_owned_geometry_tests PRIVATE d3d12 dxgi)
 endif()
 
 add_executable(pinyon_shift_fh1_archive_extract EXCLUDE_FROM_ALL

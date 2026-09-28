@@ -415,8 +415,10 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         )
         self.assertNotIn("Fh1NativeV4Enabled", pipeline_cache)
         self.assertNotIn("Fh1NativeV4Enabled", command_processor)
-        self.assertIn("kFh1UseNativeWorldVertexShaders = false", pipeline_cache)
-        self.assertIn("kFh1UseNativeDepthMeshVertexShaders = false", pipeline_cache)
+        # The hand-written FH1 shader families were removed with the Xenos
+        # renderer; the pack's translated shaders are the only bytecode.
+        self.assertNotIn("kFh1UseNativeWorldVertexShaders", pipeline_cache)
+        self.assertNotIn("kFh1UseNativeDepthMeshVertexShaders", pipeline_cache)
         self.assertNotIn("state_desc.PS = {shaders::fh1_world_lit_ps", pipeline_cache)
         self.assertIn("native_guest_output_gpu_timing_active_ = true;", command_processor)
         self.assertIn("EndNativeGuestOutputGpuTimingFrame();", command_processor)
@@ -428,7 +430,7 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         self.assertIn("kFh1GpuPassTimingCapacity = 512", (
             sdk / "include/rex/graphics/d3d12/command_processor.h"
         ).read_text(encoding="utf-8"))
-        self.assertIn("std::unordered_set<uint64_t> fh1_execution_allowlist_", (
+        self.assertNotIn("fh1_execution_allowlist_", (
             sdk / "include/rex/graphics/d3d12/pipeline_cache.h"
         ).read_text(encoding="utf-8"))
         generic_command_processor = (

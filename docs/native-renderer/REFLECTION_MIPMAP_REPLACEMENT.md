@@ -141,17 +141,9 @@ Both complete offline packs contain 22,012 entries. Their SHA256 values are
 2x `D6E62162510BE0EDFC0CA4D1624B498F51024F7BC5AC2597A23C37929E030A3E`. The complete 1x pack is restored
 after testing. Captured game commands, memory, screenshots and RDCs remain local.
 
-The published assertion tool is [check-fh1-mip-contract.cpp](../../tools/check-fh1-mip-contract.cpp).
-From a configured C++ build environment:
-
-```powershell
-clang-cl /nologo /std:c++20 /O2 /EHsc /Ithirdparty/shiftglue-sdk/include `
-  /Ithirdparty/shiftglue-sdk/thirdparty/xxHash tools/check-fh1-mip-contract.cpp `
-  /Fe.local/native-renderer/b2/mip-contract-fixture-v1/check-contract.exe `
-  /Fo.local/native-renderer/b2/mip-contract-fixture-v1/check-contract.obj
-.local/native-renderer/b2/mip-contract-fixture-v1/check-contract.exe `
-  .local/native-renderer/b2/mip-contract-fixture-v1
-```
+The assertion tool `tools/check-fh1-mip-contract.cpp` and the command-stream
+contract it exercised were removed with the Xenos renderer; the FH1 native
+executor does not replace the reflection mip chain.
 
 The local fixture supplies `face-0.bin` through `face-5.bin` and the external
 snapshots in `memory/<hex-address>.bin`; captured game data is not distributed.
