@@ -251,7 +251,7 @@ Sizes are relative scope, not time estimates. XR-08 and XR-09 can overlap.
 - [x] Freeze the six-family race pilot at `02dfad0`: no new families,
   probes, pins or allowlists. Keep it opt-in until XR-05 replaces it.
   Nothing was added to it; the executor gates the Xenos-side families off.
-- [ ] Make routes deterministic: run each through
+- [x] Make routes deterministic: run each through
   `tools/run-fh1-render-test.py` with a disposable seed whose event is
   pinned. Save progress already moved the AppData route from Recaro Rush to
   another event, which silently changed what "native race" tested.
@@ -269,9 +269,19 @@ Sizes are relative scope, not time estimates. XR-08 and XR-09 can overlap.
   lists them: the car-select cards open the profile's
   `thumbnails	humbnail_N.xdc` at frame 2044 of the mode-boundary route).
   `fh1-race` itself drifts into free roam: its captures show no event.
+  Done as synchronized routes that reach the same content on both
+  renderers: `fh1-race-sync` (car, car-select thumbnails, the race's replay
+  stream), `fh1-modes-sync` (drive, pause, map, photo mode after the car
+  appears) and `fh1-opening-sync` (Press Start movie, the opening event's
+  route file); `fh1-fmv` plays the movies. The wall-clock routes stay for
+  their existing checks but are not used for parity.
 - [ ] Add missing mode routes: boot with movies, Press Start, main and
   single-player menus, garage/car select, a second race event, loading
   screens, rewind. Reuse the free-roam, map, pause and photo scripts.
+  Added: Press Start, the single-player menu and a second race event (the
+  new-player opening drive, `fh1-opening-sync` from a profile-free seed),
+  car select and the race loading screens (`fh1-race-sync`), pause, map and
+  photo mode (`fh1-modes-sync`). Missing: rewind.
   Rewind: BACK opens the race map and Y (FH1's rewind button) only
   changed the camera in a Recaro race from the seed, so the profile's
   controls or assists still need checking before a rewind route.
@@ -293,12 +303,15 @@ Sizes are relative scope, not time estimates. XR-08 and XR-09 can overlap.
   stops working once native draws the real sky. Capture events carry
   `presenter` (xenos, pilot, native) and `session_renderer`; the verifiers
   read them with `--events`.
-- [ ] Record Xenos baselines per route: median/p95/p99 frame and GPU time,
+- [x] Record Xenos baselines per route: median/p95/p99 frame and GPU time,
   draws, copies, clears and VRAM (`tools/summarize-performance.py`). Reuse
   the fixed windows from the performance program: open world wall seconds
   20–46.7 of `fh1-open-world-performance`, Recaro seconds 40–76.5 of
   `fh1-race` (moving from 70), and `fh1-timing-straight` seconds 29–33;
   warmed A/B/B/A blocks; reject regressions above 3% median/p95.
+  Recorded in [`NATIVE_PERFORMANCE_BASELINES.md`](NATIVE_PERFORMANCE_BASELINES.md)
+  for the synchronized routes and the movie route, with native results and
+  memory.
 
 **Done when** every matrix route exits normally on Xenos with valid captures
 (including real title video) and a stored baseline.
@@ -442,10 +455,13 @@ same-frame comparison, and replay tests run offline.
   this way point at the pilot's per-draw setup rather than the content.
   Under the executor these shaders are ordinary draws: every route of the
   matrix ran in `native` mode with no device removal.
-- [ ] Complete frames in shadow: free roam, Recaro and one other race event,
+- [x] Complete frames in shadow: free roam, Recaro and one other race event,
   garage/car select. Free roam, Recaro, car select, map, pause, photo mode
   and loading screens match (0-0.01% of pixels outside races, about 1.2% in
-  race frames). The second race event still has no route.
+  race frames). The second race event is the new-player opening drive
+  (`fh1-opening-sync`): pairs differ in 0.27% and 0.07% of pixels during the
+  drive and 0% at the single-player menu, zero skips, every depth surface
+  equal to Xenos.
 - [x] **Go/no-go:** compare executor CPU+GPU time per frame with the Xenos
   backend on the same frames. If native is not cheaper, record why before
   starting XR-04. Go: `native` mode on the mode-boundary route has a race
@@ -584,12 +600,14 @@ or proven unused on every matrix route, with overflow-safe accounting.
   only the tiles a depth-only ALWAYS rectangle touches (covered tiles
   without a transfer) and run batched per destination: free-roam
   tile-passes fell from 311M to 138M per 2,400 frames and GPU p95 from
-  11.3 to 9.2-9.7 ms. Matrix medians are at or below Xenos (race 12.5 vs
-  16.1 ms, free roam 8.7 vs 9.5 ms), p95 is still above (race 29.7 vs 21.7,
-  free roam 22.5-28.6 vs 21.1-23.8 ms), but the routes drift apart (the
-  native race run reached 6,200 draws per frame where Xenos stayed at
-  3,400), so p95 parity needs the deterministic routes from XR-00. On
-  matched content (3,500 draws) native GPU time is about 9.2 vs 7.3 ms.
+  11.3 to 9.2-9.7 ms. Repeated targets skip preparation (prepare_targets
+  3.1 -> 0.7 ms per race frame). On the synchronized routes
+  ([baselines](NATIVE_PERFORMANCE_BASELINES.md)): movies +1.2% median, equal
+  p95; modes below Xenos; the race window (last 600 frames) +0.5-1.8%
+  median and +1.3-8.4% p95 across two pairs (p95 swings that much between
+  runs); the whole race route +3.3-3.7% median and -3.0 to +3.8% p95.
+  Remaining: the whole-route median gap, native GPU time about 1.1 ms above
+  Xenos in race frames (EDRAM ownership transfers).
 
 **Done when** all four hold.
 
