@@ -89,6 +89,13 @@ cache or title code that the native executor still uses.
   command-list submission instead of submitting at every PM4 primary-buffer
   end: median/p95/p99 −3.4%/−3.7%/−13.6% at 1x and −7.1%/−8.1%/−15.5% at 2x.
   Control `--d3d12_submit_on_primary_buffer_end=true`.
+- **Asynchronous submission (NP-2.6):** a worker thread replays each
+  recorded command tape into Direct3D 12, executes it and signals the fence,
+  and frames split into a new submission every 1024 draws, so the replay
+  overlaps recording instead of running on the GPU commands thread at the
+  swap. Race-window median -5.5% and p95 -8% against synchronous submission
+  on the same build. Controls `--d3d12_async_submission=false` and
+  `--d3d12_submission_split_draws=N` (0 keeps one submission per frame).
 - **GPU commands thread bookkeeping (NP-2.7):** per-thread perf counters,
   a reused shared-memory range list, a known-register bitmap on register
   writes and cached sampler parameters. Race-window median 24.3-25.3 ms to

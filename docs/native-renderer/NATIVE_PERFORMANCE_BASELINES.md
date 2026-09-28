@@ -123,6 +123,20 @@ frame, inclusive:
 `perf::IncrementCounter` costs 0.65 ms per frame on this thread, and all
 `Fh1NativeExecutor` work together 1.93 ms.
 
+### After NP-2.7 and NP-2.6
+
+Each change was measured on `fh1-race-sync` (seed `appdata-2026-09-27`,
+1x pack, `RelWithDebInfo`, `--hidden`) as interleaved pairs, race window
+= last 600 frames:
+
+| Change | Control median | Candidate median | Notes |
+| --- | --- | --- | --- |
+| NP-2.7 bookkeeping (DLL swap) | 24.30, 25.28 ms | 21.13, 21.21 ms | Undisturbed runs; one run per arm had 30-116 frames over 40 ms |
+| NP-2.6 async submission (`--d3d12_async_submission`) | 21.05-21.19 ms | 19.25-20.32 ms | p95 25.52-26.15 vs 22.34-25.18 ms; asynchronous runs render about 5 % more draws per race frame |
+
+The two sets were taken in different sessions, so their product (about
+-20 % from 24.8 to 19.9 ms) is indicative, not an A/B.
+
 ## Resolution scale
 
 `fh1-race-sync` at 2x and 3x, each renderer with a pack produced at that
