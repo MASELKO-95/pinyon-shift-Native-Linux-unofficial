@@ -155,12 +155,15 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         command_processor = (
             ROOT / "thirdparty/shiftglue-sdk/src/graphics/d3d12/command_processor.cpp"
         ).read_text(encoding="utf-8")
-        render_target_cache = (
-            ROOT / "thirdparty/shiftglue-sdk/src/graphics/d3d12/render_target_cache.cpp"
-        ).read_text(encoding="utf-8")
         self.assertNotIn("isolated_draw_request_observer", command_processor)
         self.assertNotIn("IsolatedReplay", command_processor)
-        self.assertNotIn("IsolatedReplay", render_target_cache)
+        # The D3D12 plugin no longer has a Xenos render target cache.
+        self.assertFalse(
+            (
+                ROOT / "thirdparty/shiftglue-sdk/src/graphics/d3d12/render_target_cache.cpp"
+            ).exists()
+        )
+        self.assertNotIn("d3d12/render_target_cache.cpp", graphics_cmake)
         launcher = (ROOT / "tools/launch-preview.ps1").read_text(encoding="utf-8")
         self.assertIn("rexgpu-fh1-producer.dll", launcher)
         self.assertIn("Remove-Item -LiteralPath $stagedShaderProducer", launcher)
