@@ -153,6 +153,8 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
              "pinyon_shift_fh1_native_v4",
              "readback_resolve",
              "readback_resolve_half_pixel_offset",
+             "readback_memexport",
+             "readback_memexport_fast",
              "pinyon_shift_native_renderer_census",
              // Schema 24: renderer-selection, native-shadow and Xenos-era
              // renderer settings that no longer exist.
