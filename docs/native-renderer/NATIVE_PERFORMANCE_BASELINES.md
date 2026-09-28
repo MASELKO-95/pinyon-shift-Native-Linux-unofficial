@@ -95,6 +95,34 @@ smaller surfaces qualify. A single stencil pass that exports the reference
 from the pixel shader, where the device supports it, is the better target
 for NP-2.4.
 
+### GPU commands thread attribution
+
+A WPR capture of the same route (`tools/capture-cpu-profile.ps1` from seed
+`appdata-2026-09-27` with the 1x pack, zero pack misses; 273,123 samples,
+183 without stacks, no lost events) over the last 600 source frames
+(25.76 ms per frame):
+
+| Thread | CPU per frame | Busy |
+| --- | ---: | ---: |
+| GPU commands (`CommandProcessor::WorkerThreadMain`) | 23.09 ms | 90 % |
+| Title render thread (`sub_8259F3E8`) | 24.07 ms, of which 9.88 ms polls `sub_829F04A8` | 93 % |
+| Title simulation (`sub_823ED888`) | 15.80 ms | 61 % |
+| Audio (`sub_82FB4AF8`) | 6.81 ms | 26 % |
+
+The title's poll waits for the word `EVENT_WRITE_SHD` stores on the GPU
+commands thread, so the race frame is bound by that thread. Its time per
+frame, inclusive:
+
+| Work | ms per frame | Largest parts |
+| --- | ---: | --- |
+| `D3D12CommandProcessor::IssueDraw` | 11.56 | `UpdateBindings` 2.24 (1.13 self, sampler parameters 0.41), `SharedMemory::RequestRange` 2.22, `RequestTextures` 1.63, `PrimitiveProcessor::Process` 1.41, `Fh1NativeExecutor::PrepareTargets` 0.84 and `BindTargets` 0.52, `perf::IncrementCounter` 0.60, `ConfigurePipeline` 0.44 |
+| `IssueSwap`, `EndSubmission`, `DeferredCommandList::Execute` | 3.86 | `d3d12core` 2.29, NVIDIA user-mode driver 1.39 (the recorded `OMSetRenderTargets`, root and draw calls; the driver has no public symbols, so single D3D12 calls are not separable) |
+| Type-0 register writes (`WriteRegisterRangeFromRing`) | 3.69 | `WriteRegistersFromMem` 3.08, `RegisterFile::GetRegisterInfo` 0.78 self |
+| `SharedMemory::RequestRanges` | 3.65 | `UploadRanges` 2.27 (memcpy 1.69, `MakeRangeValid` 0.51), range-vector reallocation and allocator 0.82 |
+
+`perf::IncrementCounter` costs 0.65 ms per frame on this thread, and all
+`Fh1NativeExecutor` work together 1.93 ms.
+
 ## Resolution scale
 
 `fh1-race-sync` at 2x and 3x, each renderer with a pack produced at that
