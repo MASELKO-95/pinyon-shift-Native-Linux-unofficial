@@ -142,7 +142,7 @@ class NativeRendererContractTests(unittest.TestCase):
 
 
     def test_census_ledger_tracks_exact_starting_baseline(self):
-        ledger = (ROOT / "docs/native-renderer/RENDER_PASS_CENSUS.md").read_text(
+        ledger = (ROOT / "docs/native-renderer/archive/RENDER_PASS_CENSUS.md").read_text(
             encoding="utf-8"
         )
         self.assertIn("cafc7233fef9e039f163d11023f40eccb22e8fc1", ledger)

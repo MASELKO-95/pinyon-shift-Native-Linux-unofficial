@@ -56,9 +56,9 @@ class GraphicsSettingsTests(unittest.TestCase):
             )
             updated = config.read_text(encoding="utf-8")
             self.assertEqual(result["settings"]["anisotropy"], 16)
-            self.assertIn("pinyon_shift_config_schema = 23", updated)
-            self.assertIn('fh1_renderer = "native"', updated)
-            self.assertEqual(result["settings"]["renderer"], "native")
+            self.assertIn("pinyon_shift_config_schema = 24", updated)
+            self.assertNotIn("fh1_renderer", updated)
+            self.assertNotIn("renderer", result["settings"])
             self.assertIn("xma_relaxed_padding_admission = false", updated)
             self.assertEqual(result["settings"]["occlusion_query"], "fast")
             self.assertIn('occlusion_query = "fast"', updated)
@@ -99,6 +99,8 @@ class GraphicsSettingsTests(unittest.TestCase):
             self.assertIn('host_present_sleep_spin = true', text)
             self.assertIn('pinyon_shift_fh1_render_fps_limit = 0', text)
             self.assertIn('pinyon_shift_fh1_source_presentation = true', text)
+            self.assertIn("pinyon_shift_config_schema = 24", text)
+            self.assertNotIn("fh1_renderer", text)
             self.assertEqual(result["settings"]["preset"], "shipping_1x")
             self.assertTrue(pathlib.Path(result["backup_path"]).is_file())
 
@@ -125,16 +127,69 @@ class GraphicsSettingsTests(unittest.TestCase):
             self.assertNotIn("pinyon_shift_fh1_native_v4", text)
             self.assertIn("pinyon_shift_fh1_render_fps_limit = 0", text)
 
-    def test_apply_selects_xenos_rollback_and_reset_restores_native(self):
+    def test_apply_removes_retired_renderer_settings(self):
+        # Schema 24 retires the renderer choice and the Xenos-era and
+        # native-shadow renderer settings the runtime no longer registers.
+        retired = (
+            'fh1_renderer = "xenos"',
+            "fh1_native_shadow = true",
+            'fh1_native_shadow_dump_dir = "dumps"',
+            "fh1_native_shadow_dump_frames = 4",
+            "fh1_native_shadow_verify = true",
+            "fh1_native_shadow_verify_draws = 8",
+            "fh1_discovery_sampling = true",
+            "fh1_owned_depth_clear = true",
+            "fh1_owned_depth_tile_clear = true",
+            "fh1_native_reflection_mips = true",
+            "fh1_mip_decode_probe = true",
+            "fh1_native_ui_boundary_probe = true",
+            "fh1_glow_probe = true",
+            "fh1_recycle_geometry_buffers = true",
+            "fh1_contain_geometry_windows = true",
+            "fh1_cache_geometry_rejections = true",
+            "fh1_geometry_cache_mb = 256",
+            "native_stencil_value_output = true",
+            "native_stencil_value_output_d3d12_intel = true",
+            "pinyon_shift_native_renderer_census = false",
+        )
         with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:
             state = pathlib.Path(temporary)
             config = state / "config/pinyon_shift.toml"
-            result = self.run_tool(state, "-Action", "Apply", "-Renderer", "xenos")
-            self.assertEqual(result["settings"]["renderer"], "xenos")
-            self.assertIn('fh1_renderer = "xenos"', config.read_text(encoding="utf-8"))
-            result = self.run_tool(state, "-Action", "Reset")
-            self.assertEqual(result["settings"]["renderer"], "native")
-            self.assertIn('fh1_renderer = "native"', config.read_text(encoding="utf-8"))
+            config.parent.mkdir(parents=True)
+            config.write_text(
+                "pinyon_shift_config_schema = 23\n" + "\n".join(retired) + "\ncustom_value = 77\n",
+                encoding="utf-8",
+            )
+            result = self.run_tool(state, "-Action", "Apply")
+            text = config.read_text(encoding="utf-8")
+            self.assertIn("pinyon_shift_config_schema = 24", text)
+            self.assertIn("custom_value = 77", text)
+            for line in retired:
+                self.assertNotIn(line.split(" =")[0] + " =", text)
+            self.assertNotIn("renderer", result["settings"])
+
+    def test_renderer_can_no_longer_be_selected(self):
+        tool = TOOL.read_text(encoding="utf-8")
+        self.assertNotIn("$Renderer", tool)
+        self.assertNotIn("'xenos'", tool)
+        with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:
+            completed = subprocess.run(
+                [POWERSHELL, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                 "-File", str(TOOL), "-StateRoot", temporary, "-Action", "Apply",
+                 "-Renderer", "xenos", "-Json"],
+                capture_output=True, text=True,
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertFalse((pathlib.Path(temporary) / "config/pinyon_shift.toml").exists())
+
+    def test_get_accepts_schema_24(self):
+        with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:
+            state = pathlib.Path(temporary)
+            config = state / "config/pinyon_shift.toml"
+            config.parent.mkdir(parents=True)
+            config.write_text("pinyon_shift_config_schema = 24\nvsync = true\n", encoding="utf-8")
+            result = self.run_tool(state, "-Action", "Get")
+            self.assertEqual(result["operation"], "get")
 
     def test_experimental_3x_writes_4k_class_scale(self):
         with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:

@@ -339,10 +339,9 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
 
     def test_graphics_schema_and_diagnostics_contract(self):
         app = (ROOT / "src/pinyon_shift_app.cpp").read_text(encoding="utf-8")
-        self.assertIn("constexpr uint32_t kConfigSchema = 23", app)
+        self.assertIn("constexpr uint32_t kConfigSchema = 24", app)
         self.assertIn(".schema", app)
-        for setting in ("anisotropic_override", "swap_post_effect", "draw_resolution_scale_x",
-                        "fh1_renderer"):
+        for setting in ("anisotropic_override", "swap_post_effect", "draw_resolution_scale_x"):
             self.assertIn(setting, app)
             self.assertIn(setting, (ROOT / "tools/create-crash-report.ps1").read_text(encoding="utf-8"))
         for setting in ("host_present_fps_limit", "host_present_sleep_spin",
@@ -350,6 +349,13 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
             self.assertIn(setting, app)
             self.assertIn(setting, (ROOT / "tools/set-graphics-experiment.ps1").read_text(encoding="utf-8"))
             self.assertIn(setting, (ROOT / "tools/create-crash-report.ps1").read_text(encoding="utf-8"))
+        # The native renderer is the only renderer: crash reports carry it as
+        # a constant rather than reading a retired renderer choice.
+        crash_report = (ROOT / "tools/create-crash-report.ps1").read_text(encoding="utf-8")
+        self.assertIn("renderer = 'native'", crash_report)
+        for retired in ("fh1_renderer", "pinyon_shift_native_renderer", "xenos_authority",
+                        "'xenos'"):
+            self.assertNotIn(retired, crash_report)
         sdk = ROOT / "thirdparty/shiftglue-sdk"
         self.assertIn("ZPDLifecycle", (sdk / "include/rex/graphics/zpd_lifecycle.h").read_text())
         self.assertIn("ZPDClassification", (sdk / "include/rex/graphics/zpd_policy.h").read_text())
@@ -391,12 +397,42 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         launcher_xaml = (ROOT / "launcher/PinyonShift.Launcher/MainWindow.xaml").read_text(
             encoding="utf-8"
         )
-        self.assertIn("constexpr uint32_t kConfigSchema = 23;", app)
-        self.assertRegex(app, r"pinyon_shift_config_schema,\s*23,")
+        self.assertIn("constexpr uint32_t kConfigSchema = 24;", app)
+        self.assertRegex(app, r"pinyon_shift_config_schema,\s*24,")
         self.assertIn('"pinyon_shift_stabilize_vehicle_presentation = false\\n"', app)
         self.assertIn('"keybind_a = \\"LMB,Space\\"\\n"', app)
-        self.assertIn("schema < 1 || schema > 22", app)
-        self.assertIn('"fh1_renderer = \\"native\\"\\n"', app)
+        # Schemas 1..23 migrate; the current schema is accepted unchanged.
+        self.assertIn("schema < 1 || schema >= kConfigSchema", app)
+        self.assertNotIn('"fh1_renderer = \\"native\\"\\n"', app)
+        self.assertNotIn('\\"xenos\\"', app)
+        retired_block = app[app.index("for (const char* retired_setting : {"):]
+        retired_block = retired_block[:retired_block.index("})")]
+        for retired in (
+            "fh1_renderer", "fh1_native_shadow", "fh1_native_shadow_dump_dir",
+            "fh1_native_shadow_dump_frames", "fh1_native_shadow_verify",
+            "fh1_native_shadow_verify_draws", "fh1_discovery_sampling",
+            "fh1_owned_depth_clear", "fh1_owned_depth_tile_clear",
+            "fh1_native_reflection_mips", "fh1_mip_decode_probe",
+            "fh1_native_ui_boundary_probe", "fh1_glow_probe",
+            "fh1_recycle_geometry_buffers", "fh1_contain_geometry_windows",
+            "fh1_cache_geometry_rejections", "fh1_geometry_cache_mb",
+            "native_stencil_value_output", "native_stencil_value_output_d3d12_intel",
+            "pinyon_shift_native_race", "pinyon_shift_native_ui_live",
+            "pinyon_shift_native_ordered_live_probe",
+            "pinyon_shift_fh1_clear_producer_trace", "pinyon_shift_fh1_scene_dump",
+            "pinyon_shift_snr04_live_worker",
+        ):
+            self.assertIn(f'"{retired}"', retired_block)
+        graphics_tool = (ROOT / "tools/set-graphics-experiment.ps1").read_text(encoding="utf-8")
+        self.assertIn("pinyon_shift_config_schema = 24", graphics_tool)
+        self.assertIn("-gt 24", graphics_tool)
+        self.assertNotIn("-gt 23", graphics_tool)
+        # Apply writes the current schema and so bypasses the game's
+        # migration: it must drop every setting that migration retires.
+        tool_retired = graphics_tool[graphics_tool.index("$retiredSettings = @("):]
+        tool_retired = tool_retired[:tool_retired.index(")")]
+        for retired in re.findall(r'"([a-z0-9_]+)"', retired_block):
+            self.assertIn(f"'{retired}'", tool_retired)
         self.assertIn("display.refresh.detected", app)
         self.assertIn("EnumDisplaySettingsW", app)
         graphics = (
@@ -449,6 +485,13 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         self.assertIn("DisableDepthOfFieldCheckBox", launcher_xaml)
         self.assertNotIn("NativeRendererComboBox", launcher_xaml)
         self.assertNotIn("ResetRendererButton", launcher_xaml)
+        # The renderer choice is gone: native is the only renderer.
+        self.assertNotIn("RENDERER", launcher_xaml)
+        self.assertNotIn("RendererComboBox", launcher_xaml)
+        self.assertNotIn("Xenos", launcher_xaml)
+        self.assertNotIn("RendererComboBox", launcher)
+        self.assertNotIn('"-Renderer"', launcher)
+        self.assertNotIn('JsonPropertyName("renderer")', launcher)
         self.assertIn('Environment.GetEnvironmentVariable("PINYON_SHIFT_STATE_ROOT")', launcher)
         self.assertIn('"-StateRoot", _stateRoot', launcher)
         self.assertIn("DetectPendingReport();\n            UpdatePrimaryButton();", launcher)
@@ -457,6 +500,21 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
             hooks,
             r"pinyon_shift_stabilize_vehicle_presentation,\s*false,",
         )
+
+    def test_tools_no_longer_select_a_renderer(self):
+        # The native renderer is the only renderer; tools must not pass the
+        # retired fh1_renderer cvar or offer a renderer choice.
+        for name in ("replay-fh1-frame.py", "test-fh1-frame-replays.py"):
+            source = (ROOT / "tools" / name).read_text(encoding="utf-8")
+            self.assertNotIn("--renderer", source)
+            self.assertNotIn("fh1_renderer", source)
+            self.assertNotIn("xenos", source)
+        discovery = (ROOT / "tools/start-fh1-discovery.ps1").read_text(encoding="utf-8")
+        self.assertNotIn("fh1_discovery_sampling", discovery)
+        self.assertNotIn("pinyon_shift_fh1_scene_dump", discovery)
+        production = (ROOT / "tools/produce-fh1-artifacts.ps1").read_text(encoding="utf-8")
+        self.assertNotIn("native_renderer.v4.execution.summary", production)
+        self.assertIn("FH1 native executor enabled: native", production)
 
     def test_exact_hash_post_processing_substitutions_are_shipped(self):
         patch = (ROOT / "config/rexglue/analysis/fh1-post-processing.toml").read_text(

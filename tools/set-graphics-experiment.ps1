@@ -24,8 +24,6 @@ param(
     [string]$DisableMotionBlur = 'false',
     [ValidateSet('true', 'false')]
     [string]$DisableDepthOfField = 'false',
-    [ValidateSet('xenos', 'native')]
-    [string]$Renderer = 'native',
     [string]$StateRoot,
     [switch]$Json
 )
@@ -46,8 +44,8 @@ $backupDirectory = Join-Path $configDirectory 'backups'
 function Get-DefaultConfigText {
     @'
 # Pinyon Shift host configuration.
-# Schema 23 makes the native renderer the default (Xenos is the rollback).
-pinyon_shift_config_schema = 23
+# Schema 24 retires the renderer choice; the native renderer is the only one.
+pinyon_shift_config_schema = 24
 input_backend = "sdl"
 hid_mappings_file = "gamecontrollerdb.txt"
 mnk_mode = true
@@ -72,9 +70,73 @@ clear_memory_page_state = true
 occlusion_query = "legacy"
 zpd_end_policy = "report_layout"
 zpd_end_fallback = "pairwise_sentinel"
-fh1_renderer = "native"
 '@
 }
+
+# Settings a config file may still carry from an earlier release. Apply writes
+# the current schema, so the game's own migration never sees the file again:
+# drop every setting that migration retires (src/pinyon_shift_app.cpp).
+$retiredSettings = @(
+    'pinyon_shift_fh1_guest_vblank_hz',
+    'pinyon_shift_native_renderer_texture_bridge',
+    'pinyon_shift_native_renderer',
+    'pinyon_shift_native_renderer_sky_horizon_suppression',
+    'pinyon_shift_native_renderer_census',
+    'pinyon_shift_fh1_native_v4',
+    'readback_resolve',
+    'readback_resolve_half_pixel_offset',
+    'readback_memexport',
+    'readback_memexport_fast',
+    'fh1_renderer',
+    'fh1_native_shadow',
+    'fh1_native_shadow_dump_dir',
+    'fh1_native_shadow_dump_frames',
+    'fh1_native_shadow_verify',
+    'fh1_native_shadow_verify_draws',
+    'fh1_discovery_sampling',
+    'fh1_owned_depth_clear',
+    'fh1_owned_depth_tile_clear',
+    'fh1_native_reflection_mips',
+    'fh1_mip_decode_probe',
+    'fh1_native_ui_boundary_probe',
+    'fh1_glow_probe',
+    'fh1_recycle_geometry_buffers',
+    'fh1_contain_geometry_windows',
+    'fh1_cache_geometry_rejections',
+    'fh1_geometry_cache_mb',
+    'native_stencil_value_output',
+    'native_stencil_value_output_d3d12_intel',
+    'pinyon_shift_native_race',
+    'pinyon_shift_native_race_capture_start_frame',
+    'pinyon_shift_native_ui_live',
+    'pinyon_shift_native_ui_replay_source_frame',
+    'pinyon_shift_native_ui_scene_probe',
+    'pinyon_shift_native_ui_shadow_start_frame',
+    'pinyon_shift_native_ui_clear_probe',
+    'pinyon_shift_native_output_clear_probe',
+    'pinyon_shift_native_scene_clear_probe',
+    'pinyon_shift_native_scene_triangle_probe',
+    'pinyon_shift_native_small_target_probe',
+    'pinyon_shift_native_track_probe',
+    'pinyon_shift_native_ordered_live_probe',
+    'pinyon_shift_fh1_clear_producer_trace',
+    'pinyon_shift_fh1_scene_dump',
+    'pinyon_shift_snr01_trace_following_frame',
+    'pinyon_shift_snr01_trace_resident_packet_writers',
+    'pinyon_shift_snr01_trace_source_frame',
+    'pinyon_shift_snr01_watch_packet_pages',
+    'pinyon_shift_snr02_item_payload_probe',
+    'pinyon_shift_snr02_trace_first_rebuild_after_frame',
+    'pinyon_shift_snr02_trace_view_call',
+    'pinyon_shift_snr02_track_payload_probe',
+    'pinyon_shift_snr03_probe_following_frame',
+    'pinyon_shift_snr03_probe_frame',
+    'pinyon_shift_snr04_live_continuous',
+    'pinyon_shift_snr04_live_handoff',
+    'pinyon_shift_snr04_live_source_frame',
+    'pinyon_shift_snr04_live_worker',
+    'pinyon_shift_snr_m02_trace_source_frame'
+)
 
 function New-ConfigBackup {
     if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { return $null }
@@ -167,7 +229,6 @@ function Get-SettingsResult([string]$Text, [string]$BackupPath, [string]$Operati
             occlusion_query = Get-TomlValue $Text 'occlusion_query' 'legacy'
             zpd_end_policy = Get-TomlValue $Text 'zpd_end_policy' 'report_layout'
             zpd_end_fallback = Get-TomlValue $Text 'zpd_end_fallback' 'pairwise_sentinel'
-            renderer = Get-TomlValue $Text 'fh1_renderer' 'native'
         }
         restart_required = $Operation -ne 'Get'
     }
@@ -181,7 +242,7 @@ switch ($Action) {
             Get-Content -LiteralPath $configPath -Raw
         } else { Get-DefaultConfigText }
         $schema = Get-SchemaVersion $text
-        if ($schema -lt 1 -or $schema -gt 23) { throw "Unsupported host configuration schema: $schema" }
+        if ($schema -lt 1 -or $schema -gt 24) { throw "Unsupported host configuration schema: $schema" }
     }
     'Reset' {
         $backup = New-ConfigBackup
@@ -198,7 +259,7 @@ switch ($Action) {
         $backup = New-ConfigBackup
         $text = Get-Content -LiteralPath $source.FullName -Raw
         $schema = Get-SchemaVersion $text
-        if ($schema -lt 1 -or $schema -gt 23) { throw "Backup uses unsupported schema: $schema" }
+        if ($schema -lt 1 -or $schema -gt 24) { throw "Backup uses unsupported schema: $schema" }
         Write-Config $text
     }
     'Apply' {
@@ -206,19 +267,12 @@ switch ($Action) {
             Get-Content -LiteralPath $configPath -Raw
         } else { Get-DefaultConfigText }
         $schema = Get-SchemaVersion $text
-        if ($schema -lt 1 -or $schema -gt 23) { throw "Unsupported host configuration schema: $schema" }
+        if ($schema -lt 1 -or $schema -gt 24) { throw "Unsupported host configuration schema: $schema" }
         $backup = New-ConfigBackup
-        $text = Remove-TomlValue $text 'pinyon_shift_fh1_guest_vblank_hz'
-        $text = Remove-TomlValue $text 'pinyon_shift_native_renderer_texture_bridge'
-        $text = Remove-TomlValue $text 'pinyon_shift_native_renderer'
-        $text = Remove-TomlValue $text 'pinyon_shift_native_renderer_sky_horizon_suppression'
-        $text = Remove-TomlValue $text 'pinyon_shift_fh1_native_v4'
-        $text = Remove-TomlValue $text 'readback_resolve'
-        $text = Remove-TomlValue $text 'readback_resolve_half_pixel_offset'
-        $text = Remove-TomlValue $text 'readback_memexport'
-        $text = Remove-TomlValue $text 'readback_memexport_fast'
-        $text = Set-TomlValue $text 'pinyon_shift_config_schema' '23'
-        $text = Set-TomlValue $text 'fh1_renderer' ('"' + $Renderer + '"')
+        foreach ($retired in $retiredSettings) {
+            $text = Remove-TomlValue $text $retired
+        }
+        $text = Set-TomlValue $text 'pinyon_shift_config_schema' '24'
         $text = Set-TomlValue $text 'pinyon_shift_fh1_render_fps_limit' '0'
         $text = Set-TomlValue $text 'pinyon_shift_fh1_source_presentation' 'true'
         if (-not [regex]::IsMatch($text, '(?m)^\s*xma_relaxed_padding_admission\s*=')) {

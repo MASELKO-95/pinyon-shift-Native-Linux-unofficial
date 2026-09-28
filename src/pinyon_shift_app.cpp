@@ -33,15 +33,17 @@
 extern "C" int __llvm_profile_dump(void);
 #endif
 
-REXCVAR_DEFINE_UINT32(pinyon_shift_config_schema, 23, "Pinyon Shift",
+REXCVAR_DEFINE_UINT32(pinyon_shift_config_schema, 24, "Pinyon Shift",
                       "Pinyon Shift host configuration schema version");
 REXCVAR_DEFINE_BOOL(pinyon_shift_capture_performance, true, "Pinyon Shift",
                     "Capture lightweight per-frame performance counters to a session CSV");
 namespace {
 
-// Schema 22 adds the renderer choice (fh1_renderer). Schema 23 makes the
-// native renderer the default; Xenos stays selectable as the rollback.
-constexpr uint32_t kConfigSchema = 23;
+// Schema 22 added the renderer choice (fh1_renderer) and schema 23 made the
+// native renderer its default. Schema 24 retires the choice: the native
+// renderer is the only renderer, so migration drops fh1_renderer and the other
+// renderer-era settings the runtime no longer registers.
+constexpr uint32_t kConfigSchema = 24;
 
 bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
                            bool& migrated) {
@@ -81,8 +83,7 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
               "clear_memory_page_state = true\n"
               "occlusion_query = \"legacy\"\n"
               "zpd_end_policy = \"report_layout\"\n"
-              "zpd_end_fallback = \"pairwise_sentinel\"\n"
-              "fh1_renderer = \"native\"\n";
+              "zpd_end_fallback = \"pairwise_sentinel\"\n";
     created = true;
     return output.good();
   }
@@ -106,7 +107,7 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
     if (schema == kConfigSchema) {
       return true;
     }
-    if (schema < 1 || schema > 22) {
+    if (schema < 1 || schema >= kConfigSchema) {
       return false;
     }
 
@@ -151,7 +152,59 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
              "pinyon_shift_native_renderer_sky_horizon_suppression",
              "pinyon_shift_fh1_native_v4",
              "readback_resolve",
-             "readback_resolve_half_pixel_offset"}) {
+             "readback_resolve_half_pixel_offset",
+             "pinyon_shift_native_renderer_census",
+             // Schema 24: renderer-selection, native-shadow and Xenos-era
+             // renderer settings that no longer exist.
+             "fh1_renderer",
+             "fh1_native_shadow",
+             "fh1_native_shadow_dump_dir",
+             "fh1_native_shadow_dump_frames",
+             "fh1_native_shadow_verify",
+             "fh1_native_shadow_verify_draws",
+             "fh1_discovery_sampling",
+             "fh1_owned_depth_clear",
+             "fh1_owned_depth_tile_clear",
+             "fh1_native_reflection_mips",
+             "fh1_mip_decode_probe",
+             "fh1_native_ui_boundary_probe",
+             "fh1_glow_probe",
+             "fh1_recycle_geometry_buffers",
+             "fh1_contain_geometry_windows",
+             "fh1_cache_geometry_rejections",
+             "fh1_geometry_cache_mb",
+             "native_stencil_value_output",
+             "native_stencil_value_output_d3d12_intel",
+             "pinyon_shift_native_race",
+             "pinyon_shift_native_race_capture_start_frame",
+             "pinyon_shift_native_ui_live",
+             "pinyon_shift_native_ui_replay_source_frame",
+             "pinyon_shift_native_ui_scene_probe",
+             "pinyon_shift_native_ui_shadow_start_frame",
+             "pinyon_shift_native_ui_clear_probe",
+             "pinyon_shift_native_output_clear_probe",
+             "pinyon_shift_native_scene_clear_probe",
+             "pinyon_shift_native_scene_triangle_probe",
+             "pinyon_shift_native_small_target_probe",
+             "pinyon_shift_native_track_probe",
+             "pinyon_shift_native_ordered_live_probe",
+             "pinyon_shift_fh1_clear_producer_trace",
+             "pinyon_shift_fh1_scene_dump",
+             "pinyon_shift_snr01_trace_following_frame",
+             "pinyon_shift_snr01_trace_resident_packet_writers",
+             "pinyon_shift_snr01_trace_source_frame",
+             "pinyon_shift_snr01_watch_packet_pages",
+             "pinyon_shift_snr02_item_payload_probe",
+             "pinyon_shift_snr02_trace_first_rebuild_after_frame",
+             "pinyon_shift_snr02_trace_view_call",
+             "pinyon_shift_snr02_track_payload_probe",
+             "pinyon_shift_snr03_probe_following_frame",
+             "pinyon_shift_snr03_probe_frame",
+             "pinyon_shift_snr04_live_continuous",
+             "pinyon_shift_snr04_live_handoff",
+             "pinyon_shift_snr04_live_source_frame",
+             "pinyon_shift_snr04_live_worker",
+             "pinyon_shift_snr_m02_trace_source_frame"}) {
       migrated_text = std::regex_replace(
           migrated_text,
           std::regex("(?:^|\\n)\\s*" + std::string(retired_setting) +
@@ -206,14 +259,7 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
          "pinyon_shift_fh1_render_fps_limit = 0\n"},
         {"pinyon_shift_fh1_source_presentation",
          "pinyon_shift_fh1_source_presentation = true\n"},
-        {"fh1_renderer", "fh1_renderer = \"native\"\n"},
     };
-    // Schema 23: the native renderer becomes the default. Schema 22 only
-    // offered it as an experiment, so its xenos value is the old default.
-    migrated_text = std::regex_replace(
-        migrated_text,
-        std::regex(R"(((?:^|\n)\s*fh1_renderer\s*=\s*)\"xenos\")", std::regex::icase),
-        "$1\"native\"");
     for (const auto& [name, line] : graphics_settings) {
       const std::regex setting_pattern("(?:^|\\n)\\s*" + std::string(name) +
                                        "\\s*=", std::regex::icase);

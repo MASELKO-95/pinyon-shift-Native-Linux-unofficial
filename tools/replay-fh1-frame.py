@@ -53,8 +53,7 @@ def replay(args: argparse.Namespace) -> dict[str, object]:
             capture_output=True, text=True, check=True)
     # Pipelines are created synchronously: an asynchronous creation drops the
     # draw that requested it, which would make replays nondeterministic.
-    game_arguments = [f"--fh1_frame_replay={dump}", f"--fh1_renderer={args.renderer}",
-                      "--async_shader_compilation=false"]
+    game_arguments = [f"--fh1_frame_replay={dump}", "--async_shader_compilation=false"]
     game_arguments += args.game_argument or []
     command = [
         "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
@@ -75,12 +74,12 @@ def replay(args: argparse.Namespace) -> dict[str, object]:
         raise RuntimeError(
             f"replay wrote no result ({process.returncode}):\n{process.stdout}\n{process.stderr}")
     result = json.loads(result_path.read_text(encoding="utf-8"))
-    result["renderer"] = args.renderer
     if args.max_differing_words is not None and result["differing_words"] > args.max_differing_words:
         result["failure"] = "front buffer differs from the recording"
     # Replays are deterministic, so a golden replay of the same dump is an
-    # exact regression reference for executor changes.
-    golden = Path(f"{dump}.{args.renderer}.golden.bin")
+    # exact regression reference for executor changes. The ".native" infix
+    # dates from when a renderer could be chosen; existing goldens keep it.
+    golden = Path(f"{dump}.native.golden.bin")
     actual = result_bin.read_bytes()
     if args.write_golden:
         golden.write_bytes(actual)
@@ -103,7 +102,6 @@ def main() -> int:
                         help="pinned render seed (see tools/create-render-seed.py)")
     parser.add_argument("--work", type=Path, default=Path(".local/replay/state"),
                         help="private state directory, replaced on every run")
-    parser.add_argument("--renderer", default="native", choices=("native", "xenos"))
     parser.add_argument("--shader-pack", type=Path)
     parser.add_argument("--configuration")
     parser.add_argument("--hidden", action="store_true")
@@ -111,7 +109,7 @@ def main() -> int:
     parser.add_argument("--max-differing-words", type=int,
                         help="fail when more front buffer words differ")
     parser.add_argument("--write-golden", action="store_true",
-                        help="store this replay as <dump>.<renderer>.golden.bin")
+                        help="store this replay as <dump>.native.golden.bin")
     parser.add_argument("--game-argument", action="append")
     args = parser.parse_args()
     try:

@@ -2,7 +2,7 @@
 """Replay every FH1 frame dump in a directory against its golden replay.
 
 The offline executor regression suite: each `*.fh1frame` needs a
-`<dump>.<renderer>.golden.bin` from a known-good build (`--write-golden`
+`<dump>.native.golden.bin` from a known-good build (`--write-golden`
 records them). Dumps are local (they hold guest memory) and are not committed.
 """
 
@@ -27,7 +27,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("directory", type=Path)
     parser.add_argument("--state-root", type=Path, required=True)
-    parser.add_argument("--renderer", default="native", choices=("native", "xenos"))
     parser.add_argument("--shader-pack", type=Path)
     parser.add_argument("--configuration")
     parser.add_argument("--timeout", type=int, default=300)
@@ -42,7 +41,7 @@ def main() -> int:
     for dump in dumps:
         options = argparse.Namespace(
             dump=dump, state_root=args.state_root, work=Path(".local/replay/state"),
-            renderer=args.renderer, shader_pack=args.shader_pack,
+            shader_pack=args.shader_pack,
             configuration=args.configuration, hidden=True, timeout=args.timeout,
             max_differing_words=None, write_golden=args.write_golden, game_argument=None)
         try:

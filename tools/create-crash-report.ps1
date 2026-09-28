@@ -238,9 +238,7 @@ try {
         'anisotropic_override', 'swap_post_effect',
         'disable_motion_blur', 'disable_depth_of_field',
         'draw_resolution_scale_x', 'draw_resolution_scale_y', 'occlusion_query',
-        'zpd_end_policy', 'zpd_end_fallback', 'clear_memory_page_state', 'fh1_renderer',
-        'pinyon_shift_native_renderer',
-        'pinyon_shift_native_renderer_sky_horizon_suppression'
+        'zpd_end_policy', 'zpd_end_fallback', 'clear_memory_page_state'
     )
     $configPath = Join-Path $resolvedStateRoot 'config/pinyon_shift.toml'
     $settings = [ordered]@{}
@@ -249,186 +247,6 @@ try {
             if ($line -match '^\s*(?<key>[a-zA-Z0-9_]+)\s*=\s*(?<value>.+?)\s*(?:#.*)?$' -and
                 $Matches.key -in $allowedSettings) {
                 $settings[$Matches.key] = $Matches.value
-            }
-        }
-    }
-
-    $nativeRenderer = [ordered]@{
-        configured = if ($settings.Contains('pinyon_shift_native_renderer')) {
-            ([string]$settings['pinyon_shift_native_renderer']).Trim('"')
-        } else { 'xenos' }
-        effective = 'unknown'
-        composition = $null
-        selected_output = $null
-        authority = $null
-        claimed_frames = [uint64]0
-        waiting_reason = $null
-        failure_reason = $null
-        sky_horizon_suppression = [ordered]@{
-            configured = if ($settings.Contains(
-                'pinyon_shift_native_renderer_sky_horizon_suppression')) {
-                [string]$settings[
-                    'pinyon_shift_native_renderer_sky_horizon_suppression']
-            } else { 'false' }
-            requested = $false
-            status = 'not_observed'
-            suppression_allowed = $false
-        }
-        title_draw_provenance = [ordered]@{
-            status = 'not_observed'
-            correlation = $null
-            title_packets_recorded = [uint64]0
-            backend_packet_matches = [uint64]0
-            prepared_matches = [uint64]0
-            matched_unprepared_draws = [uint64]0
-            backend_draw_outcomes_observed = [uint64]0
-            backend_draw_outcome_mismatches = [uint64]0
-            backend_draw_outcome_missing = [uint64]0
-            title_backend_outcomes = [uint64]0
-            pending_packets = [uint64]0
-            backend_draws_without_title_packet = [uint64]0
-            packet_address_failures = [uint64]0
-            reused_live_packet_addresses = [uint64]0
-            packet_table_overflow = [uint64]0
-            forwarding_mismatches = [uint64]0
-            origin_stack_overflow = [uint64]0
-            packets_without_origin = [uint64]0
-            aggregate_count = [uint64]0
-            prepared_aggregate_count = [uint64]0
-            unprepared_aggregate_count = [uint64]0
-            unprepared_aggregate_matches = [uint64]0
-            aggregate_overflow = [uint64]0
-            packet_accounting_complete = $false
-            origin_accounting_complete = $false
-            xenos_authority = $true
-            suppression_allowed = $false
-        }
-        command_buffer_lineage = [ordered]@{
-            status = 'not_observed'
-            correlation = $null
-            draws = [uint64]0
-            primary_draws = [uint64]0
-            indirect_draws = [uint64]0
-            invalid_lineages = [uint64]0
-            prepared_draws = [uint64]0
-            entries = [uint64]0
-            overflow = [uint64]0
-            capacity = [uint64]0
-            title_indirect_packets_recorded = [uint64]0
-            title_indirect_packet_address_failures = [uint64]0
-            title_indirect_packet_table_overflow = [uint64]0
-            title_indirect_packet_evictions = [uint64]0
-            indirect_buffer_enters = [uint64]0
-            indirect_buffer_exits = [uint64]0
-            indirect_buffers_open_at_shutdown = [uint64]0
-            indirect_buffer_constructor_matches = [uint64]0
-            indirect_buffer_constructor_unmatched = [uint64]0
-            indirect_buffer_stack_faults = [uint64]0
-            indirect_draw_stack_faults = [uint64]0
-            xenos_authority = $true
-            suppression_allowed = $false
-        }
-    }
-    if ($null -ne $eventLog) {
-        foreach ($line in Get-Content -LiteralPath $eventLog.FullName -ErrorAction SilentlyContinue) {
-            try { $event = $line | ConvertFrom-Json -ErrorAction Stop } catch { continue }
-            switch ($event.event) {
-                'native_renderer.output.state' { $nativeRenderer.effective = [string]$event.mode }
-                'native_renderer.output.installed' { $nativeRenderer.effective = [string]$event.mode }
-                'native_renderer.output.frame' {
-                    $nativeRenderer.effective = [string]$event.mode
-                    if ($event.PSObject.Properties['composition']) {
-                        $nativeRenderer.composition = [string]$event.composition
-                    }
-                    if ($event.PSObject.Properties['selected_output']) {
-                        $nativeRenderer.selected_output = [string]$event.selected_output
-                    }
-                    if ($event.PSObject.Properties['authority']) {
-                        $nativeRenderer.authority = [string]$event.authority
-                    }
-                    $nativeRenderer.claimed_frames = [uint64]$event.claimed
-                    $nativeRenderer.waiting_reason = $null
-                }
-                'native_renderer.output.waiting' {
-                    $nativeRenderer.effective = 'xenos'
-                    $nativeRenderer.waiting_reason = [string]$event.reason
-                }
-                'native_renderer.output.failure' {
-                    $nativeRenderer.effective = 'xenos'
-                    $nativeRenderer.failure_reason = [string]$event.reason
-                }
-                'native_renderer.suppression_control' {
-                    $nativeRenderer.sky_horizon_suppression.requested =
-                        [string]$event.requested -eq 'true'
-                    $nativeRenderer.sky_horizon_suppression.status =
-                        [string]$event.status
-                    $nativeRenderer.sky_horizon_suppression.suppression_allowed =
-                        [string]$event.suppression_allowed -eq 'true'
-                }
-                'native_renderer.discovery.title_provenance_config' {
-                    $nativeRenderer.title_draw_provenance.status =
-                        [string]$event.status
-                }
-                'native_renderer.discovery.title_provenance_summary' {
-                    $provenance = $nativeRenderer.title_draw_provenance
-                    $provenance.status = 'summary_observed'
-                    $provenance.correlation = [string]$event.correlation
-                    foreach ($field in @(
-                            'title_packets_recorded', 'backend_packet_matches',
-                            'prepared_matches', 'matched_unprepared_draws',
-                            'backend_draw_outcomes_observed',
-                            'backend_draw_outcome_mismatches',
-                            'backend_draw_outcome_missing',
-                            'title_backend_outcomes',
-                            'pending_packets', 'backend_draws_without_title_packet',
-                            'packet_address_failures',
-                            'reused_live_packet_addresses', 'packet_table_overflow',
-                            'forwarding_mismatches', 'origin_stack_overflow',
-                            'packets_without_origin', 'aggregate_count',
-                            'prepared_aggregate_count',
-                            'unprepared_aggregate_count',
-                            'unprepared_aggregate_matches',
-                            'aggregate_overflow')) {
-                        $provenance[$field] = [uint64]$event.$field
-                    }
-                    $provenance.packet_accounting_complete =
-                        [string]$event.packet_accounting_complete -eq 'true'
-                    $provenance.origin_accounting_complete =
-                        [string]$event.origin_accounting_complete -eq 'true'
-                    $provenance.xenos_authority =
-                        [string]$event.xenos_authority -eq 'true'
-                    $provenance.suppression_allowed =
-                        [string]$event.suppression_allowed -eq 'true'
-                }
-                'native_renderer.discovery.command_buffer_lineage_config' {
-                    $nativeRenderer.command_buffer_lineage.status =
-                        [string]$event.status
-                }
-                'native_renderer.discovery.command_buffer_lineage_summary' {
-                    $lineage = $nativeRenderer.command_buffer_lineage
-                    $lineage.status = 'summary_observed'
-                    $lineage.correlation = [string]$event.correlation
-                    foreach ($field in @(
-                            'draws', 'primary_draws', 'indirect_draws',
-                            'invalid_lineages', 'prepared_draws', 'entries',
-                            'overflow', 'capacity',
-                            'title_indirect_packets_recorded',
-                            'title_indirect_packet_address_failures',
-                            'title_indirect_packet_table_overflow',
-                            'title_indirect_packet_evictions',
-                            'indirect_buffer_enters', 'indirect_buffer_exits',
-                            'indirect_buffers_open_at_shutdown',
-                            'indirect_buffer_constructor_matches',
-                            'indirect_buffer_constructor_unmatched',
-                            'indirect_buffer_stack_faults',
-                            'indirect_draw_stack_faults')) {
-                        $lineage[$field] = [uint64]$event.$field
-                    }
-                    $lineage.xenos_authority =
-                        [string]$event.xenos_authority -eq 'true'
-                    $lineage.suppression_allowed =
-                        [string]$event.suppression_allowed -eq 'true'
-                }
             }
         }
     }
@@ -498,7 +316,8 @@ try {
             xma_stalls = $xmaStalls
         }
         graphics = [ordered]@{
-            native_renderer = $nativeRenderer
+            # The native renderer is the only renderer; there is no choice to report.
+            renderer = 'native'
             zpd = $zpdCounters
             resolve_readback = $resolveCounters
             presentation = $presentationCounters

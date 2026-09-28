@@ -1,7 +1,6 @@
 pinyon-shift-fh1-render-test-v1
-# Output-frame paced: do not add clock-hz while native scene capture slows output.
+# Output-frame paced: do not add clock-hz.
 # AppData save: enter Recaro race, pause/retire to free roam, quit to title.
-# Run with native race capture from source frame 5000 and native output on.
 input 0 0000 0 0 0 0 0 0
 input 360 1000 0 0 0 0 0 0
 input 366 0000 0 0 0 0 0 0

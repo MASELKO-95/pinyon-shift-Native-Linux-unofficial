@@ -208,10 +208,7 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <DockPanel>
                         <Button DockPanel.Dock="Right" Content="BACK" Style="{StaticResource QuietButton}"
@@ -291,21 +288,13 @@
                             <TextBlock Text="Disable depth of field" TextWrapping="Wrap"/>
                         </CheckBox>
                     </Grid>
-                    <StackPanel Grid.Row="5" Margin="0,17,0,0">
-                        <TextBlock Text="RENDERER" FontSize="10" Foreground="{StaticResource MutedBrush}"/>
-                        <ComboBox x:Name="RendererComboBox" Margin="0,8,0,0" SelectedIndex="0"
-                                  AutomationProperties.Name="Renderer">
-                            <ComboBoxItem Tag="native"><TextBlock Text="Native · default" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
-                            <ComboBoxItem Tag="xenos"><TextBlock Text="Xenos · rollback" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
-                        </ComboBox>
-                    </StackPanel>
-                    <Border Grid.Row="6" Background="#171B17" BorderBrush="{StaticResource LineBrush}"
+                    <Border Grid.Row="5" Background="#171B17" BorderBrush="{StaticResource LineBrush}"
                             BorderThickness="1" CornerRadius="4" Padding="14,11" Margin="0,17,0,0">
                         <TextBlock x:Name="GraphicsStatusText" Text="Loading current settings…" TextWrapping="Wrap"
                                    Foreground="{StaticResource MutedBrush}" FontSize="11"
                                    AutomationProperties.LiveSetting="Polite"/>
                     </Border>
-                    <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+                    <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
                         <Button x:Name="RestoreGraphicsButton" Content="RESTORE BACKUP" Style="{StaticResource QuietButton}"
                                 Margin="0,0,10,0" Click="RestoreGraphicsButton_Click"/>
                         <Button x:Name="ResetGraphicsButton" Content="RESET DEFAULTS" Style="{StaticResource QuietButton}"

@@ -846,7 +846,6 @@ public partial class MainWindow : Window
             "-Preset", SelectedTag(GraphicsPresetComboBox),
             "-DisableMotionBlur", DisableMotionBlurCheckBox.IsChecked == true ? "true" : "false",
             "-DisableDepthOfField", DisableDepthOfFieldCheckBox.IsChecked == true ? "true" : "false",
-            "-Renderer", SelectedTag(RendererComboBox),
             "-Json"
         }) startInfo.ArgumentList.Add(argument);
         using var process = Process.Start(startInfo) ??
@@ -879,7 +878,6 @@ public partial class MainWindow : Window
             SelectTag(ResolutionComboBox, result.Settings.ResolutionScale.ToString());
             DisableMotionBlurCheckBox.IsChecked = result.Settings.DisableMotionBlur;
             DisableDepthOfFieldCheckBox.IsChecked = result.Settings.DisableDepthOfField;
-            SelectTag(RendererComboBox, result.Settings.Renderer ?? "native");
         }
         finally
         {
@@ -899,7 +897,6 @@ public partial class MainWindow : Window
         PostEffectComboBox.IsEnabled = enabled;
         ResolutionComboBox.IsEnabled = enabled;
         GraphicsPresetComboBox.IsEnabled = enabled;
-        RendererComboBox.IsEnabled = enabled;
         DisableMotionBlurCheckBox.IsEnabled = enabled;
         DisableDepthOfFieldCheckBox.IsEnabled = enabled;
         SaveGraphicsButton.IsEnabled = enabled;
@@ -931,6 +928,5 @@ public partial class MainWindow : Window
         [property: JsonPropertyName("preset")] string Preset,
         [property: JsonPropertyName("resolution_scale")] int ResolutionScale,
         [property: JsonPropertyName("clear_memory_page_state")] bool ClearMemoryPageState,
-        [property: JsonPropertyName("vsync")] bool Vsync,
-        [property: JsonPropertyName("renderer")] string? Renderer);
+        [property: JsonPropertyName("vsync")] bool Vsync);
 }

@@ -77,9 +77,8 @@ $job = Start-Job -ArgumentList $repo,$StateRoot,$Output,$RenderTestScript,$Check
         BuildDirectory=$buildDirectory
         CollectFh1PassInventory=$true
         GameArguments=@('--pinyon_shift_capture_performance=true', '--perf_log_max_mb=512',
-            '--fh1_discovery_sampling=true',
             '--log_max_file_size_mb=5', '--log_max_files=20',
-            '--pinyon_shift_fh1_scene_dump=false', "--pinyon_shift_fh1_corpus_checkpoint_seconds=$checkpoint")
+            "--pinyon_shift_fh1_corpus_checkpoint_seconds=$checkpoint")
         Json=$true
     }
     if ($performanceOnly) {
