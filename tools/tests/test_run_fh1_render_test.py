@@ -57,7 +57,6 @@ class Fh1RenderTestRunnerTests(unittest.TestCase):
         captures = MODULE.parse_scenario(scenarios / "fh1-race-start-wait.fh1test")[0]
         self.assertIn((4330, "race-moving"), captures)
 
-
     def test_resolves_disc_corpus_ucode_directory(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
