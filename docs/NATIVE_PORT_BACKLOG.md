@@ -90,7 +90,7 @@ architecture.
 
 | ID | Slice | Player- or modder-visible outcome | Size | Depends on | Train |
 | --- | --- | --- | --- | --- | --- |
-| NP-0 | Clean native baseline | Smaller renderer DLL, no allowlists, one occlusion path, car-selection textures fixed, stale tools gone | M | — | 0.3.0 |
+| NP-0 | Clean native baseline | Smaller renderer DLL, no allowlists, one occlusion path, car-selection textures fixed, stale tools gone, graphics prepared only when graphics code changes | M | — | 0.3.0 |
 | NP-1 | In-game settings and host UI layer | "SETTINGS" in the pause menu opens a native-looking screen; hot settings apply instantly | L | NP-0 | 0.3.0 |
 | NP-2 | Fast frame, pass 1 | Measurably shorter race frames from the renderer's CPU path | M | NP-0 | 0.3.0 |
 | NP-3 | Modern CPU, pass 1 | Threads placed and prioritised, no spinning cores, NPC and UI animations at real time | M–L | NP-2.0 | 0.3.0 |
@@ -107,6 +107,24 @@ architecture.
 | NP-14 | Android | ARM64 Vulkan build with a cross-build workflow | XL | NP-13 | 1.x |
 | NP-X | Quality and tooling | C++ tests and SDK build in CI, pruned tools, hardware qualification | ongoing | — | all |
 | NP-D | Distribution and first run | Faster first build, launcher core reusable across platforms, signing | ongoing | — | all |
+
+## Working order
+
+**Current goal (set 2026-09-28): finish NP-0, then NP-1.** NP-0 shrinks the
+code every later slice touches, and NP-1 is both the largest remaining
+"feels native" change and the surface NP-4 to NP-8 build on. Order:
+
+1. **NP-0.8** first: every rebuild and every new pack miss costs about ten
+   minutes of graphics preparation today, and NP-1 alone means dozens of
+   rebuilds.
+2. **NP-0.6** (the one visible bug in NP-0), then **NP-0.2** to **NP-0.5**.
+3. **NP-1.1** to **NP-1.7**.
+4. Between NP-1 items, the small measurable NP-2 items: **NP-2.1**,
+   **NP-2.2** and **NP-2.8**, then NP-2.3 to NP-2.5.
+5. Then NP-3, whose thread-placement and busy-poll work matters more now
+   that the GPU commands thread has less to do.
+
+NP-0.7 moved to NP-9.4, which bumps the pack format anyway.
 
 ## NP-0 Clean native baseline
 
@@ -126,16 +144,18 @@ GPU ABI and stay.
 | NP-0.4 | Reconcile `readback_resolve`: the schema-24 migration strips it (`src/pinyon_shift_app.cpp:154-155`) and `set-graphics-experiment.ps1` treats it as retired, but the executor still honours it (`fh1_native_executor.cpp:2108, 2284`) and the docs describe it. Keep it as a hidden cvar and stop stripping it, or remove it everywhere. | S |
 | NP-0.5 | Delete dead project code and tools: `fh1_pass_tracker.cpp` and `fh1_gpu_corpus.cpp` consume `GraphicsFh1ExecutionKey`, which the SDK no longer emits; `shader_capture.cpp` still writes `"fallback":"xenos"`; the 73 `tools/*` scripts from the retired static-world, visibility, track, vehicle, semantic, dispatch and lineage research and their `tools/tests` twins. Record the deletion checkpoint in [RESEARCH.md](native-renderer/RESEARCH.md) so `git show` still reaches them. | S |
 | NP-0.6 | Fix the open items in [BUGS.md](../BUGS.md): the striped pink car-card textures on car selection (a texture format or tiling decode issue in the texture cache; the BC3 tiled decoder in `tools/fh1_texture_import.cpp` is the reference) and rewrite the stale "native render not working" entry, since native is the only renderer. | S–M |
-| NP-0.7 | Prebuild geometry shaders: generate the finite `GeometryShaderKey` set offline in the producer, store it in the pack, and remove `CreateDxbcGeometryShader` (`pipeline_cache.cpp:2578-3622`), `format/dxbc.h` and `DXBCChecksum.cpp` from the runtime DLL. May slip to NP-9.4 if the pack format bump is batched there. | M |
+| NP-0.7 | **Moved to NP-9.4**: prebuilt geometry shaders need a pack format bump, which NP-9.4 makes anyway. The runtime keeps `CreateDxbcGeometryShader` until then. | — |
+| NP-0.8 | Faster graphics preparation, first part (see [pending](#faster-graphics-preparation)): translate the disc corpus on worker threads, one `DxbcShaderTranslator` each, instead of the single-threaded loop in `pipeline_cache.cpp` (105 s of a 6.6-minute 1x preparation), with a byte-identical pack; and key `tools/prepare-fh1-shaders.ps1` on what decides the pack and startup catalogs (the SDK graphics sources, the producer and preparation tools, the preparation route, toolchain, device and driver, settings, scale and recorded misses) instead of the `pinyon_shift.exe`, `rexgpu-fh1.dll` and `rexruntime.dll` binaries, so a host-only rebuild starts the game without preparing. A shader a code change newly reaches is still recorded as a pack miss and prepared on the next launch. Incremental misses, unpaced routes and a shorter strict check stay pending. | S–M |
 
-**Gates.** `rexgpu-fh1` compiles without translator bodies and without
-`thirdparty/dxbc`; every `REXCVAR_DECLARE` under `REX_HAS_D3D12` has a
+**Gates.** `rexgpu-fh1` compiles without translator bodies; every `REXCVAR_DECLARE` under `REX_HAS_D3D12` has a
 definition; no `ucode_data_hash() == 0x…` literal under
 `sdk/src/graphics/d3d12`; `tools/tests` pass; golden frame replays are
 byte-identical; `fh1-race-sync`, `fh1-modes-sync` and `fh1-fmv` run with zero
 pack misses and zero executor skips; `occlusion_query` has one behaviour and
 the config writer and migration agree; frame-time medians within run-to-run
-noise of the current baselines; car selection shows real car cards.
+noise of the current baselines; car selection shows real car cards; a
+rebuild that touches no graphics input launches without preparing, and the
+parallel producer writes a pack byte-identical to the single-threaded one.
 
 ## NP-1 In-game settings and host UI layer
 
@@ -353,7 +373,7 @@ on Windows before it gains a second consumer.
 | NP-9.1 | Resolve output aliasing: resolve directly into the destination texture (or bind native-written ranges as SRVs keyed by destination range and write generation), keep the mirror write for one-off CPU readbacks and thumbnails, fall back to the mirror decode when the CPU touched the range, and present the front buffer from the native surface without `RequestSwapTexture`. This removes the encode, untile and copy round trip for 15 M resolve-sourced fetches and the front buffer every frame. | L |
 | NP-9.2 | Direct D3D12 recording if NP-2.6 chose overlap rather than removal of the tape. | M |
 | NP-9.3 | GPU Commands thread parallelism: PM4 decode, binding updates and `UploadRanges` on worker threads, or a decode-to-record pipeline, with the ordering constraints of write-watches and `EVENT_WRITE_SHD` visibility documented and tested. | L |
-| NP-9.4 | Backend-neutral shader pack format v3: move `Fh1ShaderPack` out of the `d3d12` namespace, key identity by translator version, a device features hash and scale instead of vendor id, add the prebuilt geometry-shader stage from NP-0.7, and update `tools/native-shader-pack.py` and [the pack contract](native-renderer/SHADER_PACK_FORMAT.md). | M |
+| NP-9.4 | Backend-neutral shader pack format v3: move `Fh1ShaderPack` out of the `d3d12` namespace, key identity by translator version, a device features hash and scale instead of vendor id, add prebuilt geometry shaders (moved from NP-0.7: generate the finite `GeometryShaderKey` set offline in the producer, store it in the pack, and remove `CreateDxbcGeometryShader` (`pipeline_cache.cpp:2578-3622`), `format/dxbc.h`, `DXBCChecksum.cpp` and `thirdparty/dxbc` from the runtime DLL), and update `tools/native-shader-pack.py` and [the pack contract](native-renderer/SHADER_PACK_FORMAT.md). | M |
 | NP-9.5 | Decision point, native draw ABI: replacing the per-draw register-to-`PipelineDescription`, `SystemConstants` and `UpdateBindings` derivation with a native contract requires the pack to stop targeting Xenia's constant-buffer and root-signature layout, a new translator output. This is the real boundary between "Xenia backend with native surfaces" and a native renderer. Decide after NP-9.1 and NP-9.3 with measurements; do not start it on speculation. | XL |
 
 **Gates.** Race window median at or below the GPU span plus 2 ms on the
@@ -530,7 +550,9 @@ changes.
 ### Faster graphics preparation
 
 Preparing graphics ("Preparing graphics for 1x") takes about ten minutes
-on a modern machine, and it runs far more often than it needs to.
+on a modern machine, and it runs far more often than it needs to. Parallel
+translation and the content-based key are now NP-0.8; the rest of this
+entry stays pending.
 
 - **Where the time goes** (a 1x production on 2026-09-28, 6.6 minutes
   without rebuilding the producer): producer build 12 s, shader extraction
