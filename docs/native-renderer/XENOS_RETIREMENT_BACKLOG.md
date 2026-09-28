@@ -636,6 +636,14 @@ or proven unused on every matrix route, with overflow-safe accounting.
   renderers (XR-04).
 - [ ] Unscripted drives (race and free roam) in `native`: record control
   response, stability and the first defect that interferes with driving.
+  Scripted stand-ins so far (no person has driven it): `fh1-long-drive`
+  (race, 11,400-13,800 frames with throttle, steering and braking) and
+  `fh1-modes-sync` (free roam) run with zero executor skips and no device
+  loss; the car accelerates, steers and brakes with the inputs (it ends
+  against a barrier because the script cannot follow the road). First
+  defect seen: draws of vertex shader E2611762FE853E0C fail in both
+  renderers because the shader pack's offline catalog lacks it (a pack
+  coverage gap, not visible in the captures). A human drive is still owed.
 
 **Done when** every matrix mode passes the acceptance rules with an explicit
 list of accepted differences.
