@@ -676,6 +676,15 @@ or proven unused on every matrix route, with overflow-safe accounting.
   37EBBE47900A46F5/7 and C8DB78EC7C219094/7F in the autoshow), and shipping
   builds have no runtime translator, so those draws are dropped on both
   renderers. The producer's route does not reach the autoshow.
+  Five of those are disc vertex shaders paired with pixel shaders that read
+  fewer interpolators; the producer now translates those masks (SDK
+  `fix(renderer): produce autoshow vertex shader variants`). The rest are
+  shaders the title generates at runtime, which the producer only captures
+  when its route reaches them: a pack produced now from an empty profile with
+  `fh1-shader-preparation` misses 20 variants on `fh1-buy-car` and 35 on
+  `fh1-race-sync` (the installed pack, produced earlier, misses 5 and 1).
+  Covering save-dependent screens needs either routes that reach them from
+  an empty profile or reproducing the title's shader generation offline.
 
 **Done when** every matrix mode passes the acceptance rules with an explicit
 list of accepted differences.
