@@ -1,0 +1,55 @@
+pinyon-shift-fh1-render-test-v1
+# Output-frame paced, synchronized on game state. From seed
+# appdata-2026-09-27: wait for the car in free roam, drive until it has moved,
+# then pause (START) and resume (B), open the map (BACK) and close it, and enter
+# photo mode from the pause menu (START, down, down, A, A) and leave it (B, back out of the pause menu too).
+input 0 0000 0 0 0 0 0 0
+input 360 1000 0 0 0 0 0 0
+input 366 0000 0 0 0 0 0 0
+input 480 1000 0 0 0 0 0 0
+input 486 0000 0 0 0 0 0 0
+input 600 1000 0 0 0 0 0 0
+input 606 0000 0 0 0 0 0 0
+input 720 1000 0 0 0 0 0 0
+input 726 0000 0 0 0 0 0 0
+wait 1400 3000 vehicle
+capture 1500 free-roam
+input 1560 0000 0 255 0 0 0 0
+wait 1570 1200 vehicle-moved 20
+capture 1800 drive-1
+capture 2400 drive-2
+input 2500 0000 0 0 0 0 0 0
+input 2700 0010 0 0 0 0 0 0
+input 2706 0000 0 0 0 0 0 0
+capture 2820 pause
+input 2880 2000 0 0 0 0 0 0
+input 2886 0000 0 0 0 0 0 0
+capture 3000 resumed
+input 3060 0020 0 0 0 0 0 0
+input 3066 0000 0 0 0 0 0 0
+capture 3150 map
+input 3240 0020 0 0 0 0 0 0
+input 3246 0000 0 0 0 0 0 0
+capture 3340 map-closed
+input 3400 0010 0 0 0 0 0 0
+input 3406 0000 0 0 0 0 0 0
+input 3460 0002 0 0 0 0 0 0
+input 3466 0000 0 0 0 0 0 0
+input 3490 0002 0 0 0 0 0 0
+input 3496 0000 0 0 0 0 0 0
+input 3520 1000 0 0 0 0 0 0
+input 3526 0000 0 0 0 0 0 0
+capture 3640 photo-menu
+input 3700 1000 0 0 0 0 0 0
+input 3706 0000 0 0 0 0 0 0
+capture 3880 photo-camera
+input 3940 2000 0 0 0 0 0 0
+input 3946 0000 0 0 0 0 0 0
+input 4000 2000 0 0 0 0 0 0
+input 4006 0000 0 0 0 0 0 0
+input 4060 2000 0 0 0 0 0 0
+input 4066 0000 0 0 0 0 0 0
+input 4120 2000 0 0 0 0 0 0
+input 4126 0000 0 0 0 0 0 0
+capture 4240 returned
+stop 4270
