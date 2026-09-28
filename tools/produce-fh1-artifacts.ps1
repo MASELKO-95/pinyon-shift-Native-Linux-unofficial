@@ -108,22 +108,38 @@ $strict = & (Join-Path $PSScriptRoot 'launch-preview.ps1') @launch -StateRoot $s
     -RenderTestOutput (Join-Path $work 'strict-output') | ConvertFrom-Json
 if ($strict.result -ne 'normal-exit') { throw 'The compiler-free route failed.' }
 $events = @(Get-Content (Join-Path $strictState 'logs/*.jsonl') | ForEach-Object { $_ | ConvertFrom-Json })
-$summary = @($events | Where-Object event -eq 'native_renderer.v4.execution.summary')
-if (@($events | Where-Object event -eq 'fh1.render_test.complete').Count -ne 1 -or $summary.Count -ne 1) {
-    throw 'The compiler-free route did not complete with execution evidence.'
-}
-if ([int64]$summary[0].covered_in_place -eq 0) { throw 'The route did not exercise prewarmed rendering.' }
 $strictLog = Get-Content (Join-Path $strictState 'logs/runtime*.log') -Raw
+if (@($events | Where-Object event -eq 'fh1.render_test.complete').Count -ne 1) {
+    throw 'The compiler-free route did not complete.'
+}
+$native = $strictLog -match 'FH1 native executor enabled: native'
+if ($native) {
+    # The native renderer draws through the pack's pipelines directly; its
+    # executor must have rendered the route. Runtime translations show up as
+    # pack misses, checked below.
+    $stats = [regex]::Matches($strictLog, 'FH1 native executor frame=(\d+) draws=(\d+) resolves=(\d+)')
+    if ($stats.Count -eq 0 -or [int64]$stats[$stats.Count - 1].Groups[2].Value -eq 0) {
+        throw 'The native renderer did not execute the route.'
+    }
+    $last = $stats[$stats.Count - 1]
+    $execution = [ordered]@{ renderer = 'native'; frames = [int64]$last.Groups[1].Value
+        draws = [int64]$last.Groups[2].Value; resolves = [int64]$last.Groups[3].Value }
+} else {
+    $summary = @($events | Where-Object event -eq 'native_renderer.v4.execution.summary')
+    if ($summary.Count -ne 1) { throw 'The compiler-free route did not report execution evidence.' }
+    if ([int64]$summary[0].covered_in_place -eq 0) { throw 'The route did not exercise prewarmed rendering.' }
+    $requiredZero = @('route_runtime_shader_translations', 'manifest_unavailable')
+    if (-not $AllowPipelineDiscovery) {
+        $requiredZero += @('route_runtime_sync_pipeline_creations', 'pipeline_not_prewarmed')
+    }
+    foreach ($counter in $requiredZero) {
+        if ([int64]$summary[0].$counter -ne 0) { throw "Compiler-free qualification failed: $counter." }
+    }
+    $execution = $summary[0]
+}
 if ($strictLog -match 'FH1 precompiled shader pack miss' -or
     -not ($strictLog -match "Loaded $($pack.entry_count) FH1 precompiled shaders")) {
     throw 'The compiler-free route did not load and use the produced shader pack without misses.'
-}
-$requiredZero = @('route_runtime_shader_translations', 'manifest_unavailable')
-if (-not $AllowPipelineDiscovery) {
-    $requiredZero += @('route_runtime_sync_pipeline_creations', 'pipeline_not_prewarmed')
-}
-foreach ($counter in $requiredZero) {
-    if ([int64]$summary[0].$counter -ne 0) { throw "Compiler-free qualification failed: $counter." }
 }
 $report = [ordered]@{
     schema_version = 1
@@ -138,7 +154,7 @@ $report = [ordered]@{
     runtime_sha256 = (Get-FileHash -LiteralPath (Join-Path $build 'rexgpu-fh1.dll')).Hash
     producer_sha256 = (Get-FileHash -LiteralPath (Join-Path $build 'rexglue-artifacts/rexgpu-fh1-producer.dll')).Hash
     executable_sha256 = (Get-FileHash -LiteralPath (Join-Path $build 'pinyon_shift.exe')).Hash
-    execution = $summary[0]
+    execution = $execution
 }
 [IO.File]::WriteAllText((Join-Path $work 'production.json'), ($report | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
 Write-PinyonEvent shaders 100 'Graphics validation finished.' -JsonEvents:$JsonEvents
