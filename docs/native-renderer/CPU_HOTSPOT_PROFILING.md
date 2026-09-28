@@ -31,7 +31,10 @@ The performance CSV still has the columns `fh1_issue_draw_cpu_time_ns`,
 pilot and its draw observers (`a75be82`, `6b75238`) and stay zero on the
 current build; use the sampled trace for CPU attribution. The executor's own
 GPU phase times come from `--fh1_native_gpu_profile=true` in its periodic
-stats.
+stats, including `texture_reloads`, the untile and copy of texture data a
+resolve invalidated. Every frame, `texture_resolve_reloads` and
+`texture_resolve_reload_bytes` count those reloads and the guest bytes they
+read; `texture_dirty_load_attempts` counts all texture reloads.
 
 The script verifies the AppData save, rejects an already-running game, builds
 `RelWithDebInfo`, checks the title, generated guest facades, and ShiftGlue

@@ -55,6 +55,46 @@ skipped, native prepared targets for 3.1 ms per race frame and the race
 window was +1.8% median; before per-tile stencil state, the whole route was
 +3.3-3.7% median.
 
+## Race frame cost breakdown
+
+Measured for [NP-2.0](../NATIVE_PORT_BACKLOG.md#np-2-fast-frame-pass-1)
+on `fh1-race-sync` (seed `appdata-2026-09-27`, 1x pack, `RelWithDebInfo`,
+`--hidden`), one run per instrument, over the moving race at the end of
+the route:
+
+| Cost | Race value | Source |
+| --- | --- | --- |
+| Deferred command-tape replay | 3.44 ms median, 5.46 ms p95 per frame (upper bound: wall time around `DeferredCommandList::Execute`) | `--perf_critical_path_trace=true`, `tools/summarize-critical-path-trace.py`, source frames 4640-4885 |
+| Frame interval in that trace | 23.63 ms median, 29.39 ms p95 | same |
+| Texture reloads a resolve invalidated | 87-88 per frame, 64-71 MB of guest data untiled per frame; 87 of the 89 dirty texture loads per frame | `texture_resolve_reloads`, `texture_resolve_reload_bytes`, last 600 frames |
+| GPU time of those reloads | 0.39-0.56 ms per frame; all other texture loads 0.01 ms | `--fh1_native_gpu_profile=true` (`texture_reloads`, `texture_loads`) |
+| Executor GPU phases | transfers 0.81-0.98, resolves 0.33-0.43, clears 0.10-0.16 ms per frame | same |
+| Executor CPU phases | prepare_targets 0.59-0.72 (transfers 0.26-0.31), bind_targets 0.29-0.37, resolves 0.31-0.46 ms per frame | same |
+
+The tape replay is the largest single item: about 15 % of the race frame
+runs after consumption on the GPU commands thread, so direct recording or
+overlapped replay (NP-2.6) leads the CPU work. Resolve round trips are the
+largest GPU item after transfers (NP-9.1).
+
+Stencil use per depth surface over the last 10 census windows
+(`--fh1_frame_census=true`, `tools/summarize-fh1-stencil-census.py
+--first-frame 4280`):
+
+| Depth surface | Draws | Stencil on | May write nonzero | Windows writing |
+| --- | ---: | ---: | ---: | ---: |
+| D24FS8 at tile 1024, 4x, pitch 1280 | 2,276,687 | 2,272,055 | 692,803 | 10 / 10 |
+| D24FS8 at tile 0, 1x, pitch 1280 | 718,282 | 717,682 | 332,247 | 10 / 10 |
+| D24S8 at tile 720, 1x, pitch 1040 | 121,884 | 1,002 | 0 | 0 / 10 |
+| D24FS8 at tile 128, 2x, pitch 320 | 107,543 | 107,543 | 0 | 0 / 10 |
+
+Both scene depth surfaces write nonzero stencil in every window (REPLACE
+with a per-object reference such as 0x15, 0x18, 0x03 under write mask
+0xFF), so skipping the eight stencil-bit transfer passes for an unwritten
+source cannot help the dominant depth ping-pong between them; only the
+smaller surfaces qualify. A single stencil pass that exports the reference
+from the pixel shader, where the device supports it, is the better target
+for NP-2.4.
+
 ## Resolution scale
 
 `fh1-race-sync` at 2x and 3x, each renderer with a pack produced at that
