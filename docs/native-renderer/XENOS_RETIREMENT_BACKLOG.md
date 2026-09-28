@@ -806,7 +806,11 @@ and vendor tested.
   `xenos-rollback` on app `a8c1f34` (SDK `0f432e1`, tagged the same), the
   last commit with the Xenos renderer. Each step passed `fh1-race-sync` in
   `native` with zero executor skips and the golden frame replays (`8fb4ee4`
-  and later); the route matrix below was last run in full before removal.
+  and later). The final build (`02dc9a6`, Release rebuilt, 1x pack produced
+  with the recorded pack misses) passes every synchronized route of the
+  matrix in `native`: `fh1-fmv` (with opening movies), `fh1-opening-sync`,
+  `fh1-rewind-sync`, `fh1-race-sync`, `fh1-modes-sync` and `fh1-buy-car`,
+  each with zero pack misses and zero executor skips.
 
 **Done when** that build passes the route matrix and the docs describe only
 the native renderer. The docs now describe only the native renderer; older
