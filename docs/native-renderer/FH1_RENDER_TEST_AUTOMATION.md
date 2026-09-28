@@ -52,7 +52,11 @@ one. The new-player opening (`fh1-opening-sync`, the matrix's second race
 event) needs a seed without a profile: copy an existing seed's `config`,
 `cache` and `seed.json` into a new directory with an empty `user` (for
 example `.local/render-seeds/fresh-2026-09-28`) and pass `--fresh-profile`,
-which lets the runner accept a state root with no `ForzaProfile`. Output-paced routes are sensitive to frame rate because menus advance in
+which lets the runner accept a state root with no `ForzaProfile`.
+`fh1-buy-car` buys a car in the private copy of the profile and waits for
+the game to save its card thumbnail (`Thumbnail_7.xdc` under the run's
+`ForzaProfile/Thumbnails`); decode it to check that resolves reach guest
+memory. Output-paced routes are sensitive to frame rate because menus advance in
 wall time: the committed routes were recorded with `--hidden` (about 100
 frames/s here), and a visible window at 120 Hz ran about 143 frames/s and
 missed the menu inputs. Use `--hidden` until routes wait on game state. Each

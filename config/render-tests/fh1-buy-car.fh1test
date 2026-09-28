@@ -1,0 +1,46 @@
+pinyon-shift-fh1-render-test-v1
+# Output-frame paced, synchronized on game state. From seed
+# appdata-2026-09-27 (167,700 Cr): as fh1-race-sync up to car select, then
+# pick "Buy new car" (left, A), wait for the autoshow, take the recommended
+# Jaguar XKR-S (A: showroom and its autosave), buy it with credits (A, A) and
+# wait for the car's thumbnail, which the game renders in a studio, resolves
+# and saves as Thumbnail_7.xdc in the private copy of the profile. The file
+# holds the car only when resolves reach guest memory.
+input 0 0000 0 0 0 0 0 0
+input 360 1000 0 0 0 0 0 0
+input 366 0000 0 0 0 0 0 0
+input 480 1000 0 0 0 0 0 0
+input 486 0000 0 0 0 0 0 0
+input 600 1000 0 0 0 0 0 0
+input 606 0000 0 0 0 0 0 0
+input 720 1000 0 0 0 0 0 0
+input 726 0000 0 0 0 0 0 0
+wait 1400 3000 vehicle
+capture 1560 event-ready
+input 1680 4000 0 0 0 0 0 0
+input 1686 0000 0 0 0 0 0 0
+capture 1860 event-entered
+input 2040 1000 0 0 0 0 0 0
+input 2046 0000 0 0 0 0 0 0
+wait 2050 1200 file thumbnail_
+capture 2220 car-select
+input 2400 0004 0 0 0 0 0 0
+input 2406 0000 0 0 0 0 0 0
+input 2460 1000 0 0 0 0 0 0
+input 2466 0000 0 0 0 0 0 0
+wait 2470 1500 file shaders_ui_v16
+capture 2560 recommends
+input 2600 1000 0 0 0 0 0 0
+input 2606 0000 0 0 0 0 0 0
+wait 2610 900 file playerdatabase
+capture 2680 showroom
+input 2700 1000 0 0 0 0 0 0
+input 2706 0000 0 0 0 0 0 0
+capture 2750 confirm
+input 2770 1000 0 0 0 0 0 0
+input 2776 0000 0 0 0 0 0 0
+capture 2820 saving
+wait 2830 3000 file thumbnail_7
+capture 2900 after-thumbnail
+capture 3100 later
+stop 3150
