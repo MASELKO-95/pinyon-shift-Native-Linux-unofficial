@@ -134,6 +134,7 @@ def parse_scenario(
     race_hud_captures: set[str] = set()
     race_hud_any_groups: list[set[str]] = []
     previous_input = -1
+    previous_wait = 0
     first_input = None
     for number, line in enumerate(lines[1:], 2):
         if line.startswith("# require-native "):
@@ -233,6 +234,9 @@ def parse_scenario(
             # clock holds at <frame> until the game reaches the condition.
             if int(fields[1]) <= 0 or int(fields[2]) <= 0:
                 raise ValueError(f"line {number}: invalid wait")
+            if int(fields[1]) <= previous_wait:
+                raise ValueError(f"line {number}: waits must be in increasing frame order")
+            previous_wait = int(fields[1])
             if fields[3] == "vehicle-moved" and int(fields[4]) <= 0:
                 raise ValueError(f"line {number}: invalid wait distance")
         elif fields[0] == "capture" and len(fields) == 3:
