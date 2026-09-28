@@ -56,7 +56,9 @@ class GraphicsSettingsTests(unittest.TestCase):
             )
             updated = config.read_text(encoding="utf-8")
             self.assertEqual(result["settings"]["anisotropy"], 16)
-            self.assertIn("pinyon_shift_config_schema = 21", updated)
+            self.assertIn("pinyon_shift_config_schema = 22", updated)
+            self.assertIn('fh1_renderer = "xenos"', updated)
+            self.assertEqual(result["settings"]["renderer"], "xenos")
             self.assertIn("xma_relaxed_padding_admission = false", updated)
             self.assertEqual(result["settings"]["occlusion_query"], "fast")
             self.assertIn('occlusion_query = "fast"', updated)
@@ -122,6 +124,17 @@ class GraphicsSettingsTests(unittest.TestCase):
             self.assertNotIn("pinyon_shift_native_renderer_sky_horizon_suppression", text)
             self.assertNotIn("pinyon_shift_fh1_native_v4", text)
             self.assertIn("pinyon_shift_fh1_render_fps_limit = 0", text)
+
+    def test_apply_selects_native_renderer_and_reset_restores_xenos(self):
+        with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:
+            state = pathlib.Path(temporary)
+            config = state / "config/pinyon_shift.toml"
+            result = self.run_tool(state, "-Action", "Apply", "-Renderer", "native")
+            self.assertEqual(result["settings"]["renderer"], "native")
+            self.assertIn('fh1_renderer = "native"', config.read_text(encoding="utf-8"))
+            result = self.run_tool(state, "-Action", "Reset")
+            self.assertEqual(result["settings"]["renderer"], "xenos")
+            self.assertIn('fh1_renderer = "xenos"', config.read_text(encoding="utf-8"))
 
     def test_experimental_3x_writes_4k_class_scale(self):
         with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:

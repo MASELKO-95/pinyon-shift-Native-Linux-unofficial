@@ -764,6 +764,18 @@ public partial class MainWindow : Window
         }
     }
 
+    // The native renderer runs at 1x only: choosing it selects the 1x preset.
+    private void RendererComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_applyingGraphicsResult || RendererComboBox?.SelectedItem is null ||
+            ResolutionComboBox is null || GraphicsPresetComboBox is null) return;
+        if (SelectedTag(RendererComboBox) != "native") return;
+        _applyingGraphicsResult = true;
+        SelectTag(ResolutionComboBox, "1");
+        SelectTag(GraphicsPresetComboBox, "shipping_1x");
+        _applyingGraphicsResult = false;
+    }
+
     private void GraphicsControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_applyingGraphicsResult || ResolutionComboBox?.SelectedItem is null ||
@@ -846,6 +858,7 @@ public partial class MainWindow : Window
             "-Preset", SelectedTag(GraphicsPresetComboBox),
             "-DisableMotionBlur", DisableMotionBlurCheckBox.IsChecked == true ? "true" : "false",
             "-DisableDepthOfField", DisableDepthOfFieldCheckBox.IsChecked == true ? "true" : "false",
+            "-Renderer", SelectedTag(RendererComboBox),
             "-Json"
         }) startInfo.ArgumentList.Add(argument);
         using var process = Process.Start(startInfo) ??
@@ -878,6 +891,7 @@ public partial class MainWindow : Window
             SelectTag(ResolutionComboBox, result.Settings.ResolutionScale.ToString());
             DisableMotionBlurCheckBox.IsChecked = result.Settings.DisableMotionBlur;
             DisableDepthOfFieldCheckBox.IsChecked = result.Settings.DisableDepthOfField;
+            SelectTag(RendererComboBox, result.Settings.Renderer ?? "xenos");
         }
         finally
         {
@@ -897,6 +911,7 @@ public partial class MainWindow : Window
         PostEffectComboBox.IsEnabled = enabled;
         ResolutionComboBox.IsEnabled = enabled;
         GraphicsPresetComboBox.IsEnabled = enabled;
+        RendererComboBox.IsEnabled = enabled;
         DisableMotionBlurCheckBox.IsEnabled = enabled;
         DisableDepthOfFieldCheckBox.IsEnabled = enabled;
         SaveGraphicsButton.IsEnabled = enabled;
@@ -928,5 +943,6 @@ public partial class MainWindow : Window
         [property: JsonPropertyName("preset")] string Preset,
         [property: JsonPropertyName("resolution_scale")] int ResolutionScale,
         [property: JsonPropertyName("clear_memory_page_state")] bool ClearMemoryPageState,
-        [property: JsonPropertyName("vsync")] bool Vsync);
+        [property: JsonPropertyName("vsync")] bool Vsync,
+        [property: JsonPropertyName("renderer")] string? Renderer);
 }

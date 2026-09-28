@@ -238,7 +238,7 @@ try {
         'anisotropic_override', 'swap_post_effect',
         'disable_motion_blur', 'disable_depth_of_field',
         'draw_resolution_scale_x', 'draw_resolution_scale_y', 'occlusion_query',
-        'zpd_end_policy', 'zpd_end_fallback', 'clear_memory_page_state',
+        'zpd_end_policy', 'zpd_end_fallback', 'clear_memory_page_state', 'fh1_renderer',
         'pinyon_shift_native_renderer',
         'pinyon_shift_native_renderer_sky_horizon_suppression'
     )

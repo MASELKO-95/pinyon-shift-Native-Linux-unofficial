@@ -291,6 +291,15 @@
                             <TextBlock Text="Disable depth of field" TextWrapping="Wrap"/>
                         </CheckBox>
                     </Grid>
+                    <StackPanel Grid.Row="5" Margin="0,17,0,0">
+                        <TextBlock Text="RENDERER" FontSize="10" Foreground="{StaticResource MutedBrush}"/>
+                        <ComboBox x:Name="RendererComboBox" Margin="0,8,0,0" SelectedIndex="0"
+                                  SelectionChanged="RendererComboBox_SelectionChanged"
+                                  AutomationProperties.Name="Renderer">
+                            <ComboBoxItem Tag="xenos"><TextBlock Text="Xenos · compatibility" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
+                            <ComboBoxItem Tag="native"><TextBlock Text="Native · experimental (1× only)" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
+                        </ComboBox>
+                    </StackPanel>
                     <Border Grid.Row="6" Background="#171B17" BorderBrush="{StaticResource LineBrush}"
                             BorderThickness="1" CornerRadius="4" Padding="14,11" Margin="0,17,0,0">
                         <TextBlock x:Name="GraphicsStatusText" Text="Loading current settings…" TextWrapping="Wrap"

@@ -336,9 +336,10 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
 
     def test_graphics_schema_and_diagnostics_contract(self):
         app = (ROOT / "src/pinyon_shift_app.cpp").read_text(encoding="utf-8")
-        self.assertIn("constexpr uint32_t kConfigSchema = 21", app)
+        self.assertIn("constexpr uint32_t kConfigSchema = 22", app)
         self.assertIn(".schema", app)
-        for setting in ("anisotropic_override", "swap_post_effect", "draw_resolution_scale_x"):
+        for setting in ("anisotropic_override", "swap_post_effect", "draw_resolution_scale_x",
+                        "fh1_renderer"):
             self.assertIn(setting, app)
             self.assertIn(setting, (ROOT / "tools/create-crash-report.ps1").read_text(encoding="utf-8"))
         for setting in ("host_present_fps_limit", "host_present_sleep_spin",
@@ -387,11 +388,11 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         launcher_xaml = (ROOT / "launcher/PinyonShift.Launcher/MainWindow.xaml").read_text(
             encoding="utf-8"
         )
-        self.assertIn("constexpr uint32_t kConfigSchema = 21;", app)
-        self.assertRegex(app, r"pinyon_shift_config_schema,\s*21,")
+        self.assertIn("constexpr uint32_t kConfigSchema = 22;", app)
+        self.assertRegex(app, r"pinyon_shift_config_schema,\s*22,")
         self.assertIn('"pinyon_shift_stabilize_vehicle_presentation = false\\n"', app)
         self.assertIn('"keybind_a = \\"LMB,Space\\"\\n"', app)
-        self.assertIn("schema < 1 || schema > 20", app)
+        self.assertIn("schema < 1 || schema > 21", app)
         self.assertIn("display.refresh.detected", app)
         self.assertIn("EnumDisplaySettingsW", app)
         graphics = (

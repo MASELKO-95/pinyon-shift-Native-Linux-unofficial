@@ -24,6 +24,8 @@ param(
     [string]$DisableMotionBlur = 'false',
     [ValidateSet('true', 'false')]
     [string]$DisableDepthOfField = 'false',
+    [ValidateSet('xenos', 'native')]
+    [string]$Renderer = 'xenos',
     [string]$StateRoot,
     [switch]$Json
 )
@@ -44,8 +46,8 @@ $backupDirectory = Join-Path $configDirectory 'backups'
 function Get-DefaultConfigText {
     @'
 # Pinyon Shift host configuration.
-# Schema 21 makes the FH1 native route unconditional.
-pinyon_shift_config_schema = 21
+# Schema 22 adds the renderer choice.
+pinyon_shift_config_schema = 22
 input_backend = "sdl"
 hid_mappings_file = "gamecontrollerdb.txt"
 mnk_mode = true
@@ -70,6 +72,7 @@ clear_memory_page_state = true
 occlusion_query = "legacy"
 zpd_end_policy = "report_layout"
 zpd_end_fallback = "pairwise_sentinel"
+fh1_renderer = "xenos"
 '@
 }
 
@@ -164,6 +167,7 @@ function Get-SettingsResult([string]$Text, [string]$BackupPath, [string]$Operati
             occlusion_query = Get-TomlValue $Text 'occlusion_query' 'legacy'
             zpd_end_policy = Get-TomlValue $Text 'zpd_end_policy' 'report_layout'
             zpd_end_fallback = Get-TomlValue $Text 'zpd_end_fallback' 'pairwise_sentinel'
+            renderer = Get-TomlValue $Text 'fh1_renderer' 'xenos'
         }
         restart_required = $Operation -ne 'Get'
     }
@@ -177,7 +181,7 @@ switch ($Action) {
             Get-Content -LiteralPath $configPath -Raw
         } else { Get-DefaultConfigText }
         $schema = Get-SchemaVersion $text
-        if ($schema -lt 1 -or $schema -gt 21) { throw "Unsupported host configuration schema: $schema" }
+        if ($schema -lt 1 -or $schema -gt 22) { throw "Unsupported host configuration schema: $schema" }
     }
     'Reset' {
         $backup = New-ConfigBackup
@@ -194,7 +198,7 @@ switch ($Action) {
         $backup = New-ConfigBackup
         $text = Get-Content -LiteralPath $source.FullName -Raw
         $schema = Get-SchemaVersion $text
-        if ($schema -lt 1 -or $schema -gt 21) { throw "Backup uses unsupported schema: $schema" }
+        if ($schema -lt 1 -or $schema -gt 22) { throw "Backup uses unsupported schema: $schema" }
         Write-Config $text
     }
     'Apply' {
@@ -202,7 +206,7 @@ switch ($Action) {
             Get-Content -LiteralPath $configPath -Raw
         } else { Get-DefaultConfigText }
         $schema = Get-SchemaVersion $text
-        if ($schema -lt 1 -or $schema -gt 21) { throw "Unsupported host configuration schema: $schema" }
+        if ($schema -lt 1 -or $schema -gt 22) { throw "Unsupported host configuration schema: $schema" }
         $backup = New-ConfigBackup
         $text = Remove-TomlValue $text 'pinyon_shift_fh1_guest_vblank_hz'
         $text = Remove-TomlValue $text 'pinyon_shift_native_renderer_texture_bridge'
@@ -213,7 +217,9 @@ switch ($Action) {
         $text = Remove-TomlValue $text 'readback_resolve_half_pixel_offset'
         $text = Remove-TomlValue $text 'readback_memexport'
         $text = Remove-TomlValue $text 'readback_memexport_fast'
-        $text = Set-TomlValue $text 'pinyon_shift_config_schema' '21'
+        $text = Set-TomlValue $text 'pinyon_shift_config_schema' '22'
+        # The native renderer is 1x only; scaled presets keep Xenos.
+        $text = Set-TomlValue $text 'fh1_renderer' ('"' + $Renderer + '"')
         $text = Set-TomlValue $text 'pinyon_shift_fh1_render_fps_limit' '0'
         $text = Set-TomlValue $text 'pinyon_shift_fh1_source_presentation' 'true'
         if (-not [regex]::IsMatch($text, '(?m)^\s*xma_relaxed_padding_admission\s*=')) {
