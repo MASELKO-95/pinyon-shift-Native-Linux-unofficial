@@ -6,6 +6,9 @@ param(
     [string]$RuntimeConfig,
     [string]$BuildDirectory,
     [string]$SeedShaderCacheRoot,
+    # Pack misses recorded by earlier runs (<state>/cache/fh1-shader-misses):
+    # title-generated shaders the empty-profile route does not reach.
+    [string]$ShaderMissDir,
     [switch]$Hidden,
     [switch]$AllowPipelineDiscovery,
     [ValidateRange(1, 3)] [int]$Scale = 1,
@@ -62,6 +65,13 @@ if ($SeedShaderCacheRoot) {
     foreach ($name in @('4D5309C9.xsh', '4D5309C9.rtv.d3d12.xpso')) {
         Copy-Item -LiteralPath (Join-Path $SeedShaderCacheRoot $name) -Destination $seedDirectory
     }
+}
+if ($ShaderMissDir) {
+    $missDirectory = Join-Path $producerState 'cache/fh1-shader-misses'
+    [void][IO.Directory]::CreateDirectory($missDirectory)
+    Get-ChildItem -LiteralPath $ShaderMissDir -Filter '*.bin' |
+        Where-Object Name -Match '^(vertex|pixel)-[0-9A-F]{16}-[0-9A-F]{16}\.bin$' |
+        Copy-Item -Destination $missDirectory
 }
 if ($RuntimeConfig -and (Test-Path -LiteralPath $RuntimeConfig)) {
     foreach ($phase in @('producer-state', 'strict-state')) {

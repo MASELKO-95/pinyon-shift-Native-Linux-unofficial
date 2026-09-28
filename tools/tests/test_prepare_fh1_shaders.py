@@ -32,9 +32,9 @@ class ShaderPreparationTests(unittest.TestCase):
             for name in ("prepare-fh1-shaders.ps1", "release-common.ps1"):
                 shutil.copyfile(ROOT / "tools" / name, root / "tools" / name)
             (root / "tools/produce-fh1-artifacts.ps1").write_text(r'''
-param($WorkRoot, $RenderTestScript, $GameRoot, $BuildDirectory, $RuntimeConfig, $Scale, $SeedShaderCacheRoot, [switch]$Hidden, [switch]$JsonEvents, [switch]$IncludeOpeningMovies, [switch]$AllowPipelineDiscovery)
+param($WorkRoot, $RenderTestScript, $GameRoot, $BuildDirectory, $RuntimeConfig, $Scale, $SeedShaderCacheRoot, $ShaderMissDir, [switch]$Hidden, [switch]$JsonEvents, [switch]$IncludeOpeningMovies, [switch]$AllowPipelineDiscovery)
 $root = Split-Path $PSScriptRoot -Parent
-Add-Content (Join-Path $root 'calls.txt') $Scale
+Add-Content (Join-Path $root 'calls.txt') $(if ($ShaderMissDir) { "$Scale+misses" } else { $Scale })
 $work = Join-Path $root $WorkRoot
 $cache = Join-Path $work 'strict-state/cache'
 [void][IO.Directory]::CreateDirectory((Join-Path $cache 'shaders/shareable'))
@@ -112,6 +112,14 @@ function Get-Process { return $null }
             (legacy / "4D5309C9.xsh").write_bytes(b"more shaders")
             run()
             self.assertEqual(calls(), ["1", "1", "1", "2", "2", "2"])
+            # A pack miss the game recorded prepares the pack again with it.
+            misses = state / "cache/fh1-shader-misses"
+            misses.mkdir()
+            (misses / "vertex-AFF858C659830DD3-0000000000000001.bin").write_bytes(b"ucode")
+            run()
+            run()
+            self.assertEqual(calls()[-1], "2+misses")
+            self.assertEqual(len(calls()), 7)
 
 
 if __name__ == "__main__":

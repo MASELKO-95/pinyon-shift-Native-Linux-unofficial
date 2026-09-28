@@ -98,6 +98,13 @@ try {
             $inputs.files["legacy/$name"] = (Get-FileHash -LiteralPath (Join-Path $legacyShaderCache $name)).Hash
         }
     }
+    # Pack misses the game recorded (title-generated shaders the preparation
+    # route does not reach): a new one prepares the pack again to cover it.
+    $missDirectory = Join-Path $cache 'fh1-shader-misses'
+    $misses = @(if (Test-Path -LiteralPath $missDirectory) {
+        Get-ChildItem -LiteralPath $missDirectory -Filter '*.bin' | Sort-Object Name
+    })
+    foreach ($miss in $misses) { $inputs.files["miss/$($miss.Name)"] = (Get-FileHash -LiteralPath $miss.FullName).Hash }
     $sha = [Security.Cryptography.SHA256]::Create()
     try { $key = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes(
         ($inputs | ConvertTo-Json -Depth 6 -Compress))))).Replace('-', '') }
@@ -122,7 +129,8 @@ try {
         & (Join-Path $PSScriptRoot 'produce-fh1-artifacts.ps1') -WorkRoot $relativeWork `
             -RenderTestScript (Join-Path $root 'config/render-tests/fh1-shader-preparation.fh1test') `
             -GameRoot $GameRoot -BuildDirectory $BuildDirectory -RuntimeConfig $config -Scale $scale -Hidden -IncludeOpeningMovies `
-            -AllowPipelineDiscovery -SeedShaderCacheRoot $(if ($seedLegacyCache) { $legacyShaderCache }) -JsonEvents:$JsonEvents |
+            -AllowPipelineDiscovery -SeedShaderCacheRoot $(if ($seedLegacyCache) { $legacyShaderCache }) `
+            -ShaderMissDir $(if ($misses.Count) { $missDirectory }) -JsonEvents:$JsonEvents |
             ForEach-Object { if ($_ -is [string] -and $_.StartsWith('::pinyon::')) { Write-Output $_ } }
         $report = Read-Receipt (Join-Path $work 'production.json')
         if ($null -eq $report -or $report.result -ne 'shaders-validated') { throw 'Graphics preparation did not finish validation.' }
