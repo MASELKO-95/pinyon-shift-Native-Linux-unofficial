@@ -13,8 +13,16 @@ then run an elevated PowerShell from the repository root:
 
 ```powershell
 .\tools\capture-cpu-profile.ps1 `
-  -RenderTestScript config/render-tests/fh1-race-sustained.fh1test
+  -StateRoot .local/render-seeds/appdata-2026-09-27 `
+  -ShaderPack <1x shaders.pnsp> `
+  -RenderTestScript config/render-tests/fh1-race-sync.fh1test
 ```
+
+The capture runs the game on a private copy of `-StateRoot` (its `user`,
+`config` and shader catalogs) under the capture directory, so a pinned seed
+or the AppData save is never written. Pass the shader pack the route was
+validated with: without one, every pack miss drops its draw and the profile
+does not represent a real frame.
 
 `config/render-tests/fh1-race-sync.fh1test` waits on game state instead of
 wall time and ends in a moving race (its last 600 frames; see the

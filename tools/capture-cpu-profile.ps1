@@ -2,6 +2,9 @@
 param(
     [string]$StateRoot,
     [string]$Output,
+    # Native shader pack staged into the capture's private state; without one
+    # the route translates nothing and drops draws on every pack miss.
+    [string]$ShaderPack,
     [string]$RenderTestScript = 'config/render-tests/fh1-race.fh1test',
     [ValidateRange(1, 3600)]
     [int]$TimeoutSeconds = 180,
@@ -34,6 +37,7 @@ $profiles = @(Get-ChildItem -LiteralPath (Join-Path $StateRoot 'user') -Filter F
     Where-Object { $_.Directory.Name -eq 'ForzaProfile' })
 if (-not $profiles.Count) { throw 'Forza profile missing in the selected state root' }
 if (Get-Process pinyon_shift -ErrorAction SilentlyContinue) { throw 'Game already running' }
+if ($ShaderPack) { $ShaderPack = (Resolve-Path -LiteralPath $ShaderPack).Path }
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
@@ -58,6 +62,31 @@ foreach ($module in $symbols.modules) {
 }
 $symbols | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Output 'symbols.json')
 
+# Run on a private copy, as run-fh1-render-test.py does, so neither a pinned
+# render seed nor the AppData save is ever written by the capture.
+$runState = Join-Path $Output 'state'
+if (Test-Path -LiteralPath $runState) { throw "Refusing stale capture state: $runState" }
+[void](New-Item -ItemType Directory -Path $runState)
+foreach ($name in @('user', 'config')) {
+    $source = Join-Path $StateRoot $name
+    if (Test-Path -LiteralPath $source -PathType Container) {
+        Copy-Item -LiteralPath $source -Destination (Join-Path $runState $name) -Recurse
+    }
+}
+$runCache = Join-Path $runState 'cache'
+[void](New-Item -ItemType Directory -Force -Path $runCache)
+foreach ($name in @('fh1-native-shaders-v2.bin', 'fh1-native-pipelines-v1.bin', 'fh1-gpu-prewarm-v3.txt')) {
+    $source = Join-Path $StateRoot "cache/$name"
+    if (Test-Path -LiteralPath $source -PathType Leaf) { Copy-Item -LiteralPath $source -Destination $runCache }
+}
+$stagedShaderPack = $null
+if ($ShaderPack) {
+    $python = Get-PinyonPython
+    $stage = & $python (Join-Path $PSScriptRoot 'native-shader-pack.py') stage $ShaderPack --state-root $runState
+    if ($LASTEXITCODE -ne 0) { throw 'Staging the shader pack failed' }
+    $stagedShaderPack = ($stage | ConvertFrom-Json).destination
+}
+
 $etl = Join-Path $Output 'pinyon-shift.etl'
 $wprProfile = if ($MarkersOnly) { 'PinyonCriticalPath' } else { 'PinyonCpuHotspots' }
 $wprArguments = @('-start', "$profile!$wprProfile.Verbose", '-filemode')
@@ -70,7 +99,7 @@ try {
     $recording = $true
     $launchArguments = @(
         '-NoProfile', '-File', (Join-Path $PSScriptRoot 'launch-preview.ps1'),
-        '-Configuration', 'RelWithDebInfo', '-StateRoot', $StateRoot,
+        '-Configuration', 'RelWithDebInfo', '-StateRoot', $runState,
         '-RenderTestScript', $RenderTestScript,
         '-RenderTestOutput', (Join-Path $Output 'render-test'),
         '-RenderTestTimeoutSeconds', "$TimeoutSeconds", '-Hidden',
@@ -96,7 +125,7 @@ finally {
     }
 }
 
-$perfCapture = Get-ChildItem -LiteralPath (Join-Path $StateRoot 'logs') -Filter '*.perf.csv' -File |
+$perfCapture = Get-ChildItem -LiteralPath (Join-Path $runState 'logs') -Filter '*.perf.csv' -File |
     Where-Object { $_.LastWriteTimeUtc -ge $startedUtc.AddSeconds(-2) } |
     Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
 if ($perfCapture) {
@@ -107,7 +136,9 @@ $manifest = [ordered]@{
     created_utc = [DateTime]::UtcNow.ToString('o')
     markers_only = $MarkersOnly.IsPresent
     route = (Resolve-Path -LiteralPath $RenderTestScript).Path
-    state_root = $StateRoot
+    source_state_root = $StateRoot
+    state_root = $runState
+    shader_pack = $stagedShaderPack
     etl = $etl
     symbols = 'symbols.json'
     dropped_events = $droppedEvents
