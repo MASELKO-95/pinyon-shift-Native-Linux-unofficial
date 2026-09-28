@@ -460,7 +460,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         else None
     )
     profiles = list((state_root / "user").glob("**/ForzaProfile/ForzaProfile"))
-    if not profiles:
+    if not profiles and not args.fresh_profile:
         raise ValueError(f"no FH1 profile below {state_root / 'user'}")
     output = (
         args.output.resolve()
@@ -844,6 +844,8 @@ def main() -> int:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--baseline-dir", type=Path)
     parser.add_argument("--record-baseline", action="store_true")
+    parser.add_argument("--fresh-profile", action="store_true",
+                        help="allow a seed without an FH1 profile (the new-player opening)")
     parser.add_argument("--pose-baseline-result", type=Path)
     parser.add_argument("--pose-distance-max", type=float, default=1.25)
     parser.add_argument("--collect-pass-inventory", action="store_true")

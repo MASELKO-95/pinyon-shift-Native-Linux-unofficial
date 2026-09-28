@@ -48,7 +48,11 @@ python tools/run-fh1-render-test.py config/render-tests/fh1-native-race-profile.
 
 The seed holds `user`, `config`, the FH1 shader catalogs and a `seed.json`
 manifest with profile hashes; `create-render-seed.py` refuses to overwrite
-one. Output-paced routes are sensitive to frame rate because menus advance in
+one. The new-player opening (`fh1-opening-sync`, the matrix's second race
+event) needs a seed without a profile: copy an existing seed's `config`,
+`cache` and `seed.json` into a new directory with an empty `user` (for
+example `.local/render-seeds/fresh-2026-09-28`) and pass `--fresh-profile`,
+which lets the runner accept a state root with no `ForzaProfile`. Output-paced routes are sensitive to frame rate because menus advance in
 wall time: the committed routes were recorded with `--hidden` (about 100
 frames/s here), and a visible window at 120 Hz ran about 143 frames/s and
 missed the menu inputs. Use `--hidden` until routes wait on game state. Each
