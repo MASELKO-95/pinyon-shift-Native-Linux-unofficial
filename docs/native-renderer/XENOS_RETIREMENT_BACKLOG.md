@@ -617,11 +617,23 @@ or proven unused on every matrix route, with overflow-safe accounting.
 
 ### XR-08 — Close visible gaps across the mode matrix
 
-- [ ] Per mode, rank visible differences from same-frame pairs and fix them
+- [x] Per mode, rank visible differences from same-frame pairs and fix them
   through the contract: FMV, fonts/UI, garage/car select/livery/thumbnails,
   free roam day/night, traffic, race HUD/minimap, rewind, map, photo mode,
   pause, loading, post chain (bloom, exposure, depth of field, motion blur
   settings), shadows, reflections, particles/skids and streaming.
+  Ranked in the route matrix below from the shadow pairs of every
+  synchronized route: nothing is visible. The largest differences are
+  0.44% of pixels (pause over the race scene) and 11/255 in one foliage
+  patch (photo mode); everything else is at most 6/255. Accepted
+  differences: depth resolves of D24S8 round to nearest where Xenos lands
+  one LSB lower; float24 depth keeps different low mantissa bits; where
+  depth ties at the far plane or on alpha-tested foliage edges the two
+  renderers resolve 2-3/255 apart (sky and tree lines), up to 11/255 in
+  small foliage patches; color resolves of the post chain differ by the
+  same amounts. Not compared: rewind (no route) and night (the seed is in
+  daytime); car-select cards show the profile's corrupt thumbnails on both
+  renderers (XR-04).
 - [ ] Unscripted drives (race and free roam) in `native`: record control
   response, stability and the first defect that interferes with driving.
 
@@ -657,20 +669,23 @@ the native renderer.
 
 ## Route matrix
 
-Status reflects `02dfad0`. "Pilot" is the frozen six-family path.
+Originally recorded at `02dfad0`, when every mode was Xenos-only or pilot.
+Now: native status from same-frame `native-shadow` pairs (share of pixels
+differing, largest channel difference out of 255) and full `native` runs.
 
-| Mode | Route (existing or XR-00) | Native status |
+| Mode | Route | Native status |
 | --- | --- | --- |
-| Boot, legal, splash movies | `fh1-fmv` with movies | Xenos only |
-| Press Start and menus | new, movies on | Xenos only |
-| Garage / car select | `fh1-race` entry | Xenos only (card images corrupt on Xenos) |
-| Free roam | `fh1-free-roam`, `fh1-source-60` | Xenos only |
-| Race: Recaro Rush | `fh1-native-race-*` | Pilot, race only, 91–95 ms |
-| Race: other event | new, pinned seed | Pilot falls back every frame |
-| Pause / rewind | `fh1-pause`, new rewind | Xenos only |
-| Map | `fh1-map`, `fh1-moving-map` | Xenos only |
-| Photo mode | `fh1-photo-mode` | Xenos only |
-| Loading / transitions | `fh1-native-race-mode-boundary` | Xenos only |
+| Boot, legal, splash movies | `fh1-fmv` with movies | Native; pairs 0% |
+| Press Start and menus | `fh1-opening-sync`, `fh1-native-race-mode-boundary` | Native; pairs 0% |
+| Garage / car select | `fh1-race-sync` | Native; 0.001% (cards show the profile's corrupt thumbnails on both, XR-04) |
+| Free roam | `fh1-modes-sync`, `fh1-free-roam` | Native; 0-0.008%, max 3 |
+| Race: the Gauntlet (event at the seed's spawn) | `fh1-race-sync`, mode boundary | Native; 0.03-0.44%, max 2-3 |
+| Race: other event (new-player opening drive) | `fh1-opening-sync` | Native; 0.07-0.27%, max 2-3 |
+| Pause | `fh1-modes-sync` | Native; 0.028%, max 6 |
+| Rewind | none yet | Not covered: no working rewind input from the seed |
+| Map | `fh1-modes-sync` | Native; 0% |
+| Photo mode | `fh1-modes-sync` | Native; 0.03-0.065%, max 4-11 |
+| Loading / transitions | `fh1-race-sync`, mode boundary | Native (loading screens are passed, not compared) |
 
 ## FH1 frame facts carried forward
 
