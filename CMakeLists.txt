@@ -28,11 +28,6 @@ if(WIN32)
         src/native_renderer/fh1_gpu_corpus.cpp
         src/native_renderer/fh1_pass_tracker.cpp
         src/native_renderer/guest_output_renderer.cpp
-        src/native_renderer/native_output_track.cpp
-        src/native_renderer/native_output_ui.cpp
-        src/native_renderer/native_output_triangle.cpp
-        src/native_renderer/ordered_ui_capture.cpp
-        src/native_renderer/snr04_owned_scene_diagnostic.cpp
         src/native_renderer/shader_capture.cpp
     )
 else()
@@ -47,7 +42,6 @@ else()
         src/native_renderer/fh1_gpu_corpus.cpp
         src/native_renderer/fh1_pass_tracker.cpp
         src/native_renderer/guest_output_renderer.cpp
-        src/native_renderer/ordered_ui_capture.cpp
         src/native_renderer/shader_capture.cpp
     )
 endif()
@@ -84,12 +78,6 @@ if(WIN32)
     add_executable(pinyon_shift_fh1_owned_geometry_tests EXCLUDE_FROM_ALL
         tests/native_renderer/fh1_owned_geometry_test.cpp)
     target_link_libraries(pinyon_shift_fh1_owned_geometry_tests PRIVATE d3d12 dxgi)
-    add_executable(pinyon_shift_snr04_owned_scene_diagnostic EXCLUDE_FROM_ALL
-        tests/native_renderer/snr04_owned_scene_diagnostic_main.cpp
-        src/native_renderer/snr04_owned_scene_diagnostic.cpp)
-    target_include_directories(pinyon_shift_snr04_owned_scene_diagnostic PRIVATE src)
-    target_link_libraries(pinyon_shift_snr04_owned_scene_diagnostic PRIVATE
-        bcrypt d3d12 d3dcompiler dxgi xxhash)
 endif()
 
 add_executable(pinyon_shift_fh1_archive_extract EXCLUDE_FROM_ALL
@@ -127,5 +115,5 @@ add_custom_target(pinyon_shift_stage_controller_mappings ALL
     VERBATIM)
 
 if(WIN32)
-    target_link_libraries(pinyon_shift PRIVATE bcrypt d3d12 d3dcompiler dbghelp dxgi rex::gpu-fh1)
+    target_link_libraries(pinyon_shift PRIVATE bcrypt d3d12 dbghelp dxgi rex::gpu-fh1)
 endif()

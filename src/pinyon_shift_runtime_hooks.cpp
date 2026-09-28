@@ -24,8 +24,6 @@
 
 #include "pinyon_shift_diagnostics.h"
 #include "fh1_render_test.h"
-#include "native_renderer/graphics_hooks.h"
-#include "native_renderer/guest_output_renderer.h"
 #include "pinyon_shift_runtime_hooks.h"
 #include "ui/fh1_ui_api.h"
 
@@ -3836,27 +3834,6 @@ void ApplyUiMutationExperiment() {
 void PinyonShiftTraceFrameTelemetry(PPCRegister& r28, PPCRegister& r31) {
   PROFILE_SIMULATION_TICK();
   ApplyUiMutationExperiment();
-  // Race admission only feeds the frozen native race pilot; the product
-  // renderers (Xenos and the native executor) never read it.
-  const bool native_race_pilot = pinyon_shift::native_renderer::NativeRaceRequested();
-  bool native_race_admitted = false;
-  if (native_race_pilot && PinyonShiftGuestRangeReadable(r31.u32 + 4u, 4u)) {
-    const uint32_t native_race_active = LoadGuestU32(r31.u32 + 4u);
-    if (PinyonShiftGuestRangeReadable(native_race_active, 16u) &&
-        LoadGuestU32(native_race_active) == 0x820148A0u) {
-      const uint32_t activity = LoadGuestU32(native_race_active + 8u);
-      native_race_admitted = LoadGuestU32(native_race_active + 12u) ==
-                                 0x00010174u &&
-                             PinyonShiftGuestRangeReadable(activity, 4u) &&
-                             LoadGuestU32(activity) == 0x8202A344u;
-    }
-  }
-  const uint64_t native_race_source_frame = rex::perf::GetTotalCounter(
-      rex::perf::CounterId::kSourceFrameCount);
-  if (native_race_pilot) {
-    pinyon_shift::native_renderer::PublishNativeRaceAdmission(
-        native_race_source_frame, native_race_admitted);
-  }
   if (r28.u32 == 0) {
     return;
   }
