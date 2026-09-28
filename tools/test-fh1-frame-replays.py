@@ -27,7 +27,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("directory", type=Path)
     parser.add_argument("--state-root", type=Path, required=True)
-    parser.add_argument("--renderer", default="native", choices=("native", "native-shadow", "xenos"))
+    parser.add_argument("--renderer", default="native", choices=("native", "xenos"))
     parser.add_argument("--shader-pack", type=Path)
     parser.add_argument("--configuration")
     parser.add_argument("--timeout", type=int, default=300)

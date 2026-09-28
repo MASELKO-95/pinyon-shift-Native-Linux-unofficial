@@ -103,7 +103,7 @@ def main() -> int:
                         help="pinned render seed (see tools/create-render-seed.py)")
     parser.add_argument("--work", type=Path, default=Path(".local/replay/state"),
                         help="private state directory, replaced on every run")
-    parser.add_argument("--renderer", default="native", choices=("native", "native-shadow", "xenos"))
+    parser.add_argument("--renderer", default="native", choices=("native", "xenos"))
     parser.add_argument("--shader-pack", type=Path)
     parser.add_argument("--configuration")
     parser.add_argument("--hidden", action="store_true")
