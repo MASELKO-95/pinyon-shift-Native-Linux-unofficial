@@ -37,6 +37,10 @@ void ObserveVehiclePose(float x, float y, float z);
 // Records a guest movie (.wmv) open, for scripted waits on movie playback.
 void ObserveMovieOpened(std::string_view guest_path);
 
+// Records any guest file open (lower-case path), for scripted waits on the
+// assets a screen loads; logged as events with fh1_render_test_log_file_opens.
+void ObserveFileOpened(std::string_view guest_path);
+
 // Most recent scripted-route frame. Zero when no route is running. Host-side
 // UI experiments use it to scope a mutation to one part of the route instead
 // of guessing from a creation ordinal.

@@ -606,6 +606,7 @@ void PinyonShiftObserveGuestFileOpen(std::string_view guest_path) {
       character = static_cast<char>(character + ('a' - 'A'));
     }
   }
+  pinyon_shift::fh1_render_test::ObserveFileOpened(path);
   if (!path.ends_with(".wmv")) {
     return;
   }

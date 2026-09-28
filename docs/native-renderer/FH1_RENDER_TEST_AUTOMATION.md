@@ -86,8 +86,12 @@ route wait on game state instead of timing: at `<frame>` the script clock
 holds (inputs keep their state) until the condition holds, and later steps
 keep their spacing from that point. Conditions are `vehicle` (a vehicle pose
 update arrives), `vehicle-moved <units>` (the car has moved that far since
-the wait began, e.g. once a race countdown ends) and `movie <text>` (the
-guest opens a movie whose lower-case path contains the text). Each wait
+the wait began, e.g. once a race countdown ends), `movie <text>` (the
+guest opens a movie whose lower-case path contains the text) and
+`file <text>` (the guest opens any file whose lower-case path contains the
+text, for screens that load their own assets). To find the files a screen
+opens, run a route with `--game-argument=--fh1_render_test_log_file_opens=true`:
+every open is recorded as `fh1.render_test.file_open` with its output frame. Each wait
 records `fh1.render_test.wait` with the frames waited; exceeding
 `<max-frames>` fails the run with `wait_timeout`. `fh1-race-start-wait`
 uses it to capture the race only after the car moves.

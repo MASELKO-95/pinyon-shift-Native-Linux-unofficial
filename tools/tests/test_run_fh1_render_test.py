@@ -43,7 +43,7 @@ class Fh1RenderTestRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             script = Path(directory) / "route.fh1test"
             for wait in ("wait 10 600 vehicle", "wait 10 600 vehicle-moved 30",
-                         "wait 10 600 movie pressstart"):
+                         "wait 10 600 movie pressstart", "wait 10 600 file carselect"):
                 script.write_text(header + wait + "\n" + tail, encoding="utf-8")
                 self.assertEqual([(20, "shot")], MODULE.parse_scenario(script)[0])
             for wait in ("wait 10 600 vehicle-moved", "wait 10 0 vehicle",
@@ -56,6 +56,7 @@ class Fh1RenderTestRunnerTests(unittest.TestCase):
         scenarios = Path(__file__).parents[2] / "config" / "render-tests"
         captures = MODULE.parse_scenario(scenarios / "fh1-race-start-wait.fh1test")[0]
         self.assertIn((4330, "race-moving"), captures)
+
 
     def test_resolves_disc_corpus_ucode_directory(self):
         with tempfile.TemporaryDirectory() as directory:

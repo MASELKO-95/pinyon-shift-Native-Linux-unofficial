@@ -30,6 +30,10 @@
 
 #include "pinyon_shift_diagnostics.h"
 
+REXCVAR_DEFINE_BOOL(fh1_render_test_log_file_opens, false, "Pinyon Shift",
+                    "Record every guest file open as a render-test event")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+
 namespace pinyon_shift::fh1_render_test {
 namespace {
 
@@ -53,12 +57,12 @@ struct NativeRaceStep {
 // clock stops (inputs hold their state) until the game reaches the condition,
 // then continues, so later steps keep their spacing from that point.
 struct WaitStep {
-  enum class Condition { kVehicle, kVehicleMoved, kMovie };
+  enum class Condition { kVehicle, kVehicleMoved, kMovie, kFile };
   uint64_t frame = 0;
   uint64_t max_frames = 0;
   Condition condition = Condition::kVehicle;
   float distance = 0.0f;  // kVehicleMoved, in world units.
-  std::string text;       // kMovie: substring of the lower-case guest path.
+  std::string text;       // kMovie, kFile: substring of the lower-case guest path.
 };
 
 struct Capture {
@@ -97,6 +101,7 @@ struct TestState {
   uint64_t wait_start_output = 0;
   uint64_t wait_start_vehicle_updates = 0;
   uint64_t wait_start_movie_opens = 0;
+  uint64_t wait_start_file_opens = 0;
   std::vector<Capture> captures;
   uint64_t stop_frame = 0;
   uint32_t clock_hz = 0;
@@ -126,6 +131,9 @@ struct TestState {
   float wait_z = 0.0f;
   uint64_t movie_opens = 0;
   std::string last_movie;
+  // Recent file opens with their sequence numbers, newest last.
+  uint64_t file_opens = 0;
+  std::vector<std::pair<uint64_t, std::string>> recent_files;
 };
 
 TestState g_test;
@@ -263,6 +271,9 @@ void LoadScript(const std::filesystem::path& path) {
         wait.distance = float(ParseUnsigned(argument, 10, "wait_distance"));
       } else if (condition == "movie" && row >> argument) {
         wait.condition = WaitStep::Condition::kMovie;
+        wait.text = argument;
+      } else if (condition == "file" && row >> argument) {
+        wait.condition = WaitStep::Condition::kFile;
         wait.text = argument;
       } else {
         Fail("script_wait_condition");
@@ -490,6 +501,14 @@ bool WaitSatisfied(const WaitStep& wait) {
       return g_test.movie_opens > g_test.wait_start_movie_opens &&
              g_test.last_movie.find(wait.text) != std::string::npos;
     }
+    case WaitStep::Condition::kFile: {
+      std::lock_guard lock(g_test.vehicle_pose_mutex);
+      return std::any_of(g_test.recent_files.begin(), g_test.recent_files.end(),
+                         [&](const auto& file) {
+                           return file.first > g_test.wait_start_file_opens &&
+                                  file.second.find(wait.text) != std::string::npos;
+                         });
+    }
   }
   return false;
 }
@@ -507,6 +526,7 @@ uint64_t ApplyWaits(uint64_t output_frame) {
       std::lock_guard lock(g_test.vehicle_pose_mutex);
       g_test.wait_start_vehicle_updates = g_test.vehicle_pose_updates;
       g_test.wait_start_movie_opens = g_test.movie_opens;
+      g_test.wait_start_file_opens = g_test.file_opens;
       g_test.wait_pose_valid = false;
     }
     if (WaitSatisfied(wait)) {
@@ -701,6 +721,26 @@ void ObserveMovieOpened(std::string_view guest_path) {
   std::lock_guard lock(g_test.vehicle_pose_mutex);
   g_test.last_movie.assign(guest_path);
   ++g_test.movie_opens;
+}
+
+void ObserveFileOpened(std::string_view guest_path) {
+  if (!g_test.enabled) return;
+  static const bool log = REXCVAR_GET(fh1_render_test_log_file_opens);
+  {
+    std::lock_guard lock(g_test.vehicle_pose_mutex);
+    ++g_test.file_opens;
+    if (g_test.recent_files.size() >= 256) {
+      g_test.recent_files.erase(g_test.recent_files.begin(),
+                                g_test.recent_files.begin() + 128);
+    }
+    g_test.recent_files.emplace_back(g_test.file_opens, std::string(guest_path));
+  }
+  if (log) {
+    diagnostics::RecordEvent(
+        "fh1.render_test.file_open",
+        {{"path", std::string(guest_path)},
+         {"output_frame", std::to_string(g_test.frame.load(std::memory_order_acquire))}});
+  }
 }
 
 void ObserveVehiclePose(float x, float y, float z) {

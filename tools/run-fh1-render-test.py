@@ -227,7 +227,7 @@ def parse_scenario(
                 first_input = frame
         elif fields[0] == "wait" and (
             (len(fields) == 4 and fields[3] == "vehicle")
-            or (len(fields) == 5 and fields[3] in ("vehicle-moved", "movie"))
+            or (len(fields) == 5 and fields[3] in ("vehicle-moved", "movie", "file"))
         ):
             # wait <frame> <max-frames> <condition> [argument]: the script
             # clock holds at <frame> until the game reaches the condition.
