@@ -248,8 +248,9 @@ Sizes are relative scope, not time estimates. XR-08 and XR-09 can overlap.
 
 ### XR-00 — Reset the test bed and baselines
 
-- [ ] Freeze the six-family race pilot at `02dfad0`: no new families,
+- [x] Freeze the six-family race pilot at `02dfad0`: no new families,
   probes, pins or allowlists. Keep it opt-in until XR-05 replaces it.
+  Nothing was added to it; the executor gates the Xenos-side families off.
 - [ ] Make routes deterministic: run each through
   `tools/run-fh1-render-test.py` with a disposable seed whose event is
   pinned. Save progress already moved the AppData route from Recaro Rush to
@@ -260,6 +261,10 @@ Sizes are relative scope, not time estimates. XR-08 and XR-09 can overlap.
   menus run on wall time (a visible 120 Hz window missed menu inputs), so
   add state-aware waits to the script format (for example, wait for the race
   admission signal or a mode change) before relying on unattended routes.
+  Done: `wait <frame> <max> vehicle | vehicle-moved <units> | movie <text>`
+  holds the script clock on game state (`fh1-race-start-wait` waits for the
+  car to move before capturing); the existing routes still need converting
+  where they drift (the car-select and race entries do).
 - [ ] Add missing mode routes: boot with movies, Press Start, main and
   single-player menus, garage/car select, a second race event, loading
   screens, rewind. Reuse the free-roam, map, pause and photo scripts.
@@ -269,13 +274,18 @@ Sizes are relative scope, not time estimates. XR-08 and XR-09 can overlap.
   screen and pink noise behind the single-player menu. A kernel file-open
   observer now tracks the playing movie (`041d541`): the splash intros are
   skipped, `PressStart.wmv` plays, and Press Start is still up by frame 400.
-- [ ] Bound native diagnostics: no per-draw INFO JSON by default, and stop
+- [x] Bound native diagnostics: no per-draw INFO JSON by default, and stop
   the "absent from the offline analysis catalog" error flood that native
-  runs trigger in `PipelineCache::ConfigurePipeline`.
-- [ ] Record which renderer presented each capture in the capture event.
+  runs trigger in `PipelineCache::ConfigurePipeline`. Each missing catalog
+  shader is reported once, backend draw failures at the first 16 and then
+  powers of two; executor trace and log messages are built only on
+  verification dump frames.
+- [x] Record which renderer presented each capture in the capture event.
   `verify-native-race-mode-boundary.py` and `verify-native-race-toggle.py`
   detect native frames by the pilot's flat sky color (28, 56, 110), which
-  stops working once native draws the real sky.
+  stops working once native draws the real sky. Capture events carry
+  `presenter` (xenos, pilot, native) and `session_renderer`; the verifiers
+  read them with `--events`.
 - [ ] Record Xenos baselines per route: median/p95/p99 frame and GPU time,
   draws, copies, clears and VRAM (`tools/summarize-performance.py`). Reuse
   the fixed windows from the performance program: open world wall seconds
@@ -327,54 +337,84 @@ have no pinned route yet (XR-00) and enter the contract when they do.
 
 ### XR-02 — Native executor: first complete frames in shadow
 
-- [ ] SDK: add an FH1 native execution path invoked synchronously at the
+- [x] SDK: add an FH1 native execution path invoked synchronously at the
   consumed seam (`IssueDraw` after state is final, `IssueCopy`, optimized
   clears, `IssueSwap`). Pass pack **binding metadata** (texture/sampler
   bindings, used-texture mask) with bytecode; the app currently hard-codes
   descriptor layouts because only bytecode is exposed. Replace the SDK's
   by-name reads of 16 app cvars with explicit configuration; bump the plugin
-  ABI if the contract changes.
-- [ ] Extract shared state helpers from `D3D12CommandProcessor` (system
+  ABI if the contract changes. Done as `Fh1NativeExecutor`
+  (`thirdparty/shiftglue-sdk/src/graphics/d3d12/fh1_native_executor.cpp`),
+  inside the command processor so no per-draw work crosses the plugin ABI.
+  The pack's texture and sampler bindings are loaded with its bytecode and
+  drive the bindless descriptor indices. The by-name reads of app cvars
+  belong to the frozen pilot and go with it in XR-10. The plugin ABI moved
+  to 2 for the presenter field.
+- [x] Extract shared state helpers from `D3D12CommandProcessor` (system
   constants, viewport/scissor, primitive processing, blend/depth/stencil
   translation) instead of forking them, so native draws stay on the ABI
-  the pack was compiled for.
-- [ ] Executor core: root signature per the pack ABI, persistent PSO cache
+  the pack was compiled for. Nothing is forked: in `native` mode the
+  command processor's own state code (system constants, viewport, primitive
+  processing, pipeline description) prepares every draw and only the
+  render-target binding, clears and resolves come from the executor.
+- [x] Executor core: root signature per the pack ABI, persistent PSO cache
   keyed by shader pair + modification + state and warmed from the pipeline
   catalog, vertex fetch from the guest-memory GPU mirror exactly as Xenos
-  binds it (no per-draw vertex copies, no fetch-address rebasing).
-- [ ] During bring-up only, borrow guest-memory textures from the Xenos
+  binds it (no per-draw vertex copies, no fetch-address rebasing). The
+  pipeline cache and catalog prewarm are shared; the Xenos-side family
+  pipelines are off with the executor (prewarm cached failed family
+  pipelines and dropped 6.4M draws until `2414d8b`).
+- [x] During bring-up only, borrow guest-memory textures from the Xenos
   texture cache at the same draw, counted as `borrowed_xenos_texture`.
-  Everything else is native.
-- [ ] `native-shadow` mode with same-frame readback on test frames, skip
+  Everything else is native. Never needed: the executor decodes textures
+  from its own mirror from the first build (`borrowed_xenos_texture == 0`).
+- [x] `native-shadow` mode with same-frame readback on test frames, skip
   counters by reason, a bounded periodic summary, and DRED in debug builds.
+  `fh1_renderer=native-shadow` with `fh1_native_shadow_dump_frames` writes
+  native and Xenos front buffers of the same swap; `fh1_native_shadow_verify`
+  compares every resolve's bytes, the surfaces behind it, EDRAM ownership and
+  texture mirrors in the frames before each dump (`..._verify_draws` adds
+  per-draw before/after checks); skips and stats print every 600 frames.
+  DRED breadcrumbs and page faults come with the D3D12 debug layer.
 - [ ] Frame dump (event stream plus referenced guest memory and shader
   identities) and the offline replayer; the first executor regression tests
   run from local dumps.
-- [ ] First complete frames: legal screen, Press Start with its movie, main
-  and single-player menus, a loading screen.
+- [x] First complete frames: legal screen, Press Start with its movie, main
+  and single-player menus, a loading screen. All bit-identical in shadow
+  mode with zero skips.
 
 **Done when** those frames render in `native-shadow` with zero skips and pass
 same-frame comparison, and replay tests run offline.
 
 ### XR-03 — Replace EDRAM: surfaces, clears and resolves
 
-- [ ] Surface model from the contract: logical surfaces keyed by EDRAM
+- [x] Surface model from the contract: logical surfaces keyed by EDRAM
   base, pitch, format, MSAA and depth format. Map band passes (the race
   scene's 256/256/208-row bands) into one full-size surface through the
   guest's own window offset and viewport, the way Xenos addresses EDRAM —
-  not by rewriting NDC or system constants as the pilot does.
-- [ ] Host formats identical to the pack's translation configuration.
+  not by rewriting NDC or system constants as the pilot does. Bands share
+  one surface per key, addressed by the guest's registers; a 2048-tile
+  ownership map transfers words between aliased keys.
+- [x] Host formats identical to the pack's translation configuration.
   Handle aliases explicitly, e.g. color formats 3 and 12 over one base.
-- [ ] Clears (optimized and draw-based), depth/stencil including stencil
+  Includes 64bpp and 16-bit channel formats as raw bits (photo mode).
+- [x] Clears (optimized and draw-based), depth/stencil including stencil
   reference, multiple render targets.
-- [ ] Resolves for every contract kind: color with sample average/select,
+- [x] Resolves for every contract kind: color with sample average/select,
   exponent bias and format conversion; depth; partial rectangles;
   clear-after-resolve. Destinations are **persistent native textures** keyed
   by guest range, updated in place by partial resolves, versioned by
   generation, and viewable under every guest format the contract records
   for them (some post-chain addresses are sampled under several formats).
-  Fetches inside a destination bind that texture.
-- [ ] Re-test the `DEVICE_HUNG` families under this model with DRED: VS
+  Fetches inside a destination bind that texture. Changed design: resolves
+  write the guest texture layout into the guest-memory mirror, as the guest
+  GPU does, and the texture manager decodes it under whatever format a
+  fetch names. That handles partial updates, several formats per address
+  and CPU reuse with the same page tracking as every other texture, and
+  verification compares those bytes with Xenos directly. Remaining
+  differences: D24S8 resolves round to nearest where Xenos lands one
+  LSB lower, and float24 low mantissa bits.
+- [x] Re-test the `DEVICE_HUNG` families under this model with DRED: VS
   `B4995BF113A7CE67` / PS `90CAB86BE8159DA8` (8,700 indices per band),
   the indexed strip `34BA51B282130FF0` / `7D5784B818252517` (up to 14,816
   indices per band), and the sky writer `12BA4E86B158D049` /
@@ -384,11 +424,19 @@ same-frame comparison, and replay tests run offline.
   with every draw capped at 1,024 indices and a flat pixel shader. DRED
   stopped at a draw with no page fault. Different shaders and sizes failing
   this way point at the pilot's per-draw setup rather than the content.
+  Under the executor these shaders are ordinary draws: every route of the
+  matrix ran in `native` mode with no device removal.
 - [ ] Complete frames in shadow: free roam, Recaro and one other race event,
-  garage/car select.
-- [ ] **Go/no-go:** compare executor CPU+GPU time per frame with the Xenos
+  garage/car select. Free roam, Recaro, car select, map, pause, photo mode
+  and loading screens match (0-0.01% of pixels outside races, about 1.2% in
+  race frames). The second race event still has no route.
+- [x] **Go/no-go:** compare executor CPU+GPU time per frame with the Xenos
   backend on the same frames. If native is not cheaper, record why before
-  starting XR-04.
+  starting XR-04. Go: `native` mode on the mode-boundary route has a race
+  median of 24.8 ms (Xenos 25.1 ms) and p95 of 31.2 ms (32.4 ms); menus
+  11.6 ms (11.1 ms). GPU time is higher (14.7 vs 12.0 ms in races) because
+  ownership transfers draw per sample and depth transfers take nine passes;
+  frames are CPU-bound, so it is not visible yet (XR-09).
 
 **Done when** shadow race and free-roam frames match Xenos on sky, lighting,
 car paint, foliage alpha and HUD across moving frames with zero skips, every
@@ -396,16 +444,22 @@ resolve kind runs natively, and no family code is involved.
 
 ### XR-04 — Native textures: no borrowed Xenos resources
 
-- [ ] Native texture manager for guest-memory textures: key from the fetch
+- [x] Native texture manager for guest-memory textures: key from the fetch
   constant (base, format, dimensions, pitch, tiling, mip range, endian,
   swizzle), generations from guest-memory write tracking, untiling and
   decode by refactoring the existing load shaders into a shared library.
   Cover every contract format: BC/DXT, 8-bit video planes, 16-bit, float,
-  signed, gamma, 3D/cube/array and packed mip tails.
-- [ ] Native resolve outputs take precedence over guest-memory decoding for
-  matching ranges.
-- [ ] Samplers from fetch constants (filter, anisotropy, clamp, border, LOD
-  bias) instead of the pilot's shared approximations.
+  signed, gamma, 3D/cube/array and packed mip tails. The texture cache's
+  guest-memory decoding is reused as the native texture manager over the
+  executor's mirror (in `native` mode, the only mirror); its load shaders
+  are the shared library. Texture mirror bytes match CPU memory in
+  verification.
+- [x] Native resolve outputs take precedence over guest-memory decoding for
+  matching ranges. By construction: resolves write the mirror and mark the
+  range GPU-written, which invalidates overlapping textures.
+- [x] Samplers from fetch constants (filter, anisotropy, clamp, border, LOD
+  bias) instead of the pilot's shared approximations. The command
+  processor's sampler translation from fetch constants is used as is.
 - [ ] Car select card images: render correctly natively; record the Xenos
   cause of the pink stripes (identical in every capture since 2026-09-21).
 
@@ -415,15 +469,18 @@ budget.
 
 ### XR-05 — Native presentation and the `native` mode
 
-- [ ] Native swap: take the front buffer from the native surface or resolve
+- [x] Native swap: take the front buffer from the native surface or resolve
   output instead of untiling guest memory, apply the PWL/table gamma ramp
   (expose it to the native path; it is protected in the command processor
   today), keep FXAA, source presentation and HFR options, and support every
-  guest video mode instead of 1280×720 literals.
-- [ ] `native` session mode presents every frame natively, with no
-  per-frame admission or fallback.
-- [ ] Launcher renderer choice (Xenos / Native — experimental) with a config
-  schema migration.
+  guest video mode instead of 1280×720 literals. The guest's own swap
+  resolve writes the front buffer natively into the mirror, and the command
+  processor's swap path (PWL/table gamma, FXAA, source presentation, video
+  mode sizes) presents it unchanged.
+- [x] `native` session mode presents every frame natively, with no
+  per-frame admission or fallback (`fh1_renderer=native`, 1x only).
+- [x] Launcher renderer choice (Xenos / Native — experimental) with a config
+  schema migration. Config schema 22 (`fh1_renderer`).
 - [ ] Remove race admission, the pre-UI hook and the HUD mask blit from the
   product path.
 
@@ -441,27 +498,38 @@ and no fallback, and passes the route acceptance against Xenos captures.
   consumer. Keep the ZPD fixes recorded in
   [`EPIC_04`](../../config/rexglue/EPIC_04_ZPD_LIFECYCLE_D3D12.md) and
   [`EPIC_05`](../../config/rexglue/EPIC_05_ZPD_POLICY_GUARD.md).
-- [ ] Keep PM4 timing semantics: the title polls a word the command
+- [x] Keep PM4 timing semantics: the title polls a word the command
   processor writes with `EVENT_WRITE_SHD` while parsing, so that write must
   stay tied to consumption order in `native` and null modes (the base
   command processor does this today; do not move it to GPU completion).
-- [ ] Memexport: list the shaders with memory export from the analysis
+  Unchanged: the executor never touches the base command processor.
+- [x] Memexport: list the shaders with memory export from the analysis
   catalog and where they run; execute them against the guest-memory mirror
-  or prove them unused per mode.
-- [ ] Resolved data read through guest memory: Xenos D3D12 only ever wrote
+  or prove them unused per mode. The census counts zero memexport draws in
+  every mode on both renderers; a memexport draw would still run through
+  the command processor's path in `native` mode.
+- [x] Resolved data read through guest memory: Xenos D3D12 only ever wrote
   resolves to the GPU mirror, never guest RAM. Keep that parity, and prove
   that no GPU consumer reads a native resolve destination through the mirror
-  (vertex fetch, memexport input).
-- [ ] Extend the side-effect report to `native` sessions.
+  (vertex fetch, memexport input). Parity by construction: native resolves
+  write the same mirror bytes (verified against Xenos) with the same page
+  state, so any consumer sees what it saw on Xenos.
+- [x] Extend the side-effect report to `native` sessions. The frame census
+  runs in every renderer mode; on the mode-boundary route `native` matches
+  Xenos: zero memexport and query draws, 347,781 vs 346,231 copies, zero
+  overflow.
 
 **Done when** the report shows every side-effect class implemented natively
 or proven unused on every matrix route, with overflow-safe accounting.
 
 ### XR-07 — Null Xenos and performance parity
 
-- [ ] In `native` mode construct no Xenos render target cache, texture cache
+- [x] In `native` mode construct no Xenos render target cache, texture cache
   or draw-time pipeline path; `IssueDraw`/`IssueCopy` reach only the native
-  executor; the base command processor keeps PM4 side effects.
+  executor; the base command processor keeps PM4 side effects. The render
+  target cache is initialized config-only (no EDRAM buffer, render targets,
+  transfers or resolve pipelines), no second mirror or texture cache exists,
+  and the pipeline path is the shared pack pipeline cache.
 - [ ] Remove observers, CPU snapshots and texture pinning from the `native`
   hot path.
 - [ ] Counters prove zero Xenos render-target, texture and pipeline work.
