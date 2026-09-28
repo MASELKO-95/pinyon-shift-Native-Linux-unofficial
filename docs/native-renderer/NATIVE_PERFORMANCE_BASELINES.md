@@ -51,14 +51,31 @@ skipped, native prepared targets for 3.1 ms per race frame and the race
 window was +1.8% median; before per-tile stencil state, the whole route was
 +3.3-3.7% median.
 
+## Resolution scale
+
+`fh1-race-sync` at 2x and 3x, each renderer with a pack produced at that
+scale by the native renderer:
+
+| Scale, renderer | Median ms | p95 ms |
+| --- | --- | --- |
+| 2x xenos | 14.51 | 29.81 |
+| 2x native | 14.11 | 28.53 |
+| 3x xenos | 21.25 | 34.17 |
+| 3x native | 17.08 | 29.72 |
+
+Native is faster at both scales (-2.8% and -19.6% median); the cause of
+the 3x gap was not profiled.
+
 ## Memory
 
 `FH1 native executor memory MB` (logged with the executor stats): textures
 stay under the texture cache's soft limit of 384 MB (race 265, photo 178,
 free roam 149 MB peaks); executor surfaces take 522-562 MB and the transfer
-word buffer 10 MB.
+word buffer 10 MB. On the race route, surfaces take 2024 MB at 2x and
+4448 MB at 3x, textures 383 and 551 MB (the scaled resolve range is
+counted with textures).
 
 ## Not covered
 
 Only this machine was measured; AMD, Intel and lower-end hardware are not
-available (XR-09). Native mode is 1x only.
+available (XR-09).

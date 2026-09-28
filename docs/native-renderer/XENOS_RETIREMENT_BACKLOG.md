@@ -650,7 +650,18 @@ list of accepted differences.
 
 ### XR-09 — Scaling, performance and hardware
 
-- [ ] Native 2x/3x scaling (surfaces and resolves at scale; pack per scale).
+- [x] Native 2x/3x scaling (surfaces and resolves at scale; pack per scale).
+  SDK `927bdc3`, app `64c9deb`: `native` runs at symmetric 1x, 2x and 3x
+  (`native-shadow` stays 1x). Surfaces are scale x scale host pixels per
+  guest pixel, capped at 16384 host rows; transfers and resolves scale
+  guest rectangles at use, and resolves write the texture cache's scaled
+  resolve range. Packs must be produced with the native renderer
+  (`96943bc`): a Xenos-produced pack lacks the native depth-rectangle clear
+  vertex shader 1E6883FCCDE1F688, which showed as a green glow on car
+  reflections. On `fh1-race-sync`, native 2x is 14.11/28.53 ms (median/p95)
+  against Xenos 14.51/29.81, and native 3x 17.08/29.72 against Xenos
+  21.25/34.17. At 3x both renderers show the same faint green glow on car
+  reflections (a shared scaling defect, not a native regression).
 - [x] Band merge: test whether band passes can execute once into the full
   surface without changing the image; retain only with a matched A/B.
   Tested on the census of the mode-boundary race (frames 4801-4860): the
@@ -679,8 +690,8 @@ and vendor tested.
 - [x] Make `native` the default for one release with `xenos` as the rollback.
   Config schema 23 (`0949d10`): new and migrated configs select `native`
   (schema 22's `xenos` was the old default), the launcher lists "Native ·
-  default (1× only)" first and "Xenos · rollback", scaled sessions keep
-  Xenos. The release that ships it starts the one-release clock the next
+  default" first and "Xenos · rollback"; since `64c9deb` scaled sessions
+  also run native. The release that ships it starts the one-release clock the next
   two items wait for.
 - [ ] Remove from the runtime: the Xenos render target cache, texture cache
   orchestration and draw-time pipeline path; the Xenos-side owned-depth-clear
