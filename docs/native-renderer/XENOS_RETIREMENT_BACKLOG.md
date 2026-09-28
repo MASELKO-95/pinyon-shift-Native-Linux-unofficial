@@ -492,7 +492,7 @@ resolve kind runs natively, and no family code is involved.
 - [x] Samplers from fetch constants (filter, anisotropy, clamp, border, LOD
   bias) instead of the pilot's shared approximations. The command
   processor's sampler translation from fetch constants is used as is.
-- [ ] Car select card images: render correctly natively; record the Xenos
+- [x] Car select card images: render correctly natively; record the Xenos
   cause of the pink stripes (identical in every capture since 2026-09-21).
   Cause: the cards are the profile's `Thumbnails/Thumbnail_N.xdc` (a deflated
   Xenos texture, tiled 8888 768x288), and those files already hold noise:
@@ -504,6 +504,25 @@ resolve kind runs natively, and no family code is involved.
   both renderers even with `readback_resolve=full`, so the thumbnail
   producer is not a plain resolve read-back. Open: find that producer, then
   regenerate thumbnails on a fresh profile.
+  Producer found with `fh1-buy-car` (buying a car from car select): the game
+  loads the `uithumbig` and `uithumbnail` studio tracks, renders the new car,
+  resolves it and deflates the resolved texture into `Thumbnail_7.xdc` on
+  the CPU. The D3D12 Xenos backend has no resolve read-back at all, and the
+  native executor had it only as `readback_resolve`, so both wrote
+  byte-identical stale memory: the stripes. (The earlier photo-save test
+  never saved a photo, and the save screen does not take A in scripted runs;
+  its old slot thumbnail is noise for the same reason.) `full` gives the
+  real image but triples frame time; `fast` hands the game previous-frame
+  data and it never reaches free roam. SDK `e9b293b` reads back one-off
+  captures by default in `native` (`fh1_native_readback_new_resolves`):
+  ranges of 256 KiB and up that are new or idle for seconds, for the first
+  frames of each run while new, copied into guest memory before the command
+  processor's next CPU-visible command with one GPU wait per batch, and at
+  2x/3x resolved again unscaled for the copy. The route's thumbnail is then
+  byte-identical to `full` at 1x and real at 2x, and the new card shows the
+  car in car select; `fh1-race-sync` and `fh1-modes-sync` frame times match
+  the option off (no read-backs in the race window). Cards saved by earlier
+  builds stay striped until the game saves them again.
 
 **Done when** the route matrix runs in `native-shadow` with
 `borrowed_xenos_texture == 0` and native texture memory within a stated
@@ -644,6 +663,11 @@ or proven unused on every matrix route, with overflow-safe accounting.
   defect seen: draws of vertex shader E2611762FE853E0C fail in both
   renderers because the shader pack's offline catalog lacks it (a pack
   coverage gap, not visible in the captures). A human drive is still owed.
+  Same class of defect off the drive: `fh1-buy-car` misses five vertex
+  shader variants in the 1x pack and 18 in the 2x pack (for example
+  37EBBE47900A46F5/7 and C8DB78EC7C219094/7F in the autoshow), and shipping
+  builds have no runtime translator, so those draws are dropped on both
+  renderers. The producer's route does not reach the autoshow.
 
 **Done when** every matrix mode passes the acceptance rules with an explicit
 list of accepted differences.
@@ -716,6 +740,7 @@ differing, largest channel difference out of 255) and full `native` runs.
 | Boot, legal, splash movies | `fh1-fmv` with movies | Native; pairs 0% |
 | Press Start and menus | `fh1-opening-sync`, `fh1-native-race-mode-boundary` | Native; pairs 0% |
 | Garage / car select | `fh1-race-sync` | Native; 0.001% (cards show the profile's corrupt thumbnails on both, XR-04) |
+| Autoshow purchase and car thumbnail | `fh1-buy-car` | Native writes the real thumbnail (XR-04); Xenos writes stale memory |
 | Free roam | `fh1-modes-sync`, `fh1-free-roam` | Native; 0-0.008%, max 3 |
 | Race: the Gauntlet (event at the seed's spawn) | `fh1-race-sync`, mode boundary | Native; 0.03-0.44%, max 2-3 |
 | Race: other event (new-player opening drive) | `fh1-opening-sync` | Native; 0.07-0.27%, max 2-3 |
