@@ -89,7 +89,9 @@ update arrives), `vehicle-moved <units>` (the car has moved that far since
 the wait began, e.g. once a race countdown ends), `movie <text>` (the
 guest opens a movie whose lower-case path contains the text) and
 `file <text>` (the guest opens any file whose lower-case path contains the
-text, for screens that load their own assets). To find the files a screen
+text, for screens that load their own assets; opens in the 60 output frames
+before the wait count, since a screen often loads right after the input that
+opened it). To find the files a screen
 opens, run a route with `--game-argument=--fh1_render_test_log_file_opens=true`:
 every open is recorded as `fh1.render_test.file_open` with its output frame. Each wait
 records `fh1.render_test.wait` with the frames waited; exceeding

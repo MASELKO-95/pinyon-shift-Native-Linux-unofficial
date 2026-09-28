@@ -56,6 +56,8 @@ struct NativeRaceStep {
 // `wait <frame> <max-frames> <condition> [argument]`: at <frame> the script
 // clock stops (inputs hold their state) until the game reaches the condition,
 // then continues, so later steps keep their spacing from that point.
+constexpr uint64_t kFileWaitLookbackFrames = 60;
+
 struct WaitStep {
   enum class Condition { kVehicle, kVehicleMoved, kMovie, kFile };
   uint64_t frame = 0;
@@ -106,6 +108,7 @@ struct TestState {
   uint64_t stop_frame = 0;
   uint32_t clock_hz = 0;
   std::atomic<uint64_t> frame{};
+  std::atomic<uint64_t> output_frame{};
   std::chrono::steady_clock::time_point clock_origin{};
   std::mutex mutex;
   std::condition_variable condition;
@@ -131,9 +134,14 @@ struct TestState {
   float wait_z = 0.0f;
   uint64_t movie_opens = 0;
   std::string last_movie;
-  // Recent file opens with their sequence numbers, newest last.
+  // Recent file opens (sequence number, output frame, path), newest last.
+  struct FileOpen {
+    uint64_t sequence;
+    uint64_t output_frame;
+    std::string path;
+  };
   uint64_t file_opens = 0;
-  std::vector<std::pair<uint64_t, std::string>> recent_files;
+  std::vector<FileOpen> recent_files;
 };
 
 TestState g_test;
@@ -503,10 +511,15 @@ bool WaitSatisfied(const WaitStep& wait) {
     }
     case WaitStep::Condition::kFile: {
       std::lock_guard lock(g_test.vehicle_pose_mutex);
+      // A screen often opens its files within frames of the input that
+      // requested it, before the script reaches the wait: opens up to
+      // kFileWaitLookbackFrames before the wait began count too.
       return std::any_of(g_test.recent_files.begin(), g_test.recent_files.end(),
                          [&](const auto& file) {
-                           return file.first > g_test.wait_start_file_opens &&
-                                  file.second.find(wait.text) != std::string::npos;
+                           return (file.sequence > g_test.wait_start_file_opens ||
+                                   file.output_frame + kFileWaitLookbackFrames >=
+                                       g_test.wait_start_output) &&
+                                  file.path.find(wait.text) != std::string::npos;
                          });
     }
   }
@@ -644,6 +657,7 @@ bool ObserveOutput(
   if (!g_test.enabled) {
     return false;
   }
+  g_test.output_frame.store(context.frame_sequence, std::memory_order_release);
   // Script frame: the output frame less the frames spent waiting.
   const uint64_t sequence = ApplyWaits(context.frame_sequence);
   if (g_test.stopping) return false;
@@ -733,13 +747,16 @@ void ObserveFileOpened(std::string_view guest_path) {
       g_test.recent_files.erase(g_test.recent_files.begin(),
                                 g_test.recent_files.begin() + 128);
     }
-    g_test.recent_files.emplace_back(g_test.file_opens, std::string(guest_path));
+    g_test.recent_files.push_back({g_test.file_opens,
+                                   g_test.output_frame.load(std::memory_order_acquire),
+                                   std::string(guest_path)});
   }
   if (log) {
     diagnostics::RecordEvent(
         "fh1.render_test.file_open",
         {{"path", std::string(guest_path)},
-         {"output_frame", std::to_string(g_test.frame.load(std::memory_order_acquire))}});
+         {"frame", std::to_string(g_test.frame.load(std::memory_order_acquire))},
+         {"output_frame", std::to_string(g_test.output_frame.load(std::memory_order_acquire))}});
   }
 }
 
