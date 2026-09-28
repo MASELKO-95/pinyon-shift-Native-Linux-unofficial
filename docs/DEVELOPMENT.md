@@ -89,6 +89,11 @@ cache or title code that the native executor still uses.
   command-list submission instead of submitting at every PM4 primary-buffer
   end: median/p95/p99 −3.4%/−3.7%/−13.6% at 1x and −7.1%/−8.1%/−15.5% at 2x.
   Control `--d3d12_submit_on_primary_buffer_end=true`.
+- **GPU commands thread bookkeeping (NP-2.7):** per-thread perf counters,
+  a reused shared-memory range list, a known-register bitmap on register
+  writes and cached sampler parameters. Race-window median 24.3-25.3 ms to
+  21.1-21.2 ms on the undisturbed runs of three interleaved pairs. No
+  control flag; the changes do not alter rendering.
 - **Deadline-driven guest vblank (PERF-14):** replaces polling; −3.20% median
   and −5.60% p95, 62% fewer dropped presents in the measured route. Control
   `--pinyon_shift_fh1_vblank_deadline_wait=false`.
