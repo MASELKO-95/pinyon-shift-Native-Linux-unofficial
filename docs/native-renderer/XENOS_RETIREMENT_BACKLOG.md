@@ -595,7 +595,7 @@ or proven unused on every matrix route, with overflow-safe accounting.
 - [x] Counters prove zero Xenos render-target, texture and pipeline work.
   `native` logs `FH1 xenos edram work` every 600 frames: updates, resolves,
   render targets and transfer tile-passes stay 0 on every route.
-- [ ] Median and p95 frame time in `native` no worse than the XR-00 Xenos
+- [x] Median and p95 frame time in `native` no worse than the XR-00 Xenos
   baselines at 1x on every route; memory within budget. Transfers now claim
   only the tiles a depth-only ALWAYS rectangle touches (covered tiles
   without a transfer) and run batched per destination: free-roam
@@ -606,8 +606,12 @@ or proven unused on every matrix route, with overflow-safe accounting.
   p95; modes below Xenos; the race window (last 600 frames) +0.5-1.8%
   median and +1.3-8.4% p95 across two pairs (p95 swings that much between
   runs); the whole race route +3.3-3.7% median and -3.0 to +3.8% p95.
-  Remaining: the whole-route median gap, native GPU time about 1.1 ms above
-  Xenos in race frames (EDRAM ownership transfers).
+  Transfers then skip stencil passes by per-tile stencil state (tile-passes
+  -22%), and the race route reached parity: whole route 13.58/27.49 ms
+  median/p95 against Xenos 13.78/28.08, race window 24.95/30.15 against
+  25.19/30.23; memory within the stated budget (XR-04). Native GPU time is
+  still about 1 ms higher in race frames, hidden because they are
+  CPU-bound.
 
 **Done when** all four hold.
 

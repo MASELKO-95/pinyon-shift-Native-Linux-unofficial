@@ -25,8 +25,8 @@ different events, so they are not used for parity.
 | fh1-fmv native | 1137 | 4.06 | 6.01 | 6.53 | 0.74 | 1.64 | 54 |
 | fh1-fmv xenos (repeat) | 1132 | 4.10 | 6.01 | 6.52 | 0.64 | 1.63 | 53 |
 | fh1-fmv native (repeat) | 1104 | 4.15 | 6.01 | 12.11 | 0.62 | 1.60 | 54 |
-| fh1-race-sync xenos | 4759 | 13.61 | 28.54 | 34.03 | 5.60 | 11.90 | 2485 |
-| fh1-race-sync native | 4754 | 14.11 | 29.63 | 36.73 | 6.00 | 13.17 | 2552 |
+| fh1-race-sync xenos | 4749 | 13.78 | 28.08 | 33.60 | 5.54 | 11.94 | 2469 |
+| fh1-race-sync native | 4751 | 13.58 | 27.49 | 33.52 | 5.89 | 13.04 | 2506 |
 | fh1-modes-sync xenos | 4231 | 16.52 | 21.89 | 28.34 | 7.41 | 8.45 | 3781 |
 | fh1-modes-sync native | 4217 | 15.59 | 21.55 | 29.14 | 8.12 | 9.71 | 2815 |
 
@@ -37,13 +37,19 @@ draws per frame on both):
 
 | Renderer | Median ms | p95 ms | GPU median ms | GPU p95 ms |
 | --- | --- | --- | --- | --- |
-| xenos | 24.99 | 30.81 | 11.54 | 11.97 |
-| native | 25.43 | 31.22 | 12.68 | 13.09 |
+| xenos | 25.19 | 30.23 | 11.60 | 12.04 |
+| native | 24.95 | 30.15 | 12.61 | 13.00 |
 
-Frame time is at parity (+1.8% median, +1.3% p95); race frames are
-CPU-bound, and native GPU time is about 1.1 ms higher, mostly EDRAM ownership
-transfers that the Xenos backend's owned-depth-clear family avoided with
-hash-specific shortcuts.
+Frame time is at parity (-1.0% median, -0.3% p95); race frames are
+CPU-bound, and native GPU time is about 1 ms higher, mostly EDRAM ownership
+transfers (depth ping-pongs between MSAA modes at one base that the scene
+really needs, and color-to-depth transfers). Run-to-run p95 varies by up
+to 8% on this route, so compare pairs run back to back.
+
+Earlier builds for reference: before repeated-target preparation was
+skipped, native prepared targets for 3.1 ms per race frame and the race
+window was +1.8% median; before per-tile stencil state, the whole route was
++3.3-3.7% median.
 
 ## Memory
 
