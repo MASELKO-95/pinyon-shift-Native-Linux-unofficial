@@ -23,6 +23,7 @@ class PinyonShiftApp final : public rex::ReXApp {
   void OnPostSetup() override;
   void OnPreLaunchModule() override;
   void OnPostLaunchModule(rex::system::XThread* thread) override;
+  bool ShouldStartModuleThread() override;
   void OnGuestThreadExit(rex::system::XThread* thread) override;
   bool OnWindowCloseRequested() override;
   void OnShutdown() override;

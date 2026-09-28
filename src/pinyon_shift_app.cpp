@@ -432,6 +432,11 @@ void PinyonShiftApp::OnPostLaunchModule(rex::system::XThread* thread) {
       window(), [this] { OnWindowCloseRequested(); });
 }
 
+bool PinyonShiftApp::ShouldStartModuleThread() {
+  // A frame replay drives the GPU on its own; the title stays suspended.
+  return rex::cvar::GetFlagByName("fh1_frame_replay").empty();
+}
+
 void PinyonShiftApp::OnGuestThreadExit(rex::system::XThread* thread) {
   const std::string thread_id = thread ? std::to_string(thread->thread_id()) : "none";
   pinyon_shift::diagnostics::RecordEvent("guest.thread.exit", {{"thread_id", thread_id}});
