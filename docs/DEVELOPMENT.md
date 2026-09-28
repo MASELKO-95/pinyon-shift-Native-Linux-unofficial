@@ -1,10 +1,11 @@
 # Development findings and priorities
 
-Consolidated from the development records at `53f9bf9` (2026-09-10).
-This is the current starting point for development, not a release announcement.
-At main checkpoint `2fa804c`, the source pins ShiftGlue
-`a6905c39aed6353916903ada3e0c840bbc39caa2`;
-older binary hashes in individual experiment reports describe those experiments.
+Consolidated from the development records at `53f9bf9` (2026-09-10) and
+updated for the removal of the Xenos renderer (2026-09-28). This is the
+current starting point for development, not a release announcement. At `dev`
+checkpoint `e9c7ba7`, the source pins ShiftGlue
+`1a67f90d941d0a4dc11c7d92aac1b0ef8effdda7`; older binary hashes in individual
+experiment reports describe those experiments.
 
 ## Documentation map
 
@@ -12,95 +13,102 @@ older binary hashes in individual experiment reports describe those experiments.
 | --- | --- |
 | Build or recover an installation | [Building](BUILDING.md), [troubleshooting](TROUBLESHOOTING.md) |
 | Configure experimental graphics | [Graphics recovery/settings](TROUBLESHOOTING.md) |
-| Primary renderer roadmap | [Xenos retirement backlog](native-renderer/XENOS_RETIREMENT_BACKLOG.md): a content-generic FH1 native renderer that replaces the Xenos backend, following the [Rayman reference](native-renderer/RAYMAN_NATIVE_RENDERER_RESEARCH_2026-09-25.md) |
+| How the native renderer replaced Xenos, and what is still open | [Xenos retirement backlog](native-renderer/XENOS_RETIREMENT_BACKLOG.md) (closed; XR-08 and XR-09 keep items that need a person or hardware) |
+| What the renderer must implement | [Native frame contract](native-renderer/NATIVE_FRAME_CONTRACT.md), [guest-visible dependencies](native-renderer/GUEST_VISIBLE_RENDER_DEPENDENCIES.md) |
 | Current findings and retained changes | This document |
-| Previous renderer and performance work | [Research reference](native-renderer/RESEARCH.md): retired plans, journals, failed trials and their Git checkpoints; [CPU profiling procedure](native-renderer/CPU_HOTSPOT_PROFILING.md) |
+| Performance | [Native performance baselines](native-renderer/NATIVE_PERFORMANCE_BASELINES.md), [CPU profiling procedure](native-renderer/CPU_HOTSPOT_PROFILING.md) |
+| Previous renderer and performance work | [Research reference](native-renderer/RESEARCH.md): retired plans, journals, failed trials, their Git checkpoints and the [archived Xenos-era documents](native-renderer/RESEARCH.md#archived-xenos-era-documents) |
 | Extend the original game UI | [UI API research and implementation tasks](UI_API_PLAN.md) |
-| Reproduce retained renderer changes | [Owned depth](native-renderer/A6_OWNED_DEPTH_RETENTION.md), [reflection mips](native-renderer/REFLECTION_MIPMAP_REPLACEMENT.md), [Carson cache fix](native-renderer/CARSON_GEOMETRY_CACHE_FIX.md) |
-| Produce and validate artifacts | [Artifact production](native-renderer/P1_ARTIFACT_PRODUCTION.md), [shader pack contract](native-renderer/SHADER_PACK_FORMAT.md), [shader capture](native-renderer/CANDIDATE_SHADER_CAPTURE.md), [render tests and native controls](native-renderer/FH1_RENDER_TEST_AUTOMATION.md) |
+| Produce and validate artifacts | [Artifact production](native-renderer/P1_ARTIFACT_PRODUCTION.md), [shader pack contract](native-renderer/SHADER_PACK_FORMAT.md), [shader capture](native-renderer/CANDIDATE_SHADER_CAPTURE.md), [render tests and diagnostics](native-renderer/FH1_RENDER_TEST_AUTOMATION.md), [manual discovery sessions](native-renderer/DISCOVERY_PLAYTEST.md) |
 | Investigate user reports | [September 10 issue review (historical)](https://github.com/arcanite24/pinyon-shift/blob/53f9bf91b470f37cf7efb21c64dc1f8cce50c4c5/docs/GITHUB_ISSUE_TRIAGE_2026-09-10.md) |
 | Release behavior and distribution | [Changelog](../CHANGELOG.md), [preview notes](releases/0.1.2-preview.3.md), [legal](LEGAL.md) |
 
 The [renderer research reference](native-renderer/RESEARCH.md) consolidates the
 retired replay, provenance, world, vehicle and batching investigations. Exact
-historical documents remain accessible through its Git checkpoint. The remaining
-renderer files describe current formats/procedures, retained changes or explicitly
-bounded historical qualification contracts; they are not competing roadmaps.
+historical documents remain accessible through its Git checkpoints, and
+documents about machinery removed with the Xenos renderer are kept under
+`docs/native-renderer/archive/`. The remaining renderer files describe the
+current renderer, formats and procedures; they are not competing roadmaps.
 
 ## What the renderer actually does
 
-FH1 CPU code is recompiled, and `rexgpu-fh1.dll` uses locally generated offline
-DXIL packs and pipeline preparation. Most scene rendering still uses the
-Xenos-compatible D3D12 command, resource and render-target machinery. Native
-shader execution alone does not retire that machinery.
+FH1 CPU code is recompiled. `rexgpu-fh1.dll` runs the FH1 native executor,
+the only renderer since `6b75238`: the PM4 command processor consumes the
+guest's command stream and the executor runs every draw, clear, resolve and
+swap in guest order with the original shaders from a locally produced
+offline shader pack. It owns EDRAM surfaces, resolves write the guest texture
+layout into the guest-memory GPU mirror, and textures are decoded from that
+mirror. No Xenos render target cache or EDRAM emulation is linked
+(`e9c7ba7`). The [frame contract](native-renderer/NATIVE_FRAME_CONTRACT.md)
+lists what it covers.
 
-The useful architectural unit is a complete resource lifetime: producer,
-contents/history, consumers, conflicting writes, reuse and destruction. Reuse
-translated shaders where suitable; measure both removed work and whole-frame
-cost. Independent native draws or a correct screenshot do not prove a complete
-native scene. Full Xenos retirement and lower hardware requirements remain open.
+- **Resolution scale:** symmetric 1x, 2x and 3x. Any other scale fails
+  graphics setup with an error naming the requested scale; there is no
+  fallback renderer. Each scale needs its own shader pack.
+- **Shader packs:** shipping builds cannot translate shaders; a draw whose
+  shader is missing from the pack is dropped. Each miss is recorded under the
+  state's `cache/fh1-shader-misses`, and the next launch's graphics
+  preparation sees the new record and produces the pack again with those
+  shaders (`be7d537`). A missing shader is therefore dropped at most until
+  the next launch. See the [shader pack contract](native-renderer/SHADER_PACK_FORMAT.md#pack-misses-and-self-repair).
+- **Guest-visible resolves:** with `readback_resolve = none`, one-off captures
+  the game reads on the CPU (for example the car thumbnails it saves) are
+  still copied back to guest memory; `fh1_native_readback_new_resolves=false`
+  turns that off.
+- **Diagnostics:** front-buffer dumps (`fh1_native_dump_frames` /
+  `fh1_native_dump_dir`), per-resolve dumps (`fh1_resolve_dump_dir`), the
+  frame census (`fh1_frame_census`) and offline frame replays
+  (`tools/replay-fh1-frame.py`, `tools/test-fh1-frame-replays.py`); see
+  [render tests and diagnostics](native-renderer/FH1_RENDER_TEST_AUTOMATION.md).
 
-An opt-in native race pilot exists: six captured scene families replayed at
-swap time on the Recaro Rush route, with HUD replay, hot toggle and whole-frame
-fallback. It runs after Xenos rather than instead of it (about 93 ms against
-23.5 ms per race frame) and falls back on events it was not built for, so it is
-frozen. The direction is now a content-generic native renderer that executes
-every consumed draw, clear and resolve in guest order, following the Rayman
-approach; see the [Xenos retirement backlog](native-renderer/XENOS_RETIREMENT_BACKLOG.md).
-Xenos remains the reference and default until that renderer passes the route
-matrix; the plan does not revive rejected experiments.
+Measured before removal, `native` was at frame-time parity with Xenos at 1x
+and faster at 2x and 3x on the synchronized routes
+([baselines](native-renderer/NATIVE_PERFORMANCE_BASELINES.md)). Those Xenos
+comparisons are historical; they cannot be repeated on the current build.
+Lower hardware requirements and AMD/Intel qualification remain open.
 
 ### Retained changes
 
-- Bulk constant/register writes, hash-based execution allowlists and avoiding
-  unused per-draw census keys reduced command-processing overhead. The September
-  4 heavy 2x route reached 57.51 FPS (median of three run medians), with 17.390 ms
-  median frame time and 17.241 ms median GPU span. Later heavy 1x runs after
-  draw-key removal measured 15.808–16.426 ms. These are different historical
-  workloads, not a current FPS guarantee or a matched Xenia comparison.
-- **Owned depth clear:** A1–A6 are complete only for the bounded symmetric 1x
-  chain. Scaled rendering keeps compatibility clears. The unchanged 2x candidate
-  failed North Carson p99 retention (+24.46% initially, +90.09% in the longer
-  comparison). [Contract](native-renderer/OWNED_DEPTH_CHAIN_CONTRACT.md) and
-  [retention evidence](native-renderer/A6_OWNED_DEPTH_RETENTION.md).
-- **Reflection mipmaps:** enabled for validated symmetric 1x/2x/3x inputs
-  (3x added 2026-09-12), with fallback and `--fh1_native_reflection_mips=false`
-  as the control. Removes 48
-  original draws and 48 resolve copies per admitted cube. All six guest lists,
-  2,352 packet decodes, state packets, scratch clears and transfers remain.
-  Eight clean comparisons show small/mixed whole-frame changes: median +2.15%
-  at 1x and -1.35% at 2x. Output, all 54 cube imports, later consumers and captured
-  clear history pass their bounded checks. [Evidence and reproduction](native-renderer/REFLECTION_MIPMAP_REPLACEMENT.md).
-- **Carson geometry cache:** keep current/previous-frame geometry resident and
-  use the existing shared-memory path when the cache cannot admit a new owner.
-  The 32 MiB/512-entry budget remains. A short Hot Hatch Hustle 2x comparison
-  improves from 100.499 to 33.494 ms median with native mips off and nearly equal
-  draw counts. Mips-on 1x/2x smoke also passes. This is not sustained town/race
-  acceptance. [Cause, test and limits](native-renderer/CARSON_GEOMETRY_CACHE_FIX.md).
+The measurements below were taken on the Xenos renderer before its removal;
+the changes themselves remain in the shared command processor, texture
+cache or title code that the native executor still uses.
+
+- Bulk constant/register writes reduced command-processing overhead. The
+  September 4 heavy 2x route reached 57.51 FPS (median of three run medians),
+  with 17.390 ms median frame time and 17.241 ms median GPU span. Later heavy
+  1x runs measured 15.808–16.426 ms. These are different historical
+  workloads, not a current FPS guarantee or a matched Xenia comparison. The
+  hash-based execution allowlists of that period were removed in `327be88`.
 - **Direct reflection-cube import (PERF-05):** changed cubes are written
   directly into the persistent 256×256, six-face, nine-level R10G10B10A2
   texture array with nine compute dispatches instead of a scratch untile and
-  54 copies. Median/p95/p99 improved 3.66%/1.42%/6.25%. Default on; rollback
-  `--fh1_direct_reflection_cube_import=false`. The owned 1x depth clear
-  (PERF-02) stays 1x-only after its 2x retry regressed p95/p99.
+  54 copies. Median/p95/p99 improved 3.66%/1.42%/6.25%. Default on; control
+  `--fh1_direct_reflection_cube_import=false`.
 - **One submission per frame (PERF-09):** D3D12 keeps each frame in one
   command-list submission instead of submitting at every PM4 primary-buffer
   end: median/p95/p99 −3.4%/−3.7%/−13.6% at 1x and −7.1%/−8.1%/−15.5% at 2x.
-  Rollback `--d3d12_submit_on_primary_buffer_end=true`.
+  Control `--d3d12_submit_on_primary_buffer_end=true`.
 - **Deadline-driven guest vblank (PERF-14):** replaces polling; −3.20% median
-  and −5.60% p95, 62% fewer dropped presents in the measured route. Rollback
+  and −5.60% p95, 62% fewer dropped presents in the measured route. Control
   `--pinyon_shift_fh1_vblank_deadline_wait=false`.
 - **Critical-path trace (PERF-11):** default-off
   `--perf_critical_path_trace=true` correlates title emission, PM4
   publication, deferred replay, submission/fence completion, guest vblank and
   present across rotated logs.
-- **Opt-in native race pilot (frozen):** see the renderer direction above
-  and the [pilot controls](native-renderer/FH1_RENDER_TEST_AUTOMATION.md#native-race-pilot-controls).
+
+Removed with the Xenos renderer (`a75be82` to `e9c7ba7`): the owned depth,
+tile and rectangle clears, the reflection mip replacement, the Carson owned
+geometry cache, the tone-map and velocity-dilate replacements and the opt-in
+six-family native race pilot. Their documents are
+[archived](native-renderer/RESEARCH.md#archived-xenos-era-documents); their
+settings no longer exist.
 
 ### Rejected and unqualified paths
 
-Do not re-enable these from an old roadmap or repeat an unchanged failed
-comparison hoping for a better result:
+These were tried on the Xenos renderer, which no longer exists, so none of
+them can be re-enabled as written. Keep the lessons; do not repeat an
+unchanged failed comparison on the native renderer hoping for a better
+result:
 
 - Scaled owned clears, stencil predication, broad handwritten shader
   substitutions, C347/21B70 terrain and two-UV candidates lack retention.
@@ -115,8 +123,7 @@ comparison hoping for a better result:
   address still named another owner; overlapping ownership must stay consistent.
 - The HUD admission prototype is unretained. The 1x comparison had a +28.87%
   acceleration p99; the 2x comparison stopped on green/white glass and headlight
-  artifacts. Later stopped controls remain unexecuted. The production omission
-  cause and broad lifetime/visual acceptance are not closed by mipmap work.
+  artifacts. Later stopped controls were never executed.
 - The scaled accumulator presentation experiment is finished and archived at
   tag `experiments/scaled-accumulator-presentation-2026-09-01` (`0e0a42b`).
   It failed qualification, is not for merge, and is not a missing production fix.
@@ -132,8 +139,9 @@ comparison hoping for a better result:
   work without skipping storage finalization. Thread-creation failure uses the
   remaining workers/processor thread; cancellation stops adding work. An empty
   requested set is distinguished from missing requested pipeline hashes.
-- Validation: `python tools/check-fh1-startup.py` compiles the actual production
-  methods/selection block with deterministic failure fakes. Release renderer
+- Validation: `tools/check-fh1-startup.py` (removed in `327be88` with the other
+  Xenos-era source checks) compiled the production methods/selection block with
+  deterministic failure fakes. Release renderer
   build and installed-AppData startup/shutdown pass (session
   `20260910T224536Z-p3184`, exit 0, one scheduled capture, 452 PSOs created).
   Tested renderer SHA256: `C681D4A4660F08A29C4DCDD88547BA54709E08D868A104CD2336D1063F27162E`.
@@ -167,31 +175,36 @@ is justified by these experiments.
    glass frame, complete sustained Carson town/Hot Hatch Hustle comparisons,
    and verify NPC/title UI animation duration against real time. The older
    area report observed roughly 70 FPS in ordinary driving and 15 FPS near
-   houses and wooded hills; its exact location was not established. Neither
-   that report nor a clean mip frame proves a cause. Preserve the failing frame,
-   route, settings and actual binary identity.
+   houses and wooded hills; its exact location was not established. These
+   reports came from the Xenos renderer; recheck them on the native renderer
+   before investigating. At 3x a faint green glow on car reflections was seen
+   on both renderers before removal. Preserve the failing frame, route,
+   settings and actual binary identity.
 2. **Clean installation/artifacts:** the packaged-source, SDK-path, pinned
    Python/CMake and build-error logging fixes are in source. Two empty-cache
    NVIDIA 1x startup runs pass, but the fresh 21,735-variant pack is short of
    the developer 22,012-variant pack. Car-selection variants and full gameplay
-   remain gates. Setup does not yet automatically execute the complete artifact
-   qualification workflow. Reporter confirmation and a fresh disc-to-game
-   installed-launcher run remain required.
+   remain gates. Graphics preparation now produces and validates the pack for
+   the selected scale and repairs it from recorded pack misses (see
+   [what the renderer does](#what-the-renderer-actually-does)). Reporter
+   confirmation and a fresh disc-to-game installed-launcher run remain
+   required.
 3. **Artifact lifecycle:** complete selected-scale production, validated reuse,
    cancellation/resume and atomic activation before claiming setup ready.
    Key DXIL by translator, vendor, flags and scale; key device pipeline warmup
    by exact adapter/driver. Keep production separate from compiler-free runtime.
    Qualify 1x/2x/3x and AMD/Intel on actual hardware; NVIDIA results do not qualify
    those vendors. Follow the [P1 gates](native-renderer/P1_ARTIFACT_PRODUCTION.md).
-4. **Renderer:** execute the [Xenos retirement backlog](native-renderer/XENOS_RETIREMENT_BACKLOG.md)
-   from XR-00. It replaces the resource-migration checklist (A1–A6 remain
-   complete for the 1x owned depth chain; the incremental B items are closed
-   in favor of the native backend) and the closed PERF-00–15 program. Manual
-   slowdown sites from the September discovery playtest — Horizon Outpost
-   entrance and the town plaza (about 44 ms median, 100–113 ms p95) and a
-   wooded junction near the Gladstone Canyon sign (155 ms p95) — remain
-   useful stress locations. The focused mipmap/cache fixes do not reopen the
-   stopped HUD/recycling comparisons automatically.
+4. **Renderer:** the [Xenos retirement backlog](native-renderer/XENOS_RETIREMENT_BACKLOG.md)
+   is closed; the native executor is the only renderer. Two items stay open
+   and need what automation cannot supply: an unscripted drive by a person
+   (XR-08) and measurements on AMD, Intel and lower-end GPUs (XR-09). Draws
+   of a shader missing from the pack are still dropped until the next launch
+   repairs the pack. Manual slowdown sites from the September
+   discovery playtest — Horizon Outpost entrance and the town plaza (about
+   44 ms median, 100–113 ms p95) and a wooded junction near the Gladstone
+   Canyon sign (155 ms p95), measured on Xenos — remain useful stress
+   locations.
 
 ## Validation and evidence
 
@@ -217,12 +230,15 @@ need an explicit benefit and motion review; missing geometry, flicker, broken
 transparency or simulation timing fail qualification. Cover frontend, garage,
 day/night driving, traffic, race, rewind, map, pause, photo, FMV and streaming.
 
-Run [contributor checks](../CONTRIBUTING.md) and the targeted production-body
-checks for a changed contract. Summarize performance CSVs with
+Run [contributor checks](../CONTRIBUTING.md) and, for a renderer change, the
+golden frame replays (`tools/test-fh1-frame-replays.py`) and the affected
+render-test routes. Summarize performance CSVs with
 `python tools/summarize-performance.py <session.perf.csv>`. A faithful dependency
 replacement can be retained without an FPS gain if it removes proven work
 without material regression. Lower hardware claims require measurements on
-that hardware; full retirement requires a clean no-Xenos build and rollback plan.
+that hardware. There is no Xenos reference any more: compare with earlier
+native runs of the same route and seed. The last build with Xenos is tagged
+`xenos-rollback`.
 
 ## Historical evidence
 

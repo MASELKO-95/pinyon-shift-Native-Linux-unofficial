@@ -2,6 +2,14 @@
 
 2026-09-07: in progress. P0 is deferred at the user's request.
 
+Since then, graphics preparation (`tools/prepare-fh1-shaders.ps1`, run by
+`launch-preview.ps1`) runs this production with the
+`fh1-shader-preparation` route for the selected scale, keeps a receipt of
+its inputs and activates the validated set; recorded pack misses make it
+run again (see [pack misses](SHADER_PACK_FORMAT.md#pack-misses-and-self-repair)).
+The results below were measured with the Xenos renderer, before its removal;
+packs are now produced and validated with the native renderer.
+
 After verified extraction and `build-preview.ps1`, run:
 
 ```powershell

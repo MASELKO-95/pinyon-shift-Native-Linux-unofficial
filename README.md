@@ -9,17 +9,22 @@ and pinned ShiftGlue submodule needed to create the preview on your own computer
 contain the game, game assets, generated translations, or a prebuilt game
 executable.
 
-> **Highly experimental renderer preview - 0.1.2-preview.3.** This build includes
-> the latest native renderer checkpoint. Rendering regressions, accelerated NPC
-> animations, and severe slowdowns in some areas remain possible. Xenos retirement
-> is incomplete. See the [preview release notes](docs/releases/0.1.2-preview.3.md).
+> **Highly experimental renderer preview.** The source now renders only with the
+> FH1 native renderer. Rendering regressions, accelerated NPC animations, and
+> severe slowdowns in some areas remain possible. See the latest
+> [preview release notes](docs/releases/0.1.2-preview.3.md) for what the last
+> published build contains.
 
 ## Renderer status
 
-The FH1 backend uses offline shader packs and several native replacements, but
-most scene draws still use the Xenos-compatible D3D12 renderer. Native owned
-depth clears are retained at 1x; reflection mip replacement supports validated
-1x/2x inputs. Full Xenos retirement and lower hardware requirements remain open.
+The FH1 native renderer is the only renderer. It executes every draw, clear,
+resolve and swap the game issues, in order, with the game's original shaders
+from an offline shader pack produced on your machine; the Xenos-emulating
+D3D12 renderer has been removed. Internal resolution scales 1x, 2x and 3x are
+supported; any other scale fails graphics setup. If the game uses a shader the
+pack lacks, the draw is skipped and the shader is recorded, and the next launch
+prepares the pack again to include it. Lower hardware requirements and AMD and
+Intel GPUs remain unqualified.
 
 See [development findings and priorities](docs/DEVELOPMENT.md) for measured
 results, known regressions, the documentation map and remaining work.
@@ -71,7 +76,7 @@ when reporting a failure; the final "build failed" line alone cannot identify it
 Supported today: the USA retail base disc, serial `MS-2505`, title ID
 `4D5309C9`. Windows 10/11 x64 and a DirectX 12-capable GPU are required.
 The launcher includes 2× and experimental 3× (4K-class) internal-resolution
-scaling for capable GPUs.
+scaling for capable GPUs; other scales are not supported.
 
 This is a public preview, not a finished remaster. Please report reproducible
 problems using the issue template and do not attach game files or generated
@@ -110,7 +115,6 @@ builds Release. See [Building](docs/BUILDING.md) and
 Longer-term direction, in no particular order. None of it is scheduled, and the
 current preview supports none of it.
 
-- [ ] Finish the native renderer and retire the Xenos compatibility path
 - [ ] Lower the hardware requirements and qualify AMD and Intel GPUs
 - [ ] Fix the remaining rendering regressions
 - [ ] Make the first build faster and fully validated

@@ -1,21 +1,25 @@
 # Native renderer performance baselines
 
-Xenos baselines and `native` results per route at 1x, for the Xenos
-retirement backlog (XR-00, XR-07). Runs come from seed `appdata-2026-09-27`
+`native` results per route, with the Xenos baselines they were measured
+against for the Xenos retirement backlog (XR-00, XR-07, XR-09). The Xenos
+rows are historical measurements taken before the Xenos renderer was
+removed (`6b75238`); they cannot be rerun on the current build. Compare new
+native runs with the native rows, run back to back with a control on the
+same build where possible. Runs come from seed `appdata-2026-09-27`
 through `tools/run-fh1-render-test.py --configuration RelWithDebInfo --hidden
 --seed-pipeline-prewarm` with the shareable FH1 shader pack, on the
 development machine (NVIDIA, vendor 10DE). Frame and GPU times come from the
-per-frame performance CSV, skipping the first 120 rows. A regression is a
-native median or p95 more than 3% above Xenos.
+per-frame performance CSV, skipping the first 120 rows. For the retirement
+backlog, a regression was a native median or p95 more than 3% above Xenos.
 
-Routes must reach the same content on both renderers, so they synchronize on
+Routes had to reach the same content on both renderers, so they synchronize on
 game state (`wait` steps) instead of wall time: `fh1-race-sync` waits for the
 car, the car-select thumbnails and the race's replay stream;
 `fh1-modes-sync` waits for the car before driving, pausing, opening the map
 and entering photo mode. `fh1-fmv` plays the opening movies. The older
 wall-clock routes (`fh1-race`, `fh1-free-roam`, `fh1-map`, `fh1-pause`,
 `fh1-photo-mode`) drift: the native and Xenos runs of `fh1-race` reached
-different events, so they are not used for parity.
+different events, so they are not used for comparisons.
 
 ## Whole routes
 
@@ -40,8 +44,8 @@ draws per frame on both):
 | xenos | 25.19 | 30.23 | 11.60 | 12.04 |
 | native | 24.95 | 30.15 | 12.61 | 13.00 |
 
-Frame time is at parity (-1.0% median, -0.3% p95); race frames are
-CPU-bound, and native GPU time is about 1 ms higher, mostly EDRAM ownership
+Frame time was at parity (-1.0% median, -0.3% p95); race frames are
+CPU-bound, and native GPU time was about 1 ms higher, mostly EDRAM ownership
 transfers (depth ping-pongs between MSAA modes at one base that the scene
 really needs, and color-to-depth transfers). Run-to-run p95 varies by up
 to 8% on this route, so compare pairs run back to back.
@@ -63,8 +67,9 @@ scale by the native renderer:
 | 3x xenos | 21.25 | 34.17 |
 | 3x native | 17.08 | 29.72 |
 
-Native is faster at both scales (-2.8% and -19.6% median); the cause of
-the 3x gap was not profiled.
+Native was faster at both scales (-2.8% and -19.6% median); the cause of
+the 3x gap was not profiled. Scales other than 1x, 2x and 3x fail graphics
+setup on the native renderer.
 
 ## Memory
 
@@ -77,5 +82,6 @@ counted with textures).
 
 ## Not covered
 
-Only this machine was measured; AMD, Intel and lower-end hardware are not
-available (XR-09).
+Only this machine was measured. AMD, Intel and lower-end GPUs are not
+available to the project, so XR-09's hardware item stays open until someone
+with that hardware runs these routes.

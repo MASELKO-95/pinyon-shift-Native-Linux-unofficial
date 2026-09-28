@@ -1,5 +1,7 @@
 # Rayman Origins native renderer: lessons for FH1
 
+Historical: research written while the Xenos-era renderer was the default; that renderer was removed in `6b75238`. Kept for reference as the source of the native executor's architecture.
+
 Reviewed 2026-09-25. Local reference: `.local/RaymanOriginsRecomp`, checked out
 at `0046cc11fbc95a5d3942c52c0130236f2065df9f`. This is a source and public
 history review, not a reproduced performance benchmark. No Rayman game assets
@@ -116,7 +118,7 @@ the pinned implementation and latest renderer notes when following it.
 ## Recommended FH1 milestones
 
 This was the original proposal. The active plan built on this study is the
-[Xenos retirement backlog](XENOS_RETIREMENT_BACKLOG.md). Keep the existing
+[Xenos retirement backlog](../XENOS_RETIREMENT_BACKLOG.md). Keep the existing
 D3D12 device, shader pack, route runner and compatibility mode. Do not add a
 Vulkan backend or general RHI as part of this work.
 
@@ -134,8 +136,8 @@ justify discarding the working FH1 native world feed or installing a null
 backend before we cover FH1's GPU-produced dependencies.
 
 FH1 evidence informing this recommendation: [draw census](RENDER_PASS_CENSUS.md),
-[guest-visible dependencies](GUEST_VISIBLE_RENDER_DEPENDENCIES.md) and the
-[research reference](RESEARCH.md), which also summarizes the retired
+[guest-visible dependencies](../GUEST_VISIBLE_RENDER_DEPENDENCIES.md) and the
+[research reference](../RESEARCH.md), which also summarizes the retired
 scene-native backlog and Skate milestone study.
 In particular, the historical census recorded 132,568 exact matches from the
 candidate title draw wrappers as EDRAM copies, not the hoped-for prepared
@@ -171,7 +173,7 @@ what it can omit only because of the game it serves:
 
 FH1 cannot take these shortcuts: its scene depends on depth/stencil, 4×
 MSAA float targets in EDRAM bands, resolve chains with history and real
-query counts. The [retirement backlog](XENOS_RETIREMENT_BACKLOG.md#target-architecture)
+query counts. The [retirement backlog](../XENOS_RETIREMENT_BACKLOG.md#target-architecture)
 maps each shortcut to the FH1 requirement that replaces it.
 
 ## Reuse boundary

@@ -1,7 +1,7 @@
 # FH1 renderer test automation
 
 This is a Forza Horizon 1-only unattended test path. It launches the real game
-and native renderer with a synthetic controller, writes full-resolution PPM
+and the FH1 native renderer, the only renderer, with a synthetic controller, writes full-resolution PPM
 captures, and exits through the normal window-close path. Scripts use completed
 guest-output frames by default; `# clock-hz N` makes their frame numbers an
 explicit wall-time clock for stock-versus-unlocked comparisons. It does not use
@@ -38,12 +38,11 @@ seed from the AppData save once (the game must be closed):
 ```powershell
 python tools/create-render-seed.py appdata-2026-09-27 `
   --state-root "$env:LOCALAPPDATA\PinyonShift\source\0.1.0\.local\preview" `
-  --note "Native race routes reach a point-to-point PROGRESS event"
-python tools/run-fh1-render-test.py config/render-tests/fh1-native-race-profile.fh1test `
+  --note "Free roam next to the Gauntlet sign-up"
+python tools/run-fh1-render-test.py config/render-tests/fh1-race-sync.fh1test `
   --state-root .local/render-seeds/appdata-2026-09-27 --configuration RelWithDebInfo --hidden `
   --shader-pack "$env:LOCALAPPDATA\PinyonShift\source\0.1.0\.local\preview\cache\shaders\shareable\4D5309C9.fh1-native-v2.10DE.09.1x1.pnsp" `
-  --seed-pipeline-prewarm --game-argument=--pinyon_shift_native_race=true `
-  --game-argument=--pinyon_shift_native_ui_live=true
+  --seed-pipeline-prewarm
 ```
 
 The seed holds `user`, `config`, the FH1 shader catalogs and a `seed.json`
@@ -83,8 +82,8 @@ being reported as a successful visual gate.
 rate, and the permitted main-loop-rate range. The legacy telemetry field is
 named `simulation_tick_count`, but the measured hook is the FH1 application
 loop and must not be interpreted as an individual physics-step counter.
-`# require-native` requires an
-exact FH1 native family to execute. A run also fails for missing or wrong-frame
+`# require-native` belonged to the removed race pilot (`c83e42f`); a script
+line with it is now an ordinary comment. A run fails for missing or wrong-frame
 captures, blank output, renderer/GPU/device-loss errors, a missed capture frame,
 or an abnormal process exit. The PowerShell launcher owns the exact child PID
 and terminates it if the render-test timeout expires.
@@ -106,11 +105,18 @@ records `fh1.render_test.wait` with the frames waited; exceeding
 `<max-frames>` fails the run with `wait_timeout`. `fh1-race-start-wait`
 uses it to capture the race only after the car moves.
 
-Choose the renderer with `--game-argument=--fh1_renderer=<xenos|native-shadow|native>`.
-Every `fh1.render_test.capture` event records `presenter` (`xenos`, `pilot`
-or `native`) and `session_renderer`, so verifiers read which renderer
-produced a frame (`tools/render_test_events.py`) instead of inferring it
-from pixels.
+There is no renderer to choose: `fh1_renderer` was removed with the Xenos
+and `native-shadow` renderers (`8fb4ee4`, `6b75238`). Every
+`fh1.render_test.capture` event still records `presenter` and
+`session_renderer`; both are always `native`.
+
+Use the resolution scale the pack was produced for. Symmetric 1x, 2x and 3x
+(`--draw_resolution_scale_x/y`) are supported; any other scale fails
+graphics setup with an error, and there is no fallback renderer. A draw
+whose shader is missing from the pack is dropped and the miss is recorded
+under the run's `cache/fh1-shader-misses` (see
+[pack misses](SHADER_PACK_FORMAT.md#pack-misses-and-self-repair)); check the
+run's log for pack misses before trusting its captures.
 
 `# expect-distinct-presentation <minimum-hz>` rejects repeated host presents;
 only distinct completed FH1 frames count. Use repeatable
@@ -122,15 +128,21 @@ for launcher parameters.
 transition actually happened before a baseline can pass. The map scenarios use
 it to reject tutorial profiles where SELECT is intentionally unavailable.
 
-Add `--collect-pass-inventory` for a dedicated run that records the ranked
-exact FH1 pass-family identities, draw ranges, samples, and measured GPU
-nanoseconds in `result.json`. These are the compatibility-cost inventory used
-to choose or reject further V5 retirements; native-family counts separately
-prove work actually removed. Normal performance runs leave this instrumentation
-off so its per-draw timing does not contaminate frame measurements.
+`--collect-pass-inventory` recorded ranked FH1 pass-family identities and GPU
+nanoseconds from the Xenos draw observers. The native renderer does not feed
+that inventory, so on the current build it is empty.
 
 The committed scenarios cover:
 
+- `fh1-race-sync.fh1test`, `fh1-modes-sync.fh1test`: synchronized on game
+  state, so repeated runs reach the same content: car select with its
+  thumbnails and a race start (the Gauntlet), and free roam, pause, map and
+  photo mode from seed `appdata-2026-09-27`;
+- `fh1-opening-sync.fh1test`, `fh1-rewind-sync.fh1test`: the new-player
+  opening and a rewind from a profile-free seed (`--fresh-profile`);
+- `fh1-buy-car.fh1test`: buys a car in the autoshow and waits for its saved
+  thumbnail;
+- `fh1-long-drive.fh1test`: a long scripted race drive for stability;
 - `fh1-smoke.fh1test`: launch, capture, and clean self-termination;
 - `fh1-fmv.fh1test`: startup/FMV composition with
   `--include-opening-movies`;
@@ -152,45 +164,42 @@ known progressed local seed at their expected location. The runner copies that
 seed before launch; unknown or locked scene state fails before it can become a
 visual baseline.
 
-## Native race pilot controls
+## Diagnostics
 
-These drive the frozen six-family race pilot described in the
-[Xenos retirement backlog](XENOS_RETIREMENT_BACKLOG.md). They apply only to
-an unpaused race; every other mode stays on the Xenos renderer. Pass them
-with `-GameArguments`:
+These settings are passed with `--game-argument=` (or `-GameArguments` for
+`launch-preview.ps1`). All are off by default and stay out of timing runs,
+except the resolve read-back, which is on by default.
 
 | Setting | Effect |
 | --- | --- |
-| `--pinyon_shift_native_race=true` | Native race output; hot-reloadable master switch |
-| `--pinyon_shift_native_ui_live=true` | Replays the race HUD and promotes complete native frames; needed for continuous output |
-| `--pinyon_shift_native_race_capture_start_frame=N` | First captured source frame; 1 when unset and native race is on |
-| `--pinyon_shift_native_ordered_live_probe=true` | Diagnostic: 64-frame rolling ordered draw/copy/clear capture |
-| `--pinyon_shift_snr01_trace_source_frame=N` | Diagnostic: ordered frame CSV, UI/state artifacts and selected-frame replay for frame N |
-| `--pinyon_shift_native_ui_replay_source_frame=N` | Diagnostic: one-frame ordered HUD replay pilot (render tests only) |
-| `--pinyon_shift_native_ui_shadow_start_frame=N` | Diagnostic: 24-frame shadow pilot starting at N |
-| `--pinyon_shift_native_small_target_probe=1..8` | Diagnostic shadow probe: 1–3 native and 4–6 guest reduction targets, 7/8 guest/native scene |
-| `--perf_critical_path_trace=true` | Correlated title/PM4/submission/present trace; also logs native stage timings |
-| `PINYON_SHIFT_SNR04_RENDERDOC_TRIGGER_FILE` (environment) | Triggers a same-output RenderDoc capture |
+| `--fh1_native_dump_frames=N,M --fh1_native_dump_dir=<dir>` | Writes the presented front buffer of the listed swaps as PPM |
+| `--fh1_resolve_dump_dir=<dir>` | Writes every resolve's output bytes (the scaled range when scaling) to numbered files, waiting for the GPU after each |
+| `--fh1_frame_census=true --fh1_frame_census_path=<file.jsonl>` | Metadata-only census of surfaces, resolves, textures and primitives per 60-frame window; see the [frame contract](NATIVE_FRAME_CONTRACT.md) |
+| `--fh1_native_gpu_profile=true` | Executor GPU time per phase (transfers, resolves, clears) in the periodic stats |
+| `--fh1_native_readback_new_resolves=false` | Stops copying one-off resolves (such as saved car thumbnails) back to guest memory |
+| `--perf_critical_path_trace=true` | Correlated title/PM4/submission/present trace |
 
-A script can switch native output at an output frame with
-`native-race <frame> <true|false>`; frames must increase.
+The executor logs its skip counters, memory (`FH1 native executor memory
+MB`) and transfer statistics every 600 swaps. With
+`readback_resolve = none`, large resolves to ranges no resolve wrote in the
+last few frames are copied back to guest memory before the next command the
+guest CPU can observe; this is how the game's saved car thumbnails get real
+images. Resolves repeated every frame are not read back.
 
-| Route | Purpose |
-| --- | --- |
-| `fh1-native-race-profile` | Race start and a short moving window for timing |
-| `fh1-native-race-output-stability` | Output-paced race to output frame 6920 |
-| `fh1-native-race-toggle`, `fh1-native-race-hot-toggle` | Native/Xenos/native switching |
-| `fh1-native-race-mode-boundary` | Race → pause → free roam → title hand-back |
-| `fh1-native-ui-admission-stress` | Dense HUD admission and no-UI-producer frames |
-| `fh1-native-scene-continuous`, `fh1-native-scene-exact`, `fh1-native-output-adjacent`, `fh1-snr04-adjacent`, `fh1-snr02-title-reload` | Earlier scene-capture and handoff checks |
+## Frame dumps and offline replay
 
-Verifiers: `verify-native-race-mode-boundary.py` and
-`verify-native-race-toggle.py` (pass `--events <run.jsonl>` to use the
-recorded presenter; without it they fall back to the pilot's flat sky
-color), `verify-ordered-frame.py`
-and `verify-ordered-ui-capture.py` (ordered-capture artifacts), and
-`verify-native-output-seam.py`, `verify-native-scene-handoff.py`,
-`verify-native-track-output.py` and `verify-native-ui-clear-probe.py` for
-the earlier probes. The routes use the AppData save; its progress now
-reaches a different event than Recaro Rush, so XR-00 moves them to pinned
-disposable seeds.
+A frame dump records one frame's command packets, starting registers, bin
+state, shaders and every guest range it reads. Record one from a normal or
+render-test run at 1x:
+
+```text
+--fh1_frame_dump_frame=<frame> --fh1_frame_dump_path=<file.fh1frame>
+```
+
+`tools/replay-fh1-frame.py <dump> --state-root <seed>` replays it with the
+title suspended and compares the front buffer; `--write-golden` stores the
+result as the golden replay beside the dump (`<dump>.native.golden.bin`). `tools/test-fh1-frame-replays.py
+<directory> --state-root <seed>` replays every dump in a directory against
+its golden replay: this is the offline regression suite for the executor.
+Replays are deterministic. Dumps hold guest memory and stay under `.local`;
+like the render tests, replays copy the seed to a private state directory.

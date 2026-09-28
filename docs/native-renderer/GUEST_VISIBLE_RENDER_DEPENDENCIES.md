@@ -1,12 +1,18 @@
 # Guest-visible render dependencies
 
-This is a bounded historical qualification contract, not the current migration
-status. See [current findings](../DEVELOPMENT.md) and the
-[consolidated research](RESEARCH.md) before using its milestone gates.
-The census settings were removed from the runtime at `e91a1cf`, so the
-capture workflow below no longer runs as written. Its classification matrix
-and title side-effect boundaries remain the starting inventory for XR-06 of
-the [Xenos retirement backlog](XENOS_RETIREMENT_BACKLOG.md).
+This is a bounded historical qualification contract, not the current
+renderer status. It asked which Xenos render-target work could be
+suppressed; that question ended when the Xenos renderer was removed
+(`6b75238`), and "suppression" and "Gate B" below refer to that renderer.
+See [current findings](../DEVELOPMENT.md) and the
+[consolidated research](RESEARCH.md). The census settings were removed from
+the runtime at `e91a1cf`, so the capture workflow below no longer runs as
+written. Its classification matrix and title side-effect boundaries were
+the starting inventory for XR-06 of the
+[Xenos retirement backlog](XENOS_RETIREMENT_BACKLOG.md), which records how
+the native renderer handles each side-effect class (occlusion queries,
+memexport, PM4 timing and resolves read through guest memory). The title
+side-effect boundaries remain valid reference for the supported executable.
 
 This is the evidence ledger for NR-00D on the supported USA retail MS-2505
 executable. It describes what the renderer census proves, what remains unknown,

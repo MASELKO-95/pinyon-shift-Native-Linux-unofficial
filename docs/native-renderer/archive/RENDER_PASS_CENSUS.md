@@ -1,11 +1,13 @@
 # Forza Horizon renderer census
 
+Historical: describes the Xenos-era renderer removed in `6b75238`; kept for reference.
+
 This is a bounded historical qualification contract, not the current migration
-status. See [current findings](../DEVELOPMENT.md) and the
-[consolidated research](RESEARCH.md) before using its milestone gates.
+status. See [current findings](../../DEVELOPMENT.md) and the
+[consolidated research](../RESEARCH.md) before using its milestone gates.
 The census and dispatch-discovery settings were removed from the runtime at
 `e91a1cf`; the verified hook inventory below remains valid reference for the
-[Xenos retirement backlog](XENOS_RETIREMENT_BACKLOG.md).
+[Xenos retirement backlog](../XENOS_RETIREMENT_BACKLOG.md).
 
 This document is the tracked evidence ledger for NR-00. It records facts about
 the supported USA retail MS-2505 executable only. Unknowns stay explicit until

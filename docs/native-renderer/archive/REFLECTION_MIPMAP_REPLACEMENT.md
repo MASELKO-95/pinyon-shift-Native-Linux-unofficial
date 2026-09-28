@@ -1,5 +1,7 @@
 # Experimental reflection mipmap replacement — 2026-09-10
 
+Historical: describes the Xenos-era renderer's reflection mip replacement, removed in `6b75238` and `327be88`; kept for reference.
+
 Status: **focused mipmap implementation complete; enabled by default at symmetric
 1x/2x/3x with compatibility fallback.** The remaining B epic is deferred and open.
 This is a bounded renderer improvement, not complete Xenos retirement or a
@@ -169,7 +171,7 @@ The broader B1 scene/family inventory, B2 geometry/texture migrations and sustai
 streaming/tails, B3 upstream packet removal (including the mip lists), B4 quality
 profiles/NPC/UI timing and the stopped HUD/recycling comparisons remain open.
 C's full Xenos retirement and actual lower-hardware qualification also remain open.
-That work now continues in the [Xenos retirement backlog](XENOS_RETIREMENT_BACKLOG.md);
+That work now continues in the [Xenos retirement backlog](../XENOS_RETIREMENT_BACKLOG.md);
 do not automatically restart the other experiments.
 
 ## User follow-up: Carson and green reflection flashes

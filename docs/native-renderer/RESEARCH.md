@@ -3,9 +3,12 @@
 This consolidates the retired discovery/replay documents at `93742f2` and
 the scene-native/Rayman-era journals and plans at `02dfad0`. It preserves
 architectural findings and failed leads, not a list of current runtime
-features. For the active plan, start with the
-[Xenos retirement backlog](XENOS_RETIREMENT_BACKLOG.md) and
-[development findings](../DEVELOPMENT.md).
+features. The FH1 native executor is now the only renderer; the
+[Xenos retirement backlog](XENOS_RETIREMENT_BACKLOG.md) records how it
+replaced Xenos and what is still open, and
+[development findings](../DEVELOPMENT.md) is the current starting point.
+Everything below describes work done while the Xenos-era renderer existed
+(removed in `6b75238`).
 
 The old NR-00–NR-05 and prototype Phase C labels describe historical milestones;
 they are not the current resource-migration A/B/C completion gates. Many of
@@ -33,7 +36,7 @@ and tool availability before reproducing an old command.
   because it looks like a sky pass. CPU-read observations, queries, memory export,
   resolves and later consumers need independent coverage.
 
-Keep the [census baseline](RENDER_PASS_CENSUS.md) and
+Keep the [census baseline](archive/RENDER_PASS_CENSUS.md) and
 [guest-visible dependency ledger](GUEST_VISIBLE_RENDER_DEPENDENCIES.md) as the
 bounded evidence contracts. Their historical “Gate B” concerns census-based
 suppression; it does not undo separately qualified depth/mipmap replacements.
@@ -58,7 +61,7 @@ Finite cache budgets, generation checks and fence-delayed destruction prevent
 resource reuse while in flight. A worker's metadata deduplication count is not
 proof of native upload or saved GPU work. The historical title-side resource
 worker and `DrainCommits` integration are absent from the current renderer.
-Current geometry behavior is documented in the [Carson fix](CARSON_GEOMETRY_CACHE_FIX.md).
+The Xenos-era owned geometry cache is described in the archived [Carson fix](archive/CARSON_GEOMETRY_CACHE_FIX.md).
 
 ## Publication, visual comparison and suppression
 
@@ -165,9 +168,9 @@ followed by four repetitions of three secondary draws and one tertiary draw.
 Private depth accumulation had exact captured parity. Sequence gaps, changed
 targets, failed batches and other epochs remained inadmissible. Original draws
 and consumers still executing meant no general shadow-retirement claim.
-Do not confuse that prototype with the currently retained
-[owned depth chain](OWNED_DEPTH_CHAIN_CONTRACT.md) or
-[reflection mip replacement](REFLECTION_MIPMAP_REPLACEMENT.md).
+Do not confuse that prototype with the later, also removed,
+[owned depth chain](archive/OWNED_DEPTH_CHAIN_CONTRACT.md) or
+[reflection mip replacement](archive/REFLECTION_MIPMAP_REPLACEMENT.md).
 
 ## Rayman and scene-native era, 2026-09-22 to 2026-09-27
 
@@ -204,12 +207,14 @@ world replacement first, then recognizable textures and characters, then
 broader coverage, then performance work, and only then native by default.
 That order, not its semantic capture, carried into the Rayman-style plan.
 
-**Performance program PERF-00–15 (2026-09-20 to 21).** Retained: PERF-02
-owned depth clear at 1x only, PERF-05 direct reflection-cube import,
-PERF-09 one submission per frame, PERF-11 correlated critical-path trace and
-PERF-14 deadline-driven vblank; see [retained changes](../DEVELOPMENT.md#retained-changes).
+**Performance program PERF-00–15 (2026-09-20 to 21).** Measured on the
+Xenos renderer. Retained then: PERF-02 owned depth clear at 1x only (removed
+with Xenos in `6b75238`), PERF-05 direct reflection-cube import, PERF-09 one
+submission per frame, PERF-11 correlated critical-path trace and PERF-14
+deadline-driven vblank; see [retained changes](../DEVELOPMENT.md#retained-changes).
 PERF-01 measured no repeated geometry-admission rejections, so its memo
-stays opt-in (`fh1_cache_geometry_rejections`). Rejected: PERF-04 dirty
+stayed opt-in (`fh1_cache_geometry_rejections`, removed with the owned
+geometry cache). Rejected: PERF-04 dirty
 geometry uploads, PERF-06/07 reflection-mip decoder and static stream
 bypass, PERF-08 constant-buffer reuse, PERF-10's simple post-chain handoff
 (the target is a temporal, partially updated surface) and PERF-12 native
@@ -234,6 +239,19 @@ XR-00.
 - Removing live texture pinning measured faster but fell back, because
   dynamic texture generations changed before output.
 - An upload-buffer pool was inconclusive and removed.
+
+## Archived Xenos-era documents
+
+These described machinery removed with the Xenos renderer. They stay in
+[`archive/`](archive/) with a note at the top, for reference only:
+
+- [Owned depth-clear chain contract](archive/OWNED_DEPTH_CHAIN_CONTRACT.md)
+  and its [A6 retention evidence](archive/A6_OWNED_DEPTH_RETENTION.md).
+- [Reflection mipmap replacement](archive/REFLECTION_MIPMAP_REPLACEMENT.md).
+- [Carson geometry cache fix](archive/CARSON_GEOMETRY_CACHE_FIX.md).
+- [Renderer census](archive/RENDER_PASS_CENSUS.md) of the Xenos pass families.
+- [Rayman Origins study](archive/RAYMAN_NATIVE_RENDERER_RESEARCH_2026-09-25.md),
+  the source of the native executor's architecture.
 
 ## Recovering exact historical evidence
 

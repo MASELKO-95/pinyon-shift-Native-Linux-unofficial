@@ -5,7 +5,8 @@ the finite list of what the native renderer must implement, measured across
 the game's modes with the frame census instead of inferred from one race.
 It replaces "families" as the unit of coverage: a mode is covered when the
 native renderer implements every surface configuration, resolve kind,
-texture layout and primitive type listed for it.
+texture layout and primitive type listed for it. The native executor, now
+the only renderer, runs every mode below with zero executor skips.
 
 ## How it was measured
 
@@ -20,8 +21,9 @@ JSON Lines. Enable it with:
 ```
 
 Summarize with `tools/summarize-native-frame-contract.py <file> --mode
-label:first-last ...`. The records below come from Xenos (reference)
-rendering of seed `appdata-2026-09-27` with `run-fh1-render-test.py
+label:first-last ...`. The census still runs on the native renderer. The
+records below are historical: they were taken from Xenos (reference)
+rendering, before its removal, of seed `appdata-2026-09-27` with `run-fh1-render-test.py
 --hidden`: the output-paced `fh1-native-race-mode-boundary` route (boot,
 title menus, free roam, event and car-select menus, race, race pause and
 quit, retire to free roam, pause, return to title), `fh1-fmv` with opening
@@ -55,7 +57,9 @@ distinct register configurations, not distinct content.
 ## Render surfaces (29 configurations)
 
 All modes combined, by guest surface pitch, MSAA, color and depth formats.
-Host formats follow the Xenos render-target cache: `2_10_10_10_FLOAT` and
+Host formats follow the mapping the shader pack was translated for (the
+Xenos render-target cache's, now kept as the host render configuration without
+the cache): `2_10_10_10_FLOAT` and
 `2_10_10_10_FLOAT_AS_16_16_16_16` are both `R16G16B16A16_FLOAT` (so the
 known alias pair can share storage), `2_10_10_10` and
 `2_10_10_10_AS_10_10_10_10` are `R10G10B10A2_UNORM`, `8_8_8_8` is
@@ -183,10 +187,11 @@ from guest memory (BC/DXN/DXT5A block formats, 8-bit movie planes, the
   queries use `EVENT_WRITE_ZPD`: 1,056 events over 48 report addresses, all
   in two 60-frame windows of the mode-boundary route (frames 1381–1440,
   the title-to-free-roam load, and 2281–2340, the event menus). Race, free
-  roam, map, pause, photo and movie frames issued none. XR-06 decides how
-  native answers them.
-- Optimized clears: owned-depth and rectangle clears appear in every mode
-  with scene rendering.
+  roam, map, pause, photo and movie frames issued none. The native renderer
+  answers them through the `legacy` host-query path (XR-06 of the backlog).
+- Optimized clears: depth and rectangle clears appear in every mode with
+  scene rendering. The Xenos renderer replaced some of them with its owned
+  clears; the native executor runs them itself.
 
 ## Routes added later
 
@@ -214,9 +219,12 @@ heaviest race windows reach it. The census is off by default.
 
 ## Gaps and unknowns
 
-- The installed 1x pack still misses at least two vertex-shader variants in
-  plain Xenos runs (`AFF858C659830DD3` modification 1 and `AE8FEE9795590D78`
-  modification `0x7F`), so those draws are dropped on both renderers.
+- When this census was taken, the installed 1x pack missed at least two
+  vertex-shader variants (`AFF858C659830DD3` modification 1 and
+  `AE8FEE9795590D78` modification `0x7F`). The producer now translates the
+  autoshow variants, and packs repair themselves from recorded misses (see
+  [pack misses](SHADER_PACK_FORMAT.md#pack-misses-and-self-repair)); a
+  shader missing from the pack is still dropped until the next launch.
 - Night, weather, livery and multiplayer screens are not in this census yet
   (no pinned routes reach them). New configurations they bring must enter
   this contract as named skips.

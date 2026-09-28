@@ -6,7 +6,7 @@ source-frame boundary is also emitted through the
 `PinyonShift-CriticalPath` TraceLogging provider, so sampled CPU and wait data
 can be assigned to title frames without enabling the large diagnostic log.
 
-## Capture the moving Recaro route
+## Capture a moving race route
 
 Install Windows Performance Analyzer from the Windows Performance Toolkit,
 then run an elevated PowerShell from the repository root:
@@ -16,36 +16,22 @@ then run an elevated PowerShell from the repository root:
   -RenderTestScript config/render-tests/fh1-race-sustained.fh1test
 ```
 
-For the opt-in native race path, use the saved-race route with no screenshots
-inside the measured source-frame window. In an elevated PowerShell, after
-building and staging the current RelWithDebInfo runtime, run:
+`config/render-tests/fh1-race-sync.fh1test` waits on game state instead of
+wall time and ends in a moving race (its last 600 frames; see the
+[performance baselines](NATIVE_PERFORMANCE_BASELINES.md)), but it reaches
+that race only from a save in the state of seed `appdata-2026-09-27`. Keep
+full-resolution screenshots outside the measured source-frame window.
 
-```powershell
-.\tools\capture-cpu-profile.ps1 -SkipBuild `
-  -RenderTestScript config/render-tests/fh1-native-race-profile.fh1test `
-  -GameArguments @('--pinyon_shift_native_race=true',
-                   '--pinyon_shift_native_race_capture_start_frame=5000')
-```
-
-Compare source frames 5000–5029 with the preceding race window in the same
-capture. The route retains the race-ready and race-moving checkpoints but
-does not take a full-resolution screenshot in the measured window.
-
-The RelWithDebInfo performance CSV also includes native-race-only draw CPU
-counters: `fh1_issue_draw_cpu_time_ns`,
-`fh1_prepared_snapshot_cpu_time_ns`,
-`fh1_prepared_observer_cpu_time_ns`, `fh1_binding_cpu_time_ns`, and
-`fh1_issue_draw_calls`. `fh1_material_snapshot_cpu_time_ns` and
-`fh1_material_snapshot_calls` isolate source-texture copies within the draw
-timer; `fh1_native_output_cpu_time_ns` covers the output callback separately.
-`fh1_title_thread_cpu_time_ns` and `fh1_gpu_thread_cpu_time_ns` report host
-thread CPU consumed between source-frame markers and between swaps. Their
-windows overlap; they are not additive frame costs. The bounded
-`pinyon_shift_snr_m02_trace_source_frame` probe also logs `cpu_ns` for each
-title command-position wait on its selected three frames.
-These spans can overlap across threads. Compare medians over matched
-source-frame windows and use the sampled trace to attribute the remaining
-work.
+The performance CSV still has the columns `fh1_issue_draw_cpu_time_ns`,
+`fh1_prepared_snapshot_cpu_time_ns`, `fh1_prepared_observer_cpu_time_ns`,
+`fh1_binding_cpu_time_ns`, `fh1_issue_draw_calls`,
+`fh1_material_snapshot_cpu_time_ns`, `fh1_material_snapshot_calls`,
+`fh1_native_output_cpu_time_ns`, `fh1_title_thread_cpu_time_ns` and
+`fh1_gpu_thread_cpu_time_ns`. They were written by the removed native race
+pilot and its draw observers (`a75be82`, `6b75238`) and stay zero on the
+current build; use the sampled trace for CPU attribution. The executor's own
+GPU phase times come from `--fh1_native_gpu_profile=true` in its periodic
+stats.
 
 The script verifies the AppData save, rejects an already-running game, builds
 `RelWithDebInfo`, checks the title, generated guest facades, and ShiftGlue
@@ -130,8 +116,9 @@ marker and writes both JSON and Markdown, ranked by total sampled CPU or wait
 time. The JSON includes individual frame CPU and wait totals. Both metrics add
 time across concurrent game threads; neither is wall-clock frame latency.
 Waits include idle workers. Keep the ETL beside the report so stacks can be
-inspected before changing code. The first measured results are summarized in
-the [Xenos retirement backlog](XENOS_RETIREMENT_BACKLOG.md#target-architecture);
+inspected before changing code. The first measured results, taken on the
+Xenos renderer before its removal, are summarized in the
+[Xenos retirement backlog](XENOS_RETIREMENT_BACKLOG.md#target-architecture);
 the full report is archived as `CPU_HOTSPOT_RESULTS_2026-09-21.md` at
 checkpoint `02dfad0` (see the [research reference](RESEARCH.md#recovering-exact-historical-evidence)).
 

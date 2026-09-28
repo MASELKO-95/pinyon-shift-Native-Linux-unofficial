@@ -44,6 +44,23 @@ latest performance CSV and runtime log from `.local/preview/logs`. Those two
 cases have different causes, and the measurements are needed for a targeted
 fix.
 
+## Something is missing the first time a screen appears
+
+The preview draws only with shaders prepared before launch. When the game
+builds a shader that preparation did not reach, those draws are skipped for
+that session and the shader is recorded. The next launch prepares graphics
+again ("Preparing graphics ... This only runs when needed.") and includes it.
+If the same thing stays missing after relaunching, report it with the latest
+runtime log from `.local/preview/logs`.
+
+## Graphics setup fails with a resolution scale error
+
+The renderer supports internal resolution scales of 1x, 2x and 3x only, with
+the same value horizontally and vertically. Any other `draw_resolution_scale_x`
+or `draw_resolution_scale_y` in `.local/preview/config/pinyon_shift.toml`
+stops graphics setup with an error that names the requested scale. Choose a
+supported scale in the launcher, or remove the file to reset runtime settings.
+
 ## The game does not start
 
 Update the GPU driver and confirm that the GPU supports DirectX 12. Remove

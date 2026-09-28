@@ -1,6 +1,6 @@
 # Manual discovery sessions
 
-Run `tools/start-fh1-discovery.ps1` to play normally with the retained renderer
+Run `tools/start-fh1-discovery.ps1` to play normally with the native renderer
 and the installed AppData save. It uses `tools/launch-preview.ps1`, checks for an
 existing game process and a valid profile, and does not copy or reset saves.
 No scripted inputs or automatic game exit are used in a normal session.
@@ -8,6 +8,15 @@ Coverage observes one complete source frame in 60, aligned with the existing
 sampled pass/texture timings. Per-frame CSV measurement continues on all frames.
 Brief effects can fall between coverage samples; repeated visits help. Coverage
 counts are sample counts and must not be reported as whole-session totals.
+
+Since the Xenos renderer was removed (`6b75238`), nothing feeds the GPU
+corpus or the sampled pass timings: they came from the Xenos draw and copy
+observers, which the native renderer does not have. On the current build
+the coverage files and pass records stay empty and the
+`fh1_discovery_sampling` setting no longer exists. Frame windows, process
+samples, markers and screenshots are unaffected. The corpus and pass
+descriptions below document the recorder's formats and the earlier
+sessions.
 
 - **Ctrl+Shift+F8:** mark a slowdown.
 - **Ctrl+Shift+F9:** mark a visual or animation/timing problem.
@@ -82,8 +91,9 @@ Up to 1,000 timestamp markers are retained. Runtime logs use the existing 5 MiB 
 20-file rotation. The helper stops after 12 hours; it never terminates the game.
 Limits apply per session; old sessions are not automatically deleted.
 
-Detailed scene dumps and RenderDoc capture are disabled. Even so, the corpus,
-sampled GPU queries, periodic snapshot writes and screenshots can perturb timing.
+Detailed scene dumps and RenderDoc capture are disabled. Even so, periodic
+snapshot writes and screenshots can perturb timing. The overhead figures in
+the rest of this paragraph were measured on the Xenos renderer.
 The initial full-observation pilot increased median frame time by 26.34% with
 1.40% more draws; full observation was therefore rejected for the manual launcher.
 Discovery sampling leaves native rendering admission and guest writes unchanged;
@@ -102,13 +112,11 @@ cannot establish animation speed; follow up with motion/timing comparison.
 
 `python tools/record-fh1-discovery.py --self-test` checks partial-line handling,
 rotation identity rejection, frame-window calculations and report serialization.
-`python tools/check-fh1-discovery-csv.py --compiler <clang++>` compiles the actual
-CSV writer functions and checks concurrent reading, capped recording and the
-unlimited default. Use the normal release build environment for the compiler.
-`check-fh1-family-coverage.py --compiler <clang++>` exercises production recording
-through both inventory caps, continued counting of existing families, and exclusion
-of copies. The ranking tests cover detailed overflow, family overflow, duplicate
-families, legacy rejection and successive checkpoint novelty.
+The ranking tests cover detailed overflow, family overflow, duplicate
+families, legacy rejection and successive checkpoint novelty. The compiled
+CSV-writer and family-coverage checks (`check-fh1-discovery-csv.py`,
+`check-fh1-family-coverage.py`) were removed with the other Xenos-era source
+checks in `327be88`.
 
 The automated smoke option `-RenderTestScript <script> -CheckpointSeconds 5`
 is for developer validation only. It uses the existing render-test runner and

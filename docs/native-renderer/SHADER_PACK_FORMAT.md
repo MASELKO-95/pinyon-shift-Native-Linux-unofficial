@@ -3,7 +3,8 @@
 Version 2 is the Forza Horizon 1 D3D12 runtime renderer input. It stores the
 native shader container plus the texture and sampler binding metadata that
 ReXGlue normally derives while translating Xenos microcode. A matching entry
-therefore bypasses `DxbcShaderTranslator` completely.
+therefore bypasses `DxbcShaderTranslator` completely. The FH1 native
+executor, the only renderer, draws every guest draw with the pack's shaders.
 
 This is deliberately title-specific. The runtime looks only for title
 `4D5309C9` and selects an exact pack by translator version, GPU vendor, D3D12
@@ -91,7 +92,7 @@ The producer and runtime independently validate configuration, sizes, ranges,
 alignment, hashes, binding bounds, texture masks, sorted uniqueness, and
 consistent layouts across specializations before exposing bytecode.
 
-## Runtime and retirement gates
+## Runtime gate
 
 `PipelineCache::TranslateAnalyzedShader` first performs the exact pack lookup.
 On a hit it installs bytecode and bindings and continues through normal root
@@ -99,9 +100,10 @@ signature and pipeline creation without Xenos shader translation. During
 explicit offline corpus production, a miss may use the compatibility translator
 and is observable by the capture callback.
 
-Normal FH1 execution always enforces the retirement gate; there is no runtime
+Normal FH1 execution always enforces this gate; there is no runtime
 setting or launcher argument that can disable it. A miss is marked
-terminal-invalid and reported as a GPU error before the translator can run.
+terminal-invalid and reported as a GPU error before the translator can run,
+and the draw that needed it is dropped.
 The normal `rexgpu-fh1.dll` is compiled without the DXBC shader compiler.
 Translation exists only in the explicit, unstaged `rexgpu-fh1-producer.dll`
 target used with the locally extracted disc corpus. `launch-preview.ps1`
@@ -113,6 +115,31 @@ so the alternate ROV shader ABI and its synthetic depth shader are absent too.
 summary, so tests prove both that the runtime did not fall back and that the
 expected scene completed.
 
+Packs are produced per integer scale (1x, 2x or 3x; the native executor
+supports no others) and must be produced with the native renderer: a pack
+produced with the removed Xenos renderer lacked the native depth-rectangle
+clear vertex shader `1E6883FCCDE1F688` (`96943bc`).
+
+## Pack misses and self-repair
+
+The title generates some shaders at runtime (disc shaders it patches with
+vertex fetches for other layouts, relinked exports) on screens the
+preparation route, `fh1-shader-preparation` from an empty profile, never
+reaches. A shipping build records each such miss once per session: the
+guest microcode is written as `<stage>-<hash>-<modification>.bin` (for
+example `vertex-37EBBE47900A46F5-0000000000000007.bin`) under the state's
+`cache/fh1-shader-misses` (SDK `0f432e1`).
+
+Graphics preparation (`tools/prepare-fh1-shaders.ps1`, run by
+`launch-preview.ps1` and the launcher) includes the hashes of those records
+in its preparation key. A new record therefore makes the next launch prepare
+the pack again, passing the directory to `produce-fh1-artifacts.ps1
+-ShaderMissDir`; the producer translates every recorded pair after the disc
+corpus (`be7d537`). A shader missing from the pack is dropped only until the
+next launch. Two rounds from recorded misses took `fh1-race-sync`,
+`fh1-buy-car` and `fh1-rewind-sync` to zero pack misses. The records are
+game-derived microcode and stay in the local state like the pack.
+
 ## Public-source boundary
 
 Extracted guest shaders, translated bytecode, manifests containing guest shader
@@ -121,7 +148,11 @@ Repository policy continues to forbid `.dxil`, `.dxbc`, and
 `.pnsp`. The public repository contains the format, producer, loader, and tests.
 The pack does not enable guest draw or resolve suppression.
 
-## Current qualification
+## Qualification history
+
+These qualifications were run while the Xenos renderer still drew most of
+the frame; the gate itself is unchanged, but their frame rates are
+historical measurements from before its removal.
 
 The initial `.xsh` / `.xpso` proof produced 721-entry packs at every supported
 integer scale. The asset-derived producer supersedes those observed-cache packs.

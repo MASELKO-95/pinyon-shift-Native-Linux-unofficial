@@ -1,12 +1,20 @@
 # Native renderer: Xenos retirement backlog
 
-Status: **active delivery plan**, created 2026-09-27 at `dev` checkpoint
-`02dfad0`. This is the only renderer roadmap. It supersedes the Rayman
-complete-frame backlog, the scene-native (SNR) backlog, the performance
-backlog and the migration checklist's B/C items; those files are archived
-(see [retired plans and evidence](#retired-plans-and-evidence)). The
-[Rayman study](RAYMAN_NATIVE_RENDERER_RESEARCH_2026-09-25.md) is the
-reference architecture.
+Status: **done; closed 2026-09-28.** The Xenos backend is removed and the
+FH1 native executor is the only renderer (XR-10). Two items stay open
+because they need a person or hardware this project does not have: an
+unscripted human drive (XR-08) and AMD, Intel and lower-end GPU measurements
+(XR-09). The rollback point is the tag `xenos-rollback` on `a8c1f34`, the
+last commit with the Xenos renderer.
+
+The plan was created 2026-09-27 at `dev` checkpoint `02dfad0`. It superseded
+the Rayman complete-frame backlog, the scene-native (SNR) backlog, the
+performance backlog and the migration checklist's B/C items; those files
+are archived (see [retired plans and evidence](#retired-plans-and-evidence)).
+The [Rayman study](archive/RAYMAN_NATIVE_RENDERER_RESEARCH_2026-09-25.md)
+was the reference architecture. Sections below keep the plan as it was
+executed; statements about Xenos, `native-shadow`, the race pilot and their
+settings describe the renderer before removal.
 
 ## Goal
 
@@ -35,7 +43,11 @@ guest-memory GPU mirror that translated shaders fetch vertices from, the
 shader pack with its analysis/pipeline catalogs and offline producer, the
 presenter, and the deferred command list and submission code.
 
-## Where we are (analysis, 2026-09-27)
+## Starting point (analysis, 2026-09-27)
+
+Historical: this is the analysis the plan started from. The race pilot, its
+settings and hooks were removed in `a75be82` and the Xenos renderer in
+`6b75238`; none of the settings named here exist any more.
 
 ### What works
 
@@ -114,7 +126,7 @@ continuing to add families or pins cannot remove Xenos. Freeze it.
 
 ## Target architecture
 
-The [Rayman renderer](RAYMAN_NATIVE_RENDERER_RESEARCH_2026-09-25.md) records
+The [Rayman renderer](archive/RAYMAN_NATIVE_RENDERER_RESEARCH_2026-09-25.md) records
 an ordered list of draw/clear/resolve operations while the game runs, draws
 them with the original shaders into native targets, presents natively and
 runs ReXGlue with a null backend that still consumes PM4. UI, fonts and
@@ -161,6 +173,10 @@ PM4 command processor (kept)
 - `native` — native presents every frame; after XR-07 Xenos rendering is
   off (null). No per-frame switching between renderers in this mode.
 
+The modes shipped as `fh1_renderer`. `native-shadow` was removed in
+`8fb4ee4` and `xenos` with the setting itself in `6b75238`, so `native` is
+the only renderer and there is no mode to select.
+
 The executor is also built as a library for an **offline replayer** of
 locally dumped frames (Rayman's dump/offline replay loop): seconds per
 iteration and deterministic regression tests. Dumps contain game data and
@@ -206,6 +222,12 @@ and XR-07 decide.
 - **Test the executor offline** (dump replay) and the product by routes.
 - **Do not move, reset or overwrite saves** for tests; use disposable seeds
   ([AGENTS.md](../../AGENTS.md)).
+
+Same-frame `native-shadow` pairs and Xenos reference runs no longer exist.
+Judge changes now against golden frame replays
+(`tools/test-fh1-frame-replays.py`) and against earlier native captures of
+the same route and seed (`run-fh1-render-test.py --baseline-dir`); see
+[render tests](FH1_RENDER_TEST_AUTOMATION.md).
 
 ## Risks to watch
 
@@ -404,6 +426,9 @@ types, and every new surface, resolve and texture configuration runs in
   texture mirrors in the frames before each dump (`..._verify_draws` adds
   per-draw before/after checks); skips and stats print every 600 frames.
   DRED breadcrumbs and page faults come with the D3D12 debug layer.
+  `native-shadow` and its verification were removed in `8fb4ee4`; the
+  front-buffer dumps remain as `fh1_native_dump_frames` /
+  `fh1_native_dump_dir`.
 - [x] Frame dump (event stream plus referenced guest memory and shader
   identities) and the offline replayer; the first executor regression tests
   run from local dumps. `fh1_frame_dump_frame`/`_path` record a frame's
@@ -554,7 +579,8 @@ the transfer word buffer 10 MB.
 - [x] `native` session mode presents every frame natively, with no
   per-frame admission or fallback (`fh1_renderer=native`, 1x only).
 - [x] Launcher renderer choice (Xenos / Native — experimental) with a config
-  schema migration. Config schema 22 (`fh1_renderer`).
+  schema migration. Config schema 22 (`fh1_renderer`). The choice went away
+  with the Xenos renderer in XR-10.
 - [x] Remove race admission, the pre-UI hook and the HUD mask blit from the
   product path. The frame-telemetry hook reads and publishes race admission
   only while the frozen pilot is requested, and the pilot (admission, pre-UI
@@ -691,6 +717,9 @@ or proven unused on every matrix route, with overflow-safe accounting.
   Two rounds from the recorded misses took `fh1-race-sync`,
   `fh1-buy-car` and `fh1-rewind-sync` to zero pack misses. A draw of a
   shader the pack lacks is still dropped the first time it is seen.
+  Still open, and it needs a person: someone has to drive a race and free
+  roam by hand in the native renderer and record what they find. No script
+  can close this item.
 
 **Done when** every matrix mode passes the acceptance rules with an explicit
 list of accepted differences.
@@ -728,6 +757,9 @@ list of accepted differences.
   and nine passes over all rectangles) took free-roam GPU p95 from 11.3 to
   9.2 ms.
 - [ ] AMD, Intel and lower-end hardware measurements with stated settings.
+  Still open, and it needs hardware: every result so far comes from one
+  NVIDIA development machine, and no AMD, Intel or lower-end GPU is
+  available to this project.
 
 **Done when** measured frame-time and memory results are published per scale
 and vendor tested.
@@ -739,24 +771,58 @@ and vendor tested.
   (schema 22's `xenos` was the old default), the launcher lists "Native ·
   default" first and "Xenos · rollback"; since `64c9deb` scaled sessions
   also run native. The release that ships it starts the one-release clock the next
-  two items wait for.
-- [ ] Remove from the runtime: the Xenos render target cache, texture cache
+  two items wait for. The user waived that one-release gate on 2026-09-28,
+  so the removal below did not wait for a release.
+- [x] Remove from the runtime: the Xenos render target cache, texture cache
   orchestration and draw-time pipeline path; the Xenos-side owned-depth-clear
   and mip replacements (superseded); SDK FH1 hash lists; the six-family
   capture, SNR probes and fixture parsers; ordered UI capture; the pre-UI
   hook; HUD masks; the 153 SNR guest hooks and the race admission hook; the
-  obsolete cvars.
-- [ ] Clean build with no Xenos backend linked; the offline shader producer
-  stays separate; tag the rollback release.
+  obsolete cvars. Done in order:
+  - app `a75be82`: the six-family race pilot, HUD masks, ordered UI capture
+    and replay, the pre-UI clear, the SNR-01..04 and SNR-M02 probes with
+    their fixture parsers, the race admission hook and 149 title hooks. The
+    VdSwap source-frame hook, the PERF-11 title-draw probes, the GPU corpus
+    observers and the render-test output callback stay.
+  - app `c83e42f`: the pilot and SNR verifiers, probe scripts and routes,
+    and the render-test `# require-native` check.
+  - SDK `246cf5c`, app `8fb4ee4`: `native-shadow` with its private mirror,
+    same-frame verification and the `fh1_native_shadow*` settings; the
+    front-buffer dumps are renamed `fh1_native_dump_frames` /
+    `fh1_native_dump_dir`.
+  - SDK `add1116`, app `6b75238`: the Xenos draw and resolve paths of the
+    command processor, `fh1_renderer`, the owned depth, tile and rectangle
+    clears, the tone-map and velocity-dilate replacements, the owned
+    geometry cache, the reflection-mip replacement and the draw observers.
+    Unsupported resolution scales now fail setup instead of falling back.
+  - SDK `dc65ce9`, app `327be88`: the Xenos-only FH1 shader families,
+    reflection mip generation, CPU BC3 import, execution-key plumbing and
+    the tests and check scripts that read them.
+- [x] Clean build with no Xenos backend linked; the offline shader producer
+  stays separate; tag the rollback release. SDK `1a67f90`, app `e9c7ba7`:
+  the D3D12 render target cache is replaced by a host configuration object,
+  so no Xenos EDRAM code is linked into the FH1 graphics plugin; the shader
+  producer still builds separately. The rollback point is the tag
+  `xenos-rollback` on app `a8c1f34` (SDK `0f432e1`, tagged the same), the
+  last commit with the Xenos renderer. Each step passed `fh1-race-sync` in
+  `native` with zero executor skips and the golden frame replays (`8fb4ee4`
+  and later); the route matrix below was last run in full before removal.
 
 **Done when** that build passes the route matrix and the docs describe only
-the native renderer.
+the native renderer. The docs now describe only the native renderer; older
+results that compare against Xenos are labelled as measurements taken
+before removal.
 
 ## Route matrix
 
 Originally recorded at `02dfad0`, when every mode was Xenos-only or pilot.
-Now: native status from same-frame `native-shadow` pairs (share of pixels
-differing, largest channel difference out of 255) and full `native` runs.
+The native status below comes from same-frame `native-shadow` pairs (share
+of pixels differing, largest channel difference out of 255) and full
+`native` runs. The pairs are historical measurements taken before
+`native-shadow` and Xenos were removed (`8fb4ee4`, `6b75238`); they cannot
+be repeated on the current build. `fh1-native-race-mode-boundary` was
+written for the removed race pilot; only its scripted inputs remain
+meaningful.
 
 | Mode | Route | Native status |
 | --- | --- | --- |
@@ -837,3 +903,9 @@ Retrieve one locally with:
 ```powershell
 git show 02dfad0:docs/native-renderer/RAYMAN_STYLE_NATIVE_RENDERER_BACKLOG.md
 ```
+
+Documents about machinery removed with the Xenos renderer (the owned depth
+clear, reflection mip replacement, the Carson geometry cache fix, the Xenos
+renderer census and the Rayman study) are kept in
+[`archive/`](archive/); see the
+[research reference](RESEARCH.md#archived-xenos-era-documents).

@@ -58,9 +58,8 @@ python .\tools\run-fh1-render-test.py `
   --record-baseline
 ```
 
-`--seed-pipeline-prewarm` copies only the verified FH1 V3 pipeline allowlist;
-this enables exact native substitutions such as velocity dilation while keeping
-the validation state isolated.
+`--seed-pipeline-prewarm` copies only the verified FH1 V3 pipeline allowlist,
+so startup pipelines are prewarmed while the validation state stays isolated.
 
 Locally derived bytecode, manifests, and packs must remain under `.local` and
 must not enter support bundles or the public repository.
