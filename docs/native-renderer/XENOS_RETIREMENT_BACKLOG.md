@@ -264,10 +264,17 @@ Sizes are relative scope, not time estimates. XR-08 and XR-09 can overlap.
   Done: `wait <frame> <max> vehicle | vehicle-moved <units> | movie <text>`
   holds the script clock on game state (`fh1-race-start-wait` waits for the
   car to move before capturing); the existing routes still need converting
-  where they drift (the car-select and race entries do).
+  where they drift (the car-select and race entries do). `file <text>`
+  waits on the assets a screen opens (`fh1_render_test_log_file_opens`
+  lists them: the car-select cards open the profile's
+  `thumbnails	humbnail_N.xdc` at frame 2044 of the mode-boundary route).
+  `fh1-race` itself drifts into free roam: its captures show no event.
 - [ ] Add missing mode routes: boot with movies, Press Start, main and
   single-player menus, garage/car select, a second race event, loading
   screens, rewind. Reuse the free-roam, map, pause and photo scripts.
+  Rewind: BACK opens the race map and Y (FH1's rewind button) only
+  changed the camera in a Recaro race from the seed, so the profile's
+  controls or assists still need checking before a rewind route.
 - [x] Limit `pinyon_shift_skip_opening_movies` (hook at `0x82E5D8AC` in the
   XMedia wrapper `sub_82E5D868`) to `media/ui/videos/splash_intros/`. It
   completed every movie, so scripted runs showed a solid green Press Start
@@ -376,9 +383,18 @@ have no pinned route yet (XR-00) and enter the contract when they do.
   texture mirrors in the frames before each dump (`..._verify_draws` adds
   per-draw before/after checks); skips and stats print every 600 frames.
   DRED breadcrumbs and page faults come with the D3D12 debug layer.
-- [ ] Frame dump (event stream plus referenced guest memory and shader
+- [x] Frame dump (event stream plus referenced guest memory and shader
   identities) and the offline replayer; the first executor regression tests
-  run from local dumps.
+  run from local dumps. `fh1_frame_dump_frame`/`_path` record a frame's
+  flattened packets, starting registers, bin state and shaders, and every
+  guest range it reads (CPU ranges for shader, constant and copy-vertex
+  loads; mirror ranges for draw inputs). `tools/replay-fh1-frame.py` replays
+  one with the title suspended and compares the front buffer;
+  `tools/test-fh1-frame-replays.py` runs a dump directory against golden
+  replays. Replays are deterministic (pipelines are created synchronously);
+  title and photo dumps match their recording exactly, free roam and race
+  differ in 2% of pixels from state carried over from earlier frames
+  (particles).
 - [x] First complete frames: legal screen, Press Start with its movie, main
   and single-player menus, a loading screen. All bit-identical in shadow
   mode with zero skips.
@@ -462,10 +478,25 @@ resolve kind runs natively, and no family code is involved.
   processor's sampler translation from fetch constants is used as is.
 - [ ] Car select card images: render correctly natively; record the Xenos
   cause of the pink stripes (identical in every capture since 2026-09-21).
+  Cause: the cards are the profile's `Thumbnails/Thumbnail_N.xdc` (a deflated
+  Xenos texture, tiled 8888 768x288), and those files already hold noise:
+  they were written by the game in the user's sessions of 2026-08-25 to
+  09-21. With them removed from a copy of the seed, both renderers show
+  empty cards, so native displays exactly the stored data (shadow pairs
+  0.001%). The D3D12 backend never copied resolves into guest RAM; native
+  now honours `readback_resolve`, but the photo-save preview is noise on
+  both renderers even with `readback_resolve=full`, so the thumbnail
+  producer is not a plain resolve read-back. Open: find that producer, then
+  regenerate thumbnails on a fresh profile.
 
 **Done when** the route matrix runs in `native-shadow` with
 `borrowed_xenos_texture == 0` and native texture memory within a stated
 budget.
+
+Budget at 1x (`FH1 native executor memory MB`, logged with the stats):
+textures stay under the texture cache's soft limit of 384 MB (peaks: race
+265, photo 178, free roam 149 MB); executor surfaces take 522-562 MB and
+the transfer word buffer 10 MB.
 
 ### XR-05 — Native presentation and the `native` mode
 
@@ -481,8 +512,11 @@ budget.
   per-frame admission or fallback (`fh1_renderer=native`, 1x only).
 - [x] Launcher renderer choice (Xenos / Native — experimental) with a config
   schema migration. Config schema 22 (`fh1_renderer`).
-- [ ] Remove race admission, the pre-UI hook and the HUD mask blit from the
-  product path.
+- [x] Remove race admission, the pre-UI hook and the HUD mask blit from the
+  product path. The frame-telemetry hook reads and publishes race admission
+  only while the frozen pilot is requested, and the pilot (admission, pre-UI
+  scene, HUD masks) cannot be enabled unless `fh1_renderer=xenos`; the code
+  itself goes in XR-10.
 
 **Done when** one session — boot, title, menus, free roam, two race events,
 pause, map, photo mode, back to title — presents natively with correct gamma
@@ -490,7 +524,7 @@ and no fallback, and passes the route acceptance against Xenos captures.
 
 ### XR-06 — Guest-visible side effects without Xenos
 
-- [ ] Occlusion queries: identify the consumers (the verified lifecycle
+- [x] Occlusion queries: identify the consumers (the verified lifecycle
   owner is `0x82D951E0`; the race frame also has 24 no-write indirect point
   draws that are likely query probes). Implement native counts written at
   ZPD end without a blocking GPU-thread wait — Xenos `legacy` mode waits on
@@ -498,6 +532,14 @@ and no fallback, and passes the route acceptance against Xenos captures.
   consumer. Keep the ZPD fixes recorded in
   [`EPIC_04`](../../config/rexglue/EPIC_04_ZPD_LIFECYCLE_D3D12.md) and
   [`EPIC_05`](../../config/rexglue/EPIC_05_ZPD_POLICY_GUARD.md).
+  Proven equivalent rather than reimplemented: `native` answers ZPD through
+  the same `legacy` host-query path as Xenos (host occlusion queries count
+  samples of the command processor's draws whatever target is bound), and
+  the census counts zero draws inside a query in every mode on both
+  renderers, so both report zero samples. The fence wait remains but only
+  runs in the two load windows that issue ZPD; there native frames are
+  median 18.9/12.2 ms and max 28.3/14.5 ms against Xenos 17.2/10.8 and
+  24.6/14.2, no hitch attributable to the wait.
 - [x] Keep PM4 timing semantics: the title polls a word the command
   processor writes with `EVENT_WRITE_SHD` while parsing, so that write must
   stay tied to consumption order in `native` and null modes (the base
@@ -530,11 +572,24 @@ or proven unused on every matrix route, with overflow-safe accounting.
   target cache is initialized config-only (no EDRAM buffer, render targets,
   transfers or resolve pipelines), no second mirror or texture cache exists,
   and the pipeline path is the shared pack pipeline cache.
-- [ ] Remove observers, CPU snapshots and texture pinning from the `native`
-  hot path.
-- [ ] Counters prove zero Xenos render-target, texture and pipeline work.
+- [x] Remove observers, CPU snapshots and texture pinning from the `native`
+  hot path. The prepared-draw and final-draw-state observers are not
+  installed when the executor presents; the Xenos-side families that took
+  CPU snapshots and pinned textures are gated off with the executor.
+- [x] Counters prove zero Xenos render-target, texture and pipeline work.
+  `native` logs `FH1 xenos edram work` every 600 frames: updates, resolves,
+  render targets and transfer tile-passes stay 0 on every route.
 - [ ] Median and p95 frame time in `native` no worse than the XR-00 Xenos
-  baselines at 1x on every route; memory within budget.
+  baselines at 1x on every route; memory within budget. Transfers now claim
+  only the tiles a depth-only ALWAYS rectangle touches (covered tiles
+  without a transfer) and run batched per destination: free-roam
+  tile-passes fell from 311M to 138M per 2,400 frames and GPU p95 from
+  11.3 to 9.2-9.7 ms. Matrix medians are at or below Xenos (race 12.5 vs
+  16.1 ms, free roam 8.7 vs 9.5 ms), p95 is still above (race 29.7 vs 21.7,
+  free roam 22.5-28.6 vs 21.1-23.8 ms), but the routes drift apart (the
+  native race run reached 6,200 draws per frame where Xenos stayed at
+  3,400), so p95 parity needs the deterministic routes from XR-00. On
+  matched content (3,500 draws) native GPU time is about 9.2 vs 7.3 ms.
 
 **Done when** all four hold.
 
