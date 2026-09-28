@@ -651,10 +651,24 @@ list of accepted differences.
 ### XR-09 — Scaling, performance and hardware
 
 - [ ] Native 2x/3x scaling (surfaces and resolves at scale; pack per scale).
-- [ ] Band merge: test whether band passes can execute once into the full
+- [x] Band merge: test whether band passes can execute once into the full
   surface without changing the image; retain only with a matched A/B.
-- [ ] Startup PSO build from the catalog, upload/descriptor ring reuse and
+  Tested on the census of the mode-boundary race (frames 4801-4860): the
+  three bands of one surface issue 17,401, 30,145 and 44,864 draws with 35,
+  36 and 54 shader pairs, only 30 common, because the game culls per band.
+  One pass cannot reproduce the frame, and replaying every band's list
+  unclipped redraws objects that span bands; not retained.
+- [x] Startup PSO build from the catalog, upload/descriptor ring reuse and
   barrier batching, each retained only with a measured gain.
+  Measured in `native` on `fh1-race-sync`: the catalog prewarm
+  (`--seed-pipeline-prewarm`) leaves 149 pipeline misses and 16 frames over
+  50 ms against 160 and 18 without it (Xenos 135 and 23), so it stays as
+  the shared startup path with no native-specific change. The executor
+  takes descriptors and uploads from the command processor's existing
+  one-use rings, so there is no separate ring to reuse. Barrier batching is
+  retained: batching ownership transfers per destination (one barrier set
+  and nine passes over all rectangles) took free-roam GPU p95 from 11.3 to
+  9.2 ms.
 - [ ] AMD, Intel and lower-end hardware measurements with stated settings.
 
 **Done when** measured frame-time and memory results are published per scale
@@ -662,7 +676,12 @@ and vendor tested.
 
 ### XR-10 — Native by default; remove Xenos
 
-- [ ] Make `native` the default for one release with `xenos` as the rollback.
+- [x] Make `native` the default for one release with `xenos` as the rollback.
+  Config schema 23 (`0949d10`): new and migrated configs select `native`
+  (schema 22's `xenos` was the old default), the launcher lists "Native ·
+  default (1× only)" first and "Xenos · rollback", scaled sessions keep
+  Xenos. The release that ships it starts the one-release clock the next
+  two items wait for.
 - [ ] Remove from the runtime: the Xenos render target cache, texture cache
   orchestration and draw-time pipeline path; the Xenos-side owned-depth-clear
   and mip replacements (superseded); SDK FH1 hash lists; the six-family
