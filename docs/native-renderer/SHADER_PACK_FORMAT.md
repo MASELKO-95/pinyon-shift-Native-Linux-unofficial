@@ -64,6 +64,12 @@ never substitutes another specialization. Bytecode paths must remain below the
 manifest directory, begin with D3D container magic `DXBC`, match their SHA-256,
 and be at most 16 MiB. Packs are bounded to 65,535 entries and 512 MiB.
 
+An entry may also carry `bytecode_offset` and `bytecode_size`; `bytecode` then
+names a file shared by many entries and the entry's bytecode is that byte
+range. The shader capture writes this form (`dxil.blob`) because creating one
+small file per shader costs about a millisecond each on Windows with real-time
+antivirus scanning, which dominated graphics preparation.
+
 Build and verify locally:
 
 ```powershell

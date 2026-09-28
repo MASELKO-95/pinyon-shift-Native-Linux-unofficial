@@ -6,14 +6,24 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import struct
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
 
 CONTAINER = struct.Struct(">9I")
+# The binary corpus is one file: creating thousands of small files costs about
+# a millisecond each under real-time antivirus scanning, once when written
+# and again when the producer first reads them.
+CORPUS_BLOB = "corpus.blob"
+CORPUS_MAGIC = b"FH1C"
+CORPUS_HEADER = struct.Struct("<4sII")
+CORPUS_RECORD = struct.Struct("<BBHI")
+CORPUS_STAGES = {"vertex": 0, "pixel": 1}
 SHADER = struct.Struct(">6I")
 VERTEX_SHADER = struct.Struct(">9I")
 FLAGS_MASK = 0xFFFFFF00
@@ -301,35 +311,54 @@ def extract(game_root: Path, output: Path, binary_dir: Path | None = None,
             image_data = image.read_bytes()
             executable_declarations.update(extract_executable_declarations(image_data))
             extract_source("default.xex", image_data)
-        extracted = Path(temporary) / "shader.fxobj"
+        def extract_member(job: tuple[int, Path, object]) -> bytes:
+            index, archive, member = job
+            extracted = Path(temporary) / f"shader-{index}.fxobj"
+            result = subprocess.run(
+                [archive_extractor, archive, str(member.header_offset),
+                 str(member.compress_size), str(member.file_size), extracted],
+                capture_output=True, text=True,
+            )
+            if result.returncode:
+                raise ValueError(
+                    f"failed to extract {archive}!/{member.filename}: {result.stderr.strip()}"
+                )
+            return extracted.read_bytes()
+
+        # Method-21 members need one helper process each; run them in parallel
+        # and consume every member in the original sorted order.
+        members = []
         for archive in sorted((game_root / "media").rglob("*.zip")):
             with ZipFile(archive) as zipped:
                 for member in sorted(zipped.infolist(), key=lambda item: item.filename):
                     if member.is_dir() or not member.filename.lower().endswith(".fxobj"):
                         continue
-                    if member.compress_type == 21:
-                        if archive_extractor is None:
-                            raise ValueError(
-                                f"FH1 method-21 shader archive requires --archive-extractor: "
-                                f"{archive}!/{member.filename}"
-                            )
-                        result = subprocess.run(
-                            [archive_extractor, archive, str(member.header_offset),
-                             str(member.compress_size), str(member.file_size), extracted],
-                            capture_output=True, text=True,
+                    if member.compress_type == 21 and archive_extractor is None:
+                        raise ValueError(
+                            f"FH1 method-21 shader archive requires --archive-extractor: "
+                            f"{archive}!/{member.filename}"
                         )
-                        if result.returncode:
-                            raise ValueError(
-                                f"failed to extract {archive}!/{member.filename}: "
-                                f"{result.stderr.strip()}"
-                            )
-                        data = extracted.read_bytes()
-                    else:
-                        data = zipped.read(member)
-                    source = (
-                        f"{archive.relative_to(game_root).as_posix()}!/{member.filename}"
-                    )
-                    extract_source(source, data)
+                    members.append((archive, member))
+        jobs = [(index, archive, member) for index, (archive, member) in enumerate(members)
+                if member.compress_type == 21]
+        with ThreadPoolExecutor(min(16, os.cpu_count() or 1)) as pool:
+            decompressed = dict(zip((job[0] for job in jobs), pool.map(extract_member, jobs)))
+        open_archive, zipped = None, None
+        try:
+            for index, (archive, member) in enumerate(members):
+                if index in decompressed:
+                    data = decompressed.pop(index)
+                else:
+                    if archive != open_archive:
+                        if zipped is not None:
+                            zipped.close()
+                        open_archive, zipped = archive, ZipFile(archive)
+                    data = zipped.read(member)
+                source = f"{archive.relative_to(game_root).as_posix()}!/{member.filename}"
+                extract_source(source, data)
+        finally:
+            if zipped is not None:
+                zipped.close()
 
     raw_shader_count = len(entries)
     for code, shader_elements, interpolator_count, source in vertex_sources:
@@ -364,11 +393,14 @@ def extract(game_root: Path, output: Path, binary_dir: Path | None = None,
     }
     if binary_dir is not None:
         binary_dir.mkdir(parents=True, exist_ok=True)
+        blob = bytearray(CORPUS_HEADER.pack(CORPUS_MAGIC, 1, len(entries)))
         for key in sorted(entries):
             entry = entries[key]
-            count = max(entry["interpolator_counts"])
-            destination = binary_dir / f"{entry['stage']}-i{count:02d}-{entry['sha256']}.bin"
-            destination.write_bytes(binaries[key])
+            code = binaries[key]
+            blob += CORPUS_RECORD.pack(CORPUS_STAGES[entry["stage"]],
+                                       max(entry["interpolator_counts"]), 0, len(code))
+            blob += code
+        (binary_dir / CORPUS_BLOB).write_bytes(bytes(blob))
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return manifest

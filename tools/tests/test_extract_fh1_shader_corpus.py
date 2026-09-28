@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import struct
 import tempfile
@@ -117,13 +118,30 @@ class ExtractFh1ShaderCorpusTests(unittest.TestCase):
                              [e["stage"] for e in manifest["entries"]])
             self.assertEqual([[6], [4], [3]],
                              [e["interpolator_counts"] for e in manifest["entries"]])
-            self.assertEqual(3, len(list(binary_dir.glob("*.bin"))))
-            self.assertEqual(1, len(list(binary_dir.glob("pixel-i06-*.bin"))))
-            self.assertEqual(1, len(list(binary_dir.glob("pixel-i04-*.bin"))))
-            self.assertEqual(1, len(list(binary_dir.glob("vertex-i03-*.bin"))))
+            records = read_corpus_blob(binary_dir / MODULE.CORPUS_BLOB)
+            self.assertEqual([("pixel", 6), ("pixel", 4), ("vertex", 3)],
+                             [record[:2] for record in records])
+            self.assertEqual([entry["sha256"] for entry in manifest["entries"]],
+                             [hashlib.sha256(record[2]).hexdigest().upper()
+                              for record in records])
             self.assertIn("media/tracks/bin.zip!/shaders/track/three.fxobj",
                           manifest["entries"][1]["sources"][0]["path"])
             self.assertTrue(output.is_file())
+
+
+def read_corpus_blob(path: Path) -> list[tuple[str, int, bytes]]:
+    data = path.read_bytes()
+    magic, version, count = MODULE.CORPUS_HEADER.unpack_from(data)
+    assert magic == MODULE.CORPUS_MAGIC and version == 1
+    offset = MODULE.CORPUS_HEADER.size
+    records = []
+    for _ in range(count):
+        stage, interpolators, _, size = MODULE.CORPUS_RECORD.unpack_from(data, offset)
+        offset += MODULE.CORPUS_RECORD.size
+        records.append((("vertex", "pixel")[stage], interpolators, data[offset:offset + size]))
+        offset += size
+    assert offset == len(data)
+    return records
 
 
 if __name__ == "__main__":

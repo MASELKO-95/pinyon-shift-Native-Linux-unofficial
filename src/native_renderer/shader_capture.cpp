@@ -11,8 +11,10 @@
 #include <iterator>
 #include <limits>
 #include <mutex>
+#include <set>
 #include <span>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -52,16 +54,24 @@ struct CaptureEntry {
   uint64_t specialization_mask = 0;
   size_t bytecode_size = 0;
   std::array<std::byte, 32> digest{};
-  std::string file_name;
+  uint64_t bytecode_offset = 0;
   std::vector<rex::system::GraphicsShaderTextureBinding> texture_bindings;
   std::vector<rex::system::GraphicsShaderSamplerBinding> sampler_bindings;
   uint32_t used_texture_mask = 0;
 };
 
+using CaptureIdentity =
+    std::tuple<rex::system::GraphicsShaderStage, uint64_t, uint64_t>;
+
 struct CaptureState {
   std::mutex mutex;
   std::filesystem::path root;
   std::vector<CaptureEntry> entries;
+  std::set<CaptureIdentity> identities;
+  // All bytecode, appended in capture order and addressed by offset: one small
+  // file per shader cost about a millisecond each under real-time antivirus
+  // scanning and dominated graphics preparation.
+  std::ofstream bytecode_file;
   size_t bytecode_bytes = 0;
   size_t duplicate_callbacks = 0;
   size_t rejected_callbacks = 0;
@@ -162,21 +172,11 @@ bool WriteFileAtomically(const std::filesystem::path &destination,
   return true;
 }
 
-bool ExistingFileMatches(const std::filesystem::path &path,
-                         std::span<const std::byte> expected) {
-  std::error_code error;
-  if (std::filesystem::file_size(path, error) != expected.size() || error) {
+bool WriteManifestLocked() {
+  // The manifest must never name bytecode the file does not hold yet.
+  if (!g_capture.bytecode_file.flush()) {
     return false;
   }
-  std::vector<std::byte> actual(expected.size());
-  std::ifstream input(path, std::ios::binary);
-  return input.read(reinterpret_cast<char *>(actual.data()),
-                    static_cast<std::streamsize>(actual.size())) &&
-         input.peek() == std::char_traits<char>::eof() &&
-         std::equal(actual.begin(), actual.end(), expected.begin());
-}
-
-bool WriteManifestLocked() {
   std::vector<CaptureEntry> entries = g_capture.entries;
   std::sort(entries.begin(), entries.end(),
             [](const auto &left, const auto &right) {
@@ -216,11 +216,14 @@ bool WriteManifestLocked() {
     document += fmt::format("    {{\n      \"stage\": \"{}\",\n"
                             "      \"guest_hash\": \"{:016X}\",\n"
                             "      \"specialization_mask\": \"{:016X}\",\n"
-                            "      \"bytecode\": \"dxil/{}\",\n"
+                            "      \"bytecode\": \"dxil.blob\",\n"
+                            "      \"bytecode_offset\": {},\n"
+                            "      \"bytecode_size\": {},\n"
                             "      \"sha256\": \"{}\",\n"
                             "      \"texture_bindings\": [",
                             stage, entry.guest_hash, entry.specialization_mask,
-                            entry.file_name, DigestHex(entry.digest));
+                            entry.bytecode_offset, entry.bytecode_size,
+                            DigestHex(entry.digest));
     for (size_t binding_index = 0;
          binding_index < entry.texture_bindings.size(); ++binding_index) {
       const auto &binding = entry.texture_bindings[binding_index];
@@ -265,10 +268,10 @@ void ObserveShaderTranslation(
       observation.msaa_2x,
       observation.draw_resolution_scale_x,
       observation.draw_resolution_scale_y};
-  std::lock_guard lock(g_capture.mutex);
-  if (!g_capture.active) {
-    return;
-  }
+  const auto reject = [] {
+    std::lock_guard lock(g_capture.mutex);
+    ++g_capture.rejected_callbacks;
+  };
   if ((observation.stage != rex::system::GraphicsShaderStage::kVertex &&
        observation.stage != rex::system::GraphicsShaderStage::kPixel) ||
       observation.guest_hash == 0 || bytecode.size() < 4 ||
@@ -279,26 +282,8 @@ void ObserveShaderTranslation(
       observation.texture_binding_count > kMaximumBindings ||
       observation.sampler_binding_count > kMaximumBindings ||
       (observation.texture_binding_count && !observation.texture_bindings) ||
-      (observation.sampler_binding_count && !observation.sampler_bindings) ||
-      (g_capture.has_config && g_capture.config != config)) {
-    ++g_capture.rejected_callbacks;
-    return;
-  }
-
-  auto existing = std::find_if(
-      g_capture.entries.begin(), g_capture.entries.end(),
-      [&](const CaptureEntry &entry) {
-        return entry.stage == observation.stage &&
-               entry.guest_hash == observation.guest_hash &&
-               entry.specialization_mask == observation.specialization_mask;
-      });
-  if (existing != g_capture.entries.end()) {
-    ++g_capture.duplicate_callbacks;
-    return;
-  }
-  if (g_capture.entries.size() >= kMaximumEntries ||
-      bytecode.size() > kMaximumCaptureBytes - g_capture.bytecode_bytes) {
-    ++g_capture.rejected_callbacks;
+      (observation.sampler_binding_count && !observation.sampler_bindings)) {
+    reject();
     return;
   }
 
@@ -322,43 +307,56 @@ void ObserveShaderTranslation(
   for (const auto &binding : entry.texture_bindings) {
     if (binding.fetch_constant >= 32 || binding.dimension > 3 ||
         binding.is_signed > 1) {
-      ++g_capture.rejected_callbacks;
+      reject();
       return;
     }
     observed_texture_mask |= 1u << binding.fetch_constant;
   }
   if (observed_texture_mask != entry.used_texture_mask) {
-    ++g_capture.rejected_callbacks;
+    reject();
     return;
   }
+  const CaptureIdentity identity{entry.stage, entry.guest_hash,
+                                 entry.specialization_mask};
+  // Hash outside the lock; the producer translates on several threads.
   if (!ComputeSha256(bytecode, &entry.digest)) {
+    reject();
+    return;
+  }
+  std::lock_guard lock(g_capture.mutex);
+  if (!g_capture.active) {
+    return;
+  }
+  if (g_capture.has_config && g_capture.config != config) {
     ++g_capture.rejected_callbacks;
     return;
   }
-  entry.file_name = fmt::format(
-      "{}_{:016X}_{:016X}.dxil",
-      entry.stage == rex::system::GraphicsShaderStage::kVertex ? "vertex"
-                                                               : "pixel",
-      entry.guest_hash, entry.specialization_mask);
-  const std::filesystem::path destination =
-      g_capture.root / L"dxil" / entry.file_name;
-  std::error_code error;
-  if (std::filesystem::exists(destination, error)) {
-    if (error || !ExistingFileMatches(destination, bytecode)) {
-      ++g_capture.rejected_callbacks;
-      return;
-    }
-  } else if (!WriteFileAtomically(destination, bytecode)) {
+  if (g_capture.identities.contains(identity)) {
+    ++g_capture.duplicate_callbacks;
+    return;
+  }
+  if (g_capture.entries.size() >= kMaximumEntries ||
+      bytecode.size() > kMaximumCaptureBytes - g_capture.bytecode_bytes) {
+    ++g_capture.rejected_callbacks;
+    return;
+  }
+  entry.bytecode_offset = g_capture.bytecode_bytes;
+  if (!g_capture.bytecode_file.write(
+          reinterpret_cast<const char *>(bytecode.data()),
+          static_cast<std::streamsize>(bytecode.size()))) {
     ++g_capture.rejected_callbacks;
     return;
   }
   g_capture.config = config;
   g_capture.has_config = true;
   g_capture.bytecode_bytes += bytecode.size();
+  g_capture.identities.insert(identity);
   g_capture.entries.push_back(std::move(entry));
-  // Keep a recoverable checkpoint without rewriting a multi-megabyte manifest
-  // for every shader in the finite FH1 disc corpus.
-  if ((g_capture.entries.size() & 255) == 0) {
+  // Keep a recoverable checkpoint at 256, 512, 1024... entries: the manifest
+  // is rewritten under the lock, so checkpoints at a fixed interval would
+  // cost quadratic time and stall the producer's translation threads.
+  const size_t entry_count = g_capture.entries.size();
+  if (entry_count >= 256 && (entry_count & (entry_count - 1)) == 0) {
     WriteManifestLocked();
   }
 }
@@ -387,8 +385,12 @@ void InstallShaderCapture(rex::system::IGraphicsSystem *graphics_system) {
     return;
   }
   std::error_code error;
-  std::filesystem::create_directories(root / L"dxil", error);
-  if (error) {
+  std::filesystem::create_directories(root, error);
+  std::ofstream bytecode_file;
+  if (!error) {
+    bytecode_file.open(root / L"dxil.blob", std::ios::binary | std::ios::trunc);
+  }
+  if (error || !bytecode_file) {
     diagnostics::RecordEvent(
         "native_renderer.shader_capture.failure",
         {{"reason", "create_directory_failed"}, {"fallback", "xenos"}});
@@ -398,6 +400,8 @@ void InstallShaderCapture(rex::system::IGraphicsSystem *graphics_system) {
     std::lock_guard lock(g_capture.mutex);
     g_capture.root = root;
     g_capture.entries.clear();
+    g_capture.identities.clear();
+    g_capture.bytecode_file = std::move(bytecode_file);
     g_capture.bytecode_bytes = 0;
     g_capture.duplicate_callbacks = 0;
     g_capture.rejected_callbacks = 0;
@@ -430,6 +434,7 @@ void UninstallShaderCapture(rex::system::IGraphicsSystem *graphics_system) {
     if (!g_capture.entries.empty() && !WriteManifestLocked()) {
       ++g_capture.rejected_callbacks;
     }
+    g_capture.bytecode_file.close();
     entries = g_capture.entries.size();
     bytes = g_capture.bytecode_bytes;
     duplicates = g_capture.duplicate_callbacks;

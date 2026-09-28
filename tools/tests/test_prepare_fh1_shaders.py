@@ -8,6 +8,20 @@ import unittest
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+SDK = "thirdparty/shiftglue-sdk"
+GRAPHICS_SOURCES = (
+    *(f"{SDK}/include/rex/graphics/{name}.h" for name in (
+        "d3d12/fh1_shader_pack", "d3d12/host_render_config", "d3d12/pipeline_cache",
+        "d3d12/primitive_processor", "d3d12/shader", "flags", "format/ucode",
+        "primitive_processor", "registers", "util/draw", "xenos", "pipeline_util",
+        "pipeline/render_target/psi_color_format", "pipeline/shader/dxbc_translator")),
+    f"{SDK}/include/rex/graphics/register_table.inc",
+    *(f"{SDK}/src/graphics/{name}.cpp" for name in (
+        "d3d12/fh1_shader_pack", "d3d12/host_render_config", "d3d12/pipeline_cache",
+        "d3d12/primitive_processor", "d3d12/shader", "flags", "format/ucode",
+        "primitive_processor", "registers", "util/draw", "xenos",
+        "pipeline/shader/dxbc_translator", "pipeline/shader/spirv_translator")),
+)
 
 
 @unittest.skipUnless(shutil.which("powershell"), "Windows PowerShell required")
@@ -24,7 +38,8 @@ class ShaderPreparationTests(unittest.TestCase):
                 "tools/extract-fh1-shader-corpus.py", "tools/build-fh1-gpu-prewarm.py",
                 "tools/fh1_archive_extract.cpp",
                 "tools/native-shader-pack.py",
-                "thirdparty/shiftglue-sdk/src/graphics/d3d12/pipeline_cache.cpp",
+                "src/native_renderer/fh1_gpu_corpus.cpp", "src/native_renderer/shader_capture.cpp",
+                *GRAPHICS_SOURCES,
             ):
                 target = root / path
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -112,6 +127,17 @@ function Get-Process { return $null }
             (legacy / "4D5309C9.xsh").write_bytes(b"more shaders")
             run()
             self.assertEqual(calls(), ["1", "1", "1", "2", "2", "2"])
+            # Rebuilt binaries and sources outside the graphics inputs keep the
+            # prepared graphics; a translator change prepares them again.
+            for binary in ("pinyon_shift.exe", "rexgpu-fh1.dll", "rexruntime.dll"):
+                (root / "out/build/win-amd64-release" / binary).write_text("rebuilt")
+            (root / SDK / "src/graphics/pipeline/shader/spirv_translator.cpp").write_text("edited")
+            run()
+            self.assertEqual(len(calls()), 6)
+            (root / SDK / "src/graphics/pipeline/shader/dxbc_translator.cpp").write_text("edited")
+            run()
+            run()
+            self.assertEqual(len(calls()), 7)
             # A pack miss the game recorded prepares the pack again with it.
             misses = state / "cache/fh1-shader-misses"
             misses.mkdir()
@@ -119,7 +145,7 @@ function Get-Process { return $null }
             run()
             run()
             self.assertEqual(calls()[-1], "2+misses")
-            self.assertEqual(len(calls()), 7)
+            self.assertEqual(len(calls()), 8)
 
 
 if __name__ == "__main__":

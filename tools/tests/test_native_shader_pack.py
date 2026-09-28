@@ -85,6 +85,31 @@ class NativeShaderPackTests(unittest.TestCase):
             self.assertEqual(metadata["vendor_id"], 0x10DE)
             self.assertEqual(metadata["pack_sha256"], hashlib.sha256(first).hexdigest().upper())
 
+    def test_shared_bytecode_file_matches_one_file_per_shader(self):
+        with tempfile.TemporaryDirectory(prefix="pinyon-shader-pack-") as temporary:
+            root = pathlib.Path(temporary)
+            identities = [("vertex", "0000000000000010"), ("pixel", "0000000000000001")]
+            separate = [
+                {"stage": stage, "guest_hash": guest_hash,
+                 "specialization_mask": "0000000000000000",
+                 **self.make_shader(root, f"{stage}.dxil", stage.encode())}
+                for stage, guest_hash in identities
+            ]
+            expected = PACK.serialize(PACK.load_manifest(self.make_manifest(root, separate)))
+            blob = bytearray()
+            shared = []
+            for entry in separate:
+                bytecode = (root / entry["bytecode"]).read_bytes()
+                shared.append({**entry, "bytecode": "dxil.blob",
+                               "bytecode_offset": len(blob), "bytecode_size": len(bytecode)})
+                blob.extend(bytecode)
+            (root / "dxil.blob").write_bytes(bytes(blob))
+            actual = PACK.serialize(PACK.load_manifest(self.make_manifest(root, shared)))
+            self.assertEqual(actual, expected)
+            shared[1]["bytecode_size"] += 1
+            with self.assertRaisesRegex(PACK.PackError, "range exceeds"):
+                PACK.load_manifest(self.make_manifest(root, shared))
+
     def test_bindings_round_trip_and_texture_mask_is_checked(self):
         with tempfile.TemporaryDirectory(prefix="pinyon-shader-pack-") as temporary:
             root = pathlib.Path(temporary)

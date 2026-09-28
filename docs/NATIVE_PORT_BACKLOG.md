@@ -146,7 +146,7 @@ GPU ABI and stay.
 | NP-0.5 | Delete dead project code and tools: `fh1_pass_tracker.cpp` and `fh1_gpu_corpus.cpp` consume `GraphicsFh1ExecutionKey`, which the SDK no longer emits; `shader_capture.cpp` still writes `"fallback":"xenos"`; the 73 `tools/*` scripts from the retired static-world, visibility, track, vehicle, semantic, dispatch and lineage research and their `tools/tests` twins. Record the deletion checkpoint in [RESEARCH.md](native-renderer/RESEARCH.md) so `git show` still reaches them. | S |
 | NP-0.6 | Striped car cards: the cause was found and fixed in XR-04 (SDK `e9b293b`): the cards are the profile's `Thumbnails/Thumbnail_N.xdc`, which the game renders, resolves and compresses from guest memory when it saves a car, and the renderer never copied that resolve back, so saved cards held stale memory. New cards are correct (about 34 KB); cards saved by earlier builds stay striped (275-845 KB of compressed noise) until the game saves them again. Remaining: find which game actions re-save a card (buying, painting, upgrading) and whether a missing card is re-rendered, then give players a repair: re-render stale cards through that path, or tell them which action fixes a card; any change to save files goes through a backup. [BUGS.md](../BUGS.md) is updated. | S–M |
 | NP-0.7 | **Moved to NP-9.4**: prebuilt geometry shaders need a pack format bump, which NP-9.4 makes anyway. The runtime keeps `CreateDxbcGeometryShader` until then. | — |
-| NP-0.8 | Faster graphics preparation, first part (see [pending](#faster-graphics-preparation)): translate the disc corpus on worker threads, one `DxbcShaderTranslator` each, instead of the single-threaded loop in `pipeline_cache.cpp` (105 s of a 6.6-minute 1x preparation), with a byte-identical pack; and key `tools/prepare-fh1-shaders.ps1` on what decides the pack and startup catalogs (the SDK graphics sources, the producer and preparation tools, the preparation route, toolchain, device and driver, settings, scale and recorded misses) instead of the `pinyon_shift.exe`, `rexgpu-fh1.dll` and `rexruntime.dll` binaries, so a host-only rebuild starts the game without preparing. A shader a code change newly reaches is still recorded as a pack miss and prepared on the next launch. Incremental misses, unpaced routes and a shorter strict check stay pending. | S–M |
+| NP-0.8 | **Done** (SDK `1ff2367`). The disc corpus translates on one worker per logical processor (`--fh1_shader_production_threads`), and the per-file costs that dominated under real-time antivirus scanning are gone: the extractor writes one `corpus.blob` instead of 12,846 files, the capture appends bytecode to one `dxil.blob` instead of 24,700 files, and its manifest checkpoints at powers of two. A 1x production with recorded misses on 16 threads: corpus load 55 s to 33 ms, translation 105 s to 1.15 s, extraction 19 s to 7 s, whole preparation 6 min 36 s to 4 min 32 s, of which the two game routes are now about 4 minutes; packs byte-identical to the single-threaded producer. `tools/prepare-fh1-shaders.ps1` keys the pack and startup catalogs on the translator, shader-analysis, pipeline-description, pack and capture sources instead of the built binaries, so rebuilding host code, hooks or the renderer's command path no longer prepares graphics again. The game routes and incremental misses stay [pending](#faster-graphics-preparation). | S–M |
 
 **Gates.** `rexgpu-fh1` compiles without translator bodies; every `REXCVAR_DECLARE` under `REX_HAS_D3D12` has a
 definition; no `ucode_data_hash() == 0x…` literal under
@@ -550,31 +550,23 @@ changes.
 
 ### Faster graphics preparation
 
-Preparing graphics ("Preparing graphics for 1x") takes about ten minutes
-on a modern machine, and it runs far more often than it needs to. Parallel
-translation and the content-based key are now NP-0.8; the rest of this
-entry stays pending.
+Preparing graphics ("Preparing graphics for 1x") took about ten minutes
+on a modern machine, and it ran far more often than it needed to. NP-0.8
+made translation parallel, removed the per-file costs and keyed
+preparation on the graphics sources: a 1x preparation now takes 4 min 32 s,
+almost all of it the two game routes, and only runs when graphics code,
+settings, the driver or recorded misses change. The rest of this entry
+stays pending.
 
-- **Where the time goes** (a 1x production on 2026-09-28, 6.6 minutes
-  without rebuilding the producer): producer build 12 s, shader extraction
-  17 s, producer run 3 min 47 s (translating the disc corpus, 24,660
-  variants, took 1 min 45 s of it; the capture route the rest), pack build
-  14 s, strict validation route 2 min 5 s. A launcher run that also
-  rebuilds the producer takes longer.
-- **Translation is single-threaded.** The disc-corpus loop in
-  `pipeline_cache.cpp` translates every variant in turn with one
-  `DxbcShaderTranslator`. Workers with a translator each (the pattern the
-  shader-storage loader already uses) should bring that stage from 105 s
-  to about ten seconds on eight or more cores; the output must stay
-  byte-identical, so sort entries before writing the pack.
-- **Re-preparation after every rebuild.** The preparation key
-  (`tools/prepare-fh1-shaders.ps1`) hashes `pinyon_shift.exe`,
-  `rexgpu-fh1.dll` and `rexruntime.dll`, so any rebuild reruns the whole
-  pipeline, although NP-0.1's trimmed producer rebuilt the pack
-  byte-identical. Key the pack on what decides its content (translator
-  version, the translator and producer sources, pack format, device and
-  driver, settings, scale) and the startup catalogs on the pipeline
-  description inputs, and reuse them across unrelated rebuilds.
+- **Where the time goes** (a 1x production on 2026-09-28 after NP-0.8, 4.5
+  minutes without rebuilding the producer; before it 6.6): shader
+  extraction 7 s (was 17-19 s), producer run 2 min 4 s (the disc corpus
+  loads in 33 ms and translates in 1.2 s, was 55 s and 1 min 45 s; the
+  capture route is the rest), pack build 11 s, strict validation route
+  2 min 3 s. A launcher run that also rebuilds the producer takes longer.
+- **Done in NP-0.8.** Parallel translation (105 s to 1.15 s), one corpus
+  file and one capture file instead of about 37,500 small files, and a
+  preparation key on the graphics sources instead of the binaries.
 - **Re-preparation after every new pack miss.** Each recorded miss changes
   the key and reruns everything for a handful of shaders; translate only
   the new misses and append them (this meets the on-the-fly compilation
@@ -584,8 +576,10 @@ entry stays pending.
   Run them unpaced, capture pipelines only when the catalog inputs change,
   and move the strict check to a shorter route or to the background after
   the game starts, keeping it as a gate for release packs.
-- **Smaller steps.** Cache the extracted corpus by dump hash; ship a
-  prebuilt producer with releases (NP-D) instead of building it locally.
+- **Smaller steps.** Cache the extracted corpus by dump hash (7 s); build
+  the pack from the capture in the producer instead of a Python pass
+  (11 s); ship a prebuilt producer with releases (NP-D) instead of building
+  it locally.
 - **Gate idea.** A rebuild that does not touch the translator starts the
   game with no preparation; a first preparation finishes in under two
   minutes on an eight-core machine; packs stay byte-identical to the

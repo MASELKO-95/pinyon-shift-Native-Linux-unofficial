@@ -82,11 +82,38 @@ try {
         'tools/prepare-fh1-shaders.ps1', 'tools/produce-fh1-artifacts.ps1',
         'tools/extract-fh1-shader-corpus.py', 'tools/fh1_archive_extract.cpp',
         'tools/build-fh1-gpu-prewarm.py',
-        'tools/native-shader-pack.py',
-        'thirdparty/shiftglue-sdk/src/graphics/d3d12/pipeline_cache.cpp'
+        'tools/native-shader-pack.py'
     )) { $inputs.files[$relative] = (Get-FileHash -LiteralPath (Join-Path $root $relative)).Hash }
-    foreach ($binary in @('pinyon_shift.exe', 'rexgpu-fh1.dll', 'rexruntime.dll')) {
-        $inputs.files[$binary] = (Get-FileHash -LiteralPath (Join-Path $BuildDirectory $binary)).Hash
+    # Key the pack and catalogs on the sources that decide their content (the
+    # translator, shader analysis, pipeline descriptions, the pack format and
+    # the capture) instead of the built binaries, so a rebuild of host code, the
+    # guest hooks or the renderer's command path keeps the prepared graphics. A
+    # shader such a rebuild newly reaches is recorded as a pack miss and
+    # prepared on the next launch; a stale pipeline catalog only costs a
+    # pipeline created on first use.
+    $sdk = 'thirdparty/shiftglue-sdk'
+    $rootPrefix = [IO.Path]::GetFullPath($root).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    $graphicsSources = [Collections.Generic.List[string]]::new()
+    foreach ($directory in @("$sdk/include/rex/graphics/pipeline/shader", "$sdk/src/graphics/pipeline/shader")) {
+        foreach ($file in Get-ChildItem -LiteralPath (Join-Path $root $directory) -File) {
+            $relative = $file.FullName.Substring($rootPrefix.Length).Replace([IO.Path]::DirectorySeparatorChar, '/')
+            if ($relative -notmatch '(?i)spirv') { $graphicsSources.Add($relative) }
+        }
+    }
+    foreach ($relative in @(
+        'd3d12/fh1_shader_pack', 'd3d12/host_render_config', 'd3d12/pipeline_cache', 'd3d12/primitive_processor',
+        'd3d12/shader', 'flags', 'format/ucode', 'primitive_processor', 'registers', 'util/draw', 'xenos'
+    )) {
+        $graphicsSources.Add("$sdk/include/rex/graphics/$relative.h")
+        $graphicsSources.Add("$sdk/src/graphics/$relative.cpp")
+    }
+    $graphicsSources.AddRange([string[]]@(
+        "$sdk/include/rex/graphics/pipeline/render_target/psi_color_format.h",
+        "$sdk/include/rex/graphics/pipeline_util.h", "$sdk/include/rex/graphics/register_table.inc",
+        'src/native_renderer/fh1_gpu_corpus.cpp', 'src/native_renderer/shader_capture.cpp'
+    ))
+    foreach ($relative in @($graphicsSources | Sort-Object -Unique -CaseSensitive)) {
+        $inputs.files[$relative] = (Get-FileHash -LiteralPath (Join-Path $root $relative)).Hash
     }
     $legacyShaderCache = Join-Path $cache 'shaders/shareable'
     $legacyFiles = @('4D5309C9.xsh', '4D5309C9.rtv.d3d12.xpso')

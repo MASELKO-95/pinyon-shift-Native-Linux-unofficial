@@ -199,6 +199,9 @@ def load_manifest(path: pathlib.Path) -> PackInput:
     root = manifest_path.parent.resolve(strict=True)
     entries: list[ShaderEntry] = []
     identities: set[ShaderIdentity] = set()
+    # Captures append every bytecode to one file and address it by offset and
+    # size; one file per shader is still accepted.
+    shared_files: dict[pathlib.Path, bytes] = {}
     for index, raw in enumerate(raw_entries):
         if not isinstance(raw, dict):
             raise PackError(f"entries[{index}] must be a JSON object")
@@ -218,7 +221,17 @@ def load_manifest(path: pathlib.Path) -> PackInput:
         identities.add(identity)
 
         bytecode_path = _checked_local_file(root, raw.get("bytecode"))
-        bytecode = bytecode_path.read_bytes()
+        if "bytecode_offset" in raw or "bytecode_size" in raw:
+            offset = _parse_uint32(raw.get("bytecode_offset"), f"entries[{index}].bytecode_offset")
+            size = _parse_uint32(raw.get("bytecode_size"), f"entries[{index}].bytecode_size")
+            if bytecode_path not in shared_files:
+                shared_files[bytecode_path] = bytecode_path.read_bytes()
+            shared = shared_files[bytecode_path]
+            if offset + size > len(shared):
+                raise PackError(f"entries[{index}] bytecode range exceeds {raw['bytecode']}")
+            bytecode = shared[offset:offset + size]
+        else:
+            bytecode = bytecode_path.read_bytes()
         if not bytecode:
             raise PackError(f"entries[{index}] bytecode is empty")
         if len(bytecode) > MAX_BYTECODE_SIZE:
