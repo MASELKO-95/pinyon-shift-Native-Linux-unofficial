@@ -1,0 +1,496 @@
+# Native port backlog
+
+Status: **open; created 2026-09-28** at `dev` checkpoint `dd651c2` (ShiftGlue
+`1a67f90`). This is the working plan that follows the closed
+[Xenos retirement backlog](native-renderer/XENOS_RETIREMENT_BACKLOG.md). It
+replaces the unordered roadmap list in the README as the source of truth for
+what comes next. Assessment evidence for every claim below was gathered on
+2026-09-28 from the current tree; file references use repository-relative
+paths, with `sdk/` standing for `thirdparty/shiftglue-sdk/`. Raw research
+notes are kept locally under `.local/backlog-research/` and are not
+distributed.
+
+## Goal
+
+Make Pinyon Shift feel like a native PC release of *Forza Horizon*, not a
+renderer preview: every setting in the game, any display, correct behaviour at
+any frame rate, a real profile and achievements, a mod host, a trainer for
+playthroughs, and a renderer and CPU path that use a modern machine instead of
+emulating a 2012 console. Ports to Linux, macOS and Android follow on the same
+architecture.
+
+"Native PC game" is done when all of the following hold:
+
+1. **No launcher after install.** Every player setting is changed from the
+   pause menu, applies without a restart where the engine allows it, and is
+   labelled "restart required" where it does not. The launcher installs,
+   verifies, builds and reports crashes.
+2. **No ImGui for players.** Every player-facing surface (settings, profile,
+   achievements, system dialogs, toasts, trainer) is drawn by a host UI layer
+   styled from the game's own fonts, textures and layout. ImGui remains for
+   developer overlays only (F3, F4, console).
+3. **Any display.** Any window size and aspect ratio, borderless fullscreen on
+   any monitor, integer internal scales up to 4x with a quality downscale,
+   Hor+ ultrawide with a correct FOV and anchored HUD, frame caps and VRR.
+4. **Correct at any frame rate.** Unlocked frame rate stays the default and
+   no animation, NPC, UI transition or audio path runs at the wrong speed.
+5. **Fast.** The race window is GPU-bound rather than CPU-bound on the
+   baseline machine, guest threads are placed and prioritised on modern CPUs,
+   and no core is burned spinning.
+6. **Native profile.** A chosen gamertag and picture, achievements shown and
+   unlocked in-game, language selectable from the disc's 18 languages, saves
+   backed up and restorable in-game.
+7. **Mods and cheats.** A versioned plugin ABI, an asset overlay, data patches
+   and a UI extension API, with documentation and sample mods; a trainer that
+   never touches an unmodded save.
+8. **Portable.** The same executor core drives D3D12 and Vulkan; Linux and
+   Steam Deck ship first, macOS through MoltenVK second, Android third.
+
+## How this backlog is organised
+
+- **Vertical slices.** Each slice `NP-n` ends with something a player or
+  modder can use, and cuts through guest hooks, SDK, host UI, config, tools,
+  tests and docs as needed. Items inside a slice are `NP-n.m`.
+- **Sizes** are for one engineer: S ≤ 1 week, M 1–3 weeks, L 1–2 months,
+  XL > 2 months. Sizes are estimates from the code, not commitments.
+- **Gates** reuse the validation rules in
+  [development findings](DEVELOPMENT.md#validation-and-evidence): same seed,
+  route and settings for control and candidate, three runs per arm, golden
+  frame replays (`tools/test-fh1-frame-replays.py`), the affected render-test
+  routes, pose-drift and simulation-time gates, and save payload hash equality
+  where guest timing or numerics change. Never touch the AppData save; use
+  seeds from `tools/create-render-seed.py` ([AGENTS.md](../AGENTS.md)).
+- **Portability guardrails apply from NP-1 on.** New host code uses the SDK
+  platform layer (no `Windows.h` outside diagnostics), fixed-function shaders
+  are authored in HLSL and compiled to both DXBC and SPIR-V, and the shader
+  pack format becomes backend-neutral in NP-9 before the Vulkan executor in
+  NP-12 needs it.
+- **Release trains.** NP-0 to NP-3 target `0.3.0`; NP-4 to NP-8 target
+  `0.4.0`; NP-9 to NP-11 target `1.0` (Windows complete); NP-12 to NP-14 are
+  the `1.x` platform releases. Trains can be re-cut; the dependency graph in
+  the slice map is what matters.
+
+## Where the code stands
+
+| Area | Finding | Evidence |
+| --- | --- | --- |
+| Renderer identity | What shipped is the Xenia D3D12 backend with a native surface owner. The EDRAM render-target cache and runtime shader translation are gone, but per-draw register-to-pipeline derivation, Xenia's constant-buffer and root-signature model, the tiled guest-memory texture cache and a runtime DXBC geometry-shader emitter are still on the hot path. The native executor replaces one component (surfaces, tiles, clears, resolves) inside `IssueDraw`. | `sdk/src/graphics/d3d12/command_processor.cpp:2303-2846`, `sdk/src/graphics/d3d12/pipeline_cache.cpp:1695-1916, 2578-3622`, `sdk/src/graphics/d3d12/texture_cache.cpp:1662-2151` |
+| Dead code | The Vulkan backend, SPIR-V translator, EDRAM cache and PM4 disassembler (about 40k lines) are not compiled on Windows. Two shader-hash allowlists remain on the hot path. Modern ZPD paths, dead readback cvars and SNR-M02 trace cvars are compiled but idle. 73 of 174 tool scripts belong to retired scene-native research and 40 of them require a log authority no build can produce. | `sdk/src/graphics/CMakeLists.txt:45-101`, `command_processor.cpp:2360-2372, 2480-2495`, `command_processor.cpp:41-95, 254-396` |
+| Renderer performance | Race window: 24.95 ms median frame, 12.61 ms GPU span, so the frame is CPU-bound on the single GPU Commands thread. The whole-frame deferred tape is replayed serially at swap, `OMSetRenderTargets` is recorded per draw, fetch constants re-upload on any write, and every resolve writes the guest tiled layout into the memory mirror and is untiled again on the next fetch (15.3 M of 53 M fetches are resolve-sourced, front buffer included). Depth transfers take 9 passes because stencil is almost never proven zero. | [baselines](native-renderer/NATIVE_PERFORMANCE_BASELINES.md), `command_processor.cpp:3281`, `fh1_native_executor.cpp:1816, 1901-1966, 1053-1082`, `command_processor.cpp:1778-1780, 3845-3856` |
+| CPU and threading | Guest threads are 1:1 host threads; priorities and affinities are ignored by default and nothing is pinned. The title spends two thirds of its time busy-polling a word the GPU thread writes. Texture write-watches cost a syscall plus a TLB shootdown per 4 KiB page. Every event or wait takes one process-wide recursive mutex. The build is pinned to SSE4.1, so 11,725 fused multiply-add sites call a library function. The timer queue spin-waits on a core. | `sdk/src/system/xthread.cpp:42-46, 1025-1073`, `sdk/src/system/xmemory.cpp:2112-2293`, `sdk/src/system/xobject.cpp:370-449`, `cmake/PinyonShiftRexGlue.cmake:56-66`, `sdk/src/core/timer_queue.cpp:145-147` |
+| Frame rate | Unlocked frame rate is the shipped default: guest vblank runs at twice the detected refresh, gameplay integrates a variable delta observed at `0x823EDB84`, and the source-60 and HFR routes gate distinct presents and simulation time. Accelerated NPC and title animations remain an open regression with no address located. | `sdk/src/graphics/graphics_system.cpp:170-227`, `src/pinyon_shift_app.cpp:57-86`, [release notes](releases/0.1.2-preview.3.md) |
+| Display | The guest still renders 1280×720 times an integer scale of 1–3 because the DXBC translator bakes the scale into shader immediates and each pack is keyed by scale. Output is letterboxed to the guest video-mode aspect; a 21:9 guest mode would stretch. No projection, FOV, safe-area or back-buffer hook exists. Borderless fullscreen only, no exclusive mode, no HDR, presenter downscale is bilinear (FidelityFX is off by default). | `fh1_native_executor.cpp:407-413, 1952`, `sdk/src/graphics/pipeline/shader/dxbc_translator.cpp:664-747`, `sdk/src/ui/presenter.cpp:874-1010`, `sdk/CMakeLists.txt:23` |
+| Player-facing UI | Everything the player sees from the host is ImGui with a 10 px debug font and a green theme: XAM message box, virtual keyboard, disc error, achievement toast, F7 list. Achievements, gamercard, friends, marketplace and sign-in system screens are stubs. The gamertag is fixed to "User", `XGetLanguage` is hard-coded English, button prompts are always Xbox glyphs, and no controller remapping exists. | `sdk/src/ui/imgui_drawer.cpp:30-87`, `sdk/src/kernel/xam/xam_ui.cpp:211-663`, `sdk/src/system/xam/user_profile.cpp:28-29`, `sdk/src/kernel/xam/xam_info.cpp:185-198` |
+| Game UI and assets | The game's UI is Anark Gameface (`AnarkBGF` scenes under `Scenes/ui4` in `media/UI.zip`, with Lua scripts) plus LSB2 string tables. Same-length label rewrite and row hiding are proven; adding a row is blocked at scaler-binding registration. Archives are PKZIP with Xbox LZX entries and stored entries; only a decompressor exists. Car, upgrade, wristband, event and time-of-day data is a plain SQLite database, `media/db/gamedb.slt`. | [UI API plan](UI_API_PLAN.md), `tools/fh1-ui-scene-insert.py`, `tools/fh1_archive_extract.cpp:16-57`, `.local/game/base/media/db/gamedb.slt` |
+| Modding foundations | About 90 mid-asm hooks in `config/rexglue/analysis/*.toml` are the interception surface; there are no whole-function overrides and no plugin loader. Runtime DLLs can only replace indirect calls through the dispatch table. The VFS has no overlay device, but the host can swap the game mount before launch. Saves are raw files under a fixed profile identity; the plaintext save body is visible at `0x82C666D0` before encryption and is already edited there. | `sdk/include/rex/hook.h`, `sdk/include/rex/system/function_dispatcher.h:85-113`, `sdk/src/system/runtime.cpp:294-375`, `src/pinyon_shift_runtime_hooks.cpp:492-530` |
+| Portability | The SDK already has Linux, macOS and ARM64 platform layers, SDL3 window/input/audio, a pinned MoltenVK stack and simde-based NEON for the PPC headers; the generated code is Clang-dialect with zero SEH scopes. The host project is Windows-only by construction (WPF launcher, PowerShell tools, `Windows.h` in diagnostics and app, D3D12-only executor, shader pack and texture-cache additions). The Vulkan backend has drifted about 25 base-class commits and its compile state is unverified. | `sdk/CMakePresets.json`, `sdk/src/core/CMakeLists.txt`, `src/pinyon_shift_diagnostics.cpp:3-5`, `sdk/src/graphics/vulkan/` |
+| Distribution | Releases ship only independently authored source and the launcher; the user builds the executable and shader packs from their own disc. First build is 20–60 minutes and about 25 GB. CI checks the boundary, Python tools and the launcher; it never compiles C++ and the four C++ test targets are excluded from the default build. | [legal](LEGAL.md), `.github/workflows/ci.yml`, `CMakeLists.txt:47-79` |
+
+## Slice map
+
+| ID | Slice | Player- or modder-visible outcome | Size | Depends on | Train |
+| --- | --- | --- | --- | --- | --- |
+| NP-0 | Clean native baseline | Smaller renderer DLL, no allowlists, one occlusion path, car-selection textures fixed, stale tools gone | M | — | 0.3.0 |
+| NP-1 | In-game settings and host UI layer | "SETTINGS" in the pause menu opens a native-looking screen; hot settings apply instantly | L | NP-0 | 0.3.0 |
+| NP-2 | Fast frame, pass 1 | Measurably shorter race frames from the renderer's CPU path | M | NP-0 | 0.3.0 |
+| NP-3 | Modern CPU, pass 1 | Threads placed and prioritised, no spinning cores, NPC and UI animations at real time | M–L | NP-2.0 | 0.3.0 |
+| NP-4 | Any display | Any window size, 4x scale, sharp downscale, Hor+ ultrawide with FOV slider, frame caps and VRR | M–L | NP-1 | 0.4.0 |
+| NP-5 | Native profile, achievements, dialogs, language | Gamertag and picture, in-game achievements, styled system dialogs, 18 languages, save backups, photo export | M | NP-1 | 0.4.0 |
+| NP-6 | Input | Controller remapping, keyboard prompt text, haptics options | S–M | NP-1 | 0.4.0 |
+| NP-7 | Mod host v1 | Plugin ABI, hook points, symbol table, asset overlay, isolated modded profile, docs and samples | M–L | NP-1 | 0.4.0 |
+| NP-8 | Cheat menu v1 | Trainer screen: time scale, teleport, career skip, save editor, world toggles | M | NP-7.1, NP-7.5 | 0.4.0 |
+| NP-9 | Fast frame, pass 2 | GPU-bound race window; executor core split; backend-neutral pack | L | NP-2, NP-3 | 1.0 |
+| NP-10 | Content mods | Per-asset overrides, database patches, texture replacement, optional Lua | M–L | NP-7 | 1.0 |
+| NP-11 | UI extension API, production | Extensions add and drive menu items and HUD widgets through the stable API | M (+L research) | NP-1, NP-7 | 1.0 |
+| NP-12 | Linux and Steam Deck | Native Linux build with the Vulkan executor and Deck qualification | XL | NP-9 | 1.x |
+| NP-13 | macOS | Apple Silicon build through MoltenVK | L | NP-12 | 1.x |
+| NP-14 | Android | ARM64 Vulkan build with a cross-build workflow | XL | NP-13 | 1.x |
+| NP-X | Quality and tooling | C++ tests and SDK build in CI, pruned tools, hardware qualification | ongoing | — | all |
+| NP-D | Distribution and first run | Faster first build, launcher core reusable across platforms, signing | ongoing | — | all |
+
+## NP-0 Clean native baseline
+
+**Why first.** The user-facing "renderer preview" caveat comes from carrying
+Xenia machinery the native executor does not need, and every later slice
+touches the same files. Removing what is dead, and naming what is not yet
+native, shrinks the surface the performance and portability work has to
+reason about. Only Xenos-emulation layers are removed here; the PM4 command
+processor, register file, guest-memory mirror and the executor are the guest
+GPU ABI and stay.
+
+| Item | Work | Size |
+| --- | --- | --- |
+| NP-0.1 | Trim the shipping DLL: move `dxbc_translator.cpp` and `dxbc_translator_om.cpp` to the producer target (the runtime needs only the header's `Modification`, `SystemConstants` and flag constants); delete `sampler_info.cpp` and `packet_disassembler.cpp`; remove the SNR-M02 trace cvars, the dead `readback_memexport*` and `readback_resolve_half_pixel_offset` cvars, the never-defined `d3d12_readback_*` declarations and the Vulkan-only declarations in `flags.h`; move the translator-only cvars (`dxbc_switch`, `dxbc_source_map`, `use_fuzzy_alpha_epsilon`, `draw_resolution_scaled_texture_offsets`) into the producer. Leave the Vulkan, SPIR-V and EDRAM-cache directories uncompiled; NP-12 decides their fate. | S |
+| NP-0.2 | Remove shader-hash gates from the hot path: `fh1_constant_no_output` and `fh1_video_textures` (`command_processor.cpp:2360-2372, 2480-2495`, `RequestFh1VideoTextures`). Replace with register-derived conditions or drop. Decide whether `fh1_scaled_32` and the direct reflection-cube import stay as layout-keyed, content-generic fast paths. Delete or rewrite `tools/check-fh1-constant-no-output.py`, `check-fh1-video-upload.py`, `check-fh1-scaled-32bpp.py`. | S–M |
+| NP-0.3 | One occlusion-query path: keep `legacy` (host query plus fence at END) or prove the always-visible answer equivalent for the `0x82D951E0` consumer and drop host queries; delete `ExecuteModernZPD`, `ZPDLifecycle`, `zpd_policy.h` classification, the `fake`/`fast`/`strict` values and their unit test; fold `config/rexglue/EPIC_04/05` into history. About 700 lines leave `command_processor.cpp`. | M |
+| NP-0.4 | Reconcile `readback_resolve`: the schema-24 migration strips it (`src/pinyon_shift_app.cpp:154-155`) and `set-graphics-experiment.ps1` treats it as retired, but the executor still honours it (`fh1_native_executor.cpp:2108, 2284`) and the docs describe it. Keep it as a hidden cvar and stop stripping it, or remove it everywhere. | S |
+| NP-0.5 | Delete dead project code and tools: `fh1_pass_tracker.cpp` and `fh1_gpu_corpus.cpp` consume `GraphicsFh1ExecutionKey`, which the SDK no longer emits; `shader_capture.cpp` still writes `"fallback":"xenos"`; the 73 `tools/*` scripts from the retired static-world, visibility, track, vehicle, semantic, dispatch and lineage research and their `tools/tests` twins. Record the deletion checkpoint in [RESEARCH.md](native-renderer/RESEARCH.md) so `git show` still reaches them. | S |
+| NP-0.6 | Fix the open items in [BUGS.md](../BUGS.md): the striped pink car-card textures on car selection (a texture format or tiling decode issue in the texture cache; the BC3 tiled decoder in `tools/fh1_texture_import.cpp` is the reference) and rewrite the stale "native render not working" entry, since native is the only renderer. | S–M |
+| NP-0.7 | Prebuild geometry shaders: generate the finite `GeometryShaderKey` set offline in the producer, store it in the pack, and remove `CreateDxbcGeometryShader` (`pipeline_cache.cpp:2578-3622`), `format/dxbc.h` and `DXBCChecksum.cpp` from the runtime DLL. May slip to NP-9.4 if the pack format bump is batched there. | M |
+
+**Gates.** `rexgpu-fh1` compiles without translator bodies and without
+`thirdparty/dxbc`; every `REXCVAR_DECLARE` under `REX_HAS_D3D12` has a
+definition; no `ucode_data_hash() == 0x…` literal under
+`sdk/src/graphics/d3d12`; `tools/tests` pass; golden frame replays are
+byte-identical; `fh1-race-sync`, `fh1-modes-sync` and `fh1-fmv` run with zero
+pack misses and zero executor skips; `occlusion_query` has one behaviour and
+the config writer and migration agree; frame-time medians within run-to-run
+noise of the current baselines; car selection shows real car cards.
+
+## NP-1 In-game settings and host UI layer
+
+**Why second.** This is the single biggest "feels native" change and every
+later slice needs an in-game surface: display settings (NP-4), profile and
+dialogs (NP-5), input (NP-6), the trainer (NP-8) and mod UIs (NP-7). The
+native UI4 insertion route stays blocked at scaler-binding registration
+([UI API plan](UI_API_PLAN.md)), so the entry point uses the two proven guest
+mutations (same-length label rewrite and an activation hook) and everything
+past that row is host-drawn with the game's own assets.
+
+| Item | Work | Size |
+| --- | --- | --- |
+| NP-1.1 | Interim restyle: override `OnConfigureFonts` and `OnConfigureStyle` in `PinyonShiftApp` with a DPI-scaled font of at least 16 logical px and an FH1 palette. This immediately restyles the XAM message box, keyboard dialog, toast and F7 list, which all draw through the one `ImGuiDrawer`, until NP-5 moves them to the host layer. | S |
+| NP-1.2 | Catalogue the UI assets: extend `tools/inspect-fh1-ui.py` to decode `media/ui/Fonts.zip` (only `fontmap.xml` is understood today) and the `.xds` textures in `Textures.zip` and `Horizon.zip`; decide between the game's bitmap fonts and a metrically matched TTF; emit a JSON catalogue and PNG round-trips. | M |
+| NP-1.3 | Host UI layer `pinyon_shift::hostui`: a `UIDrawer` on the SDK `ImmediateDrawer` (textures uploaded through `ImmediateDrawer::CreateTexture`, as `AchievementIconCache` does), laid out in guest space inside the presenter's guest-output rectangle so it lands in the title's safe area at 1x–4x, with a focus model, controller, keyboard and mouse navigation, input arbitration through the existing `SetActiveCallback` mechanism generalised to "any host UI active", and guest pause through `XN_SYS_UI`. Draw calls never run guest code; the guest-thread request queue from NP-7.1 is the only way back into the title. | L |
+| NP-1.4 | Settings screen: Display (fullscreen, monitor, window size, letterbox), Graphics (internal scale with a restart badge, anisotropy, LOD bias, FXAA, motion blur, depth of field, vsync and tearing, frame caps), Audio (mute, master volume), Input (mouse-and-keyboard mode, keybind summary), Profile and Language placeholders for NP-5. Writes `pinyon_shift.toml` atomically through one shared writer that the launcher's `set-graphics-experiment.ps1` also uses, so both agree on schema and backups. | M |
+| NP-1.5 | Pause-menu entry: a production LSB2 label patch of the offline `MULTIPLAYER` row to `SETTINGS` (same byte length per language, or a per-language table) and an activation hook at the pause dispatch sites (`config/rexglue/analysis/main-xex.toml:135-140`) that opens the host screen and returns focus to the row on close. The stock row keeps its font, focus sound and animation. | M |
+| NP-1.6 | Make the cheap settings hot: re-read `swap_post_effect` per swap, re-read `pinyon_shift_fh1_render_fps_limit` in the vblank loop, recreate the swap chain when tearing changes, and add an F11 borderless toggle through `RegisterBind`. `fullscreen`, keybinds and `mnk_*` are already hot. | S |
+| NP-1.7 | Launcher becomes install, verify, build, play and report. Its graphics panel keeps only internal scale (because a scale needs a pack produced before launch) and a button that explains settings now live in the game. Stop forcing `vsync=true` at `set-graphics-experiment.ps1:297`. | S |
+
+**Gates.** The settings screen opens and closes 100 times in a scripted route
+with no leaked component, stale callback or save write; it is navigable with
+pad only, keyboard only and mouse only; it renders inside the 90 % safe area
+at 1x, 2x and 3x; a TOML written in-game reads back identically in the
+launcher; `fh1-pause.fh1test` passes three consecutive runs with no access
+violation; hot settings apply within one frame and restart-required ones show
+the badge; the only ImGui windows a player can reach are the XAM dialogs
+pending NP-5.2.
+
+## NP-2 Fast frame, pass 1
+
+**Why now.** The race window is CPU-bound on the GPU Commands thread while
+the GPU finishes in half the time. The items below are the evidence-backed,
+low-risk parts of that path; the larger rewrites (resolve aliasing, direct
+recording, thread parallelism) are NP-9. Instrument first: every item has a
+counter or trace to prove its share before code changes.
+
+| Item | Work | Size |
+| --- | --- | --- |
+| NP-2.0 | Instrumentation: size the tape replay with `--perf_critical_path_trace=true` and `tools/summarize-critical-path-trace.py` (`command_tape_replay_median/p95`); read executor GPU phases with `--fh1_native_gpu_profile=true`; add a per-frame counter and GPU timer for resolve-sourced texture reloads (today sampled every 60th frame under the corpus flag); tabulate stencil enable and write masks per depth surface from the frame census; capture WPA attribution of `DeferredCommandList::Execute`, `UpdateBindings`, `OMSetRenderTargets` and `Fh1NativeExecutor::*`. | S |
+| NP-2.1 | Cache the render-target binding across draws instead of recording `OMSetRenderTargets` on every draw (`fh1_native_executor.cpp:1816`); invalidate on transfers, clears and the swap compute. | S |
+| NP-2.2 | Dirty-mask fetch constants by the shaders' used registers instead of re-uploading the whole 768-byte block on any write (`command_processor.cpp:1778-1780, 3845-3856`); reduce the per-register float-constant gather. | S–M |
+| NP-2.3 | Persistent SRVs per executor surface instead of one-use descriptors created per resolve and transfer (`fh1_native_executor.cpp:1089-1111, 1915-1934`). | S |
+| NP-2.4 | Stencil tracking precision so depth transfers skip the eight stencil-bit passes when the census proves the source stencil unwritten (`fh1_native_executor.cpp:927-936, 1053-1082`); a single-pass fast path for same-layout MSAA-only depth transfers; skip transfers whose destination is cleared before use (needs a guest-order proof from a frame dump). | M |
+| NP-2.5 | A/B quad, point and rectangle lists without geometry shaders using the existing `force_convert_quad_lists_to_triangle_lists` cvar; keep if menus and the map are unchanged under golden replay. | S |
+| NP-2.6 | Tape replay: overlap the deferred command-list replay with consumption, or record D3D12 directly (PERF-13 was deferred by an entry gate, not by evidence). The late pipeline binding the tape provides is no longer needed because a not-ready PSO already drops the draw. | M |
+
+**Gates.** Three-by-three control and candidate runs on `fh1-race-sync`
+(last 600 frames) and `fh1-race-sustained` summarised with
+`tools/summarize-performance.py --baseline`; target at least a 15 % lower
+race-window median at 1x with p95 no worse; golden replays byte-identical or
+within the documented tolerance; `fh1-buy-car` thumbnail still real; executor
+stats show the expected drop in transfer tile-passes and descriptor requests.
+
+## NP-3 Modern CPU, pass 1
+
+**Why now.** The game was tuned for three in-order cores and six hardware
+threads with a fixed 30 Hz cadence; the host gives it 1:1 threads, ignores
+its priorities and affinities, and lets it busy-poll. The player-visible part
+is NP-3.7: unlocked frame rate is the default, and some animations run fast.
+Every numerics change is gated by the pose baseline and the save payload
+hash, because gameplay integrates a variable delta.
+
+| Item | Work | Size |
+| --- | --- | --- |
+| NP-3.0 | Prerequisites: instruction-level attribution for generated code (extend `tools/profile-etl-export` to emit `file:line` per sample and map generated lines back to guest addresses, which unblocks every "defer until instruction-level evidence" decision); name guest threads by start address and log `ExCreateThread` parameters; add ready-time (scheduler delay) and waker analysis to `tools/summarize-cpu-hotspots.py`; add kernel-side counters (watch faults, `VirtualProtect` calls and pages, global-lock acquisitions and contentions, critical-section spins, clock-mutex contention, timer-queue wakeups); include Microsoft symbols so kernel and CRT time can be attributed. | M |
+| NP-3.1 | Thread placement: opt-in cvars to honour guest priorities and affinities (`ignore_thread_priorities` and `ignore_thread_affinities` default to true), prefer performance cores for the main guest thread, GPU Commands and GPU VSync on hybrid CPUs, and raise their priority; measure p95 and p99 on a hybrid machine and a four-core machine. | S |
+| NP-3.2 | Replace the title busy-poll (`sub_829F04A8` polling the word written by `EVENT_WRITE_SHD`) with a targeted wake: the command processor signals a host event when it stores to the polled address and the hook blocks with a bounded timeout. This is a CPU, power and lower-core-count win more than a frame-time win; the naive one-millisecond sleep trial regressed and is the documented control. | M |
+| NP-3.3 | Write-watch churn: batch the per-page `VirtualProtect` restores into runs, re-arm watches less often, and test 64 KiB watch granularity (`sdk/src/system/xmemory.cpp:2112-2293`, `sdk/src/graphics/shared_memory.cpp:366-399`); gate with `tools/check-fh1-texture-watch.py` and golden replays. | M |
+| NP-3.4 | Lock diet: cache a direct object pointer with a generation in the guest dispatch header so `GetNativeObject`, `KeSetEvent` and waits skip the recursive global mutex and handle table; add a pause instruction and a spin cap to `RtlEnterCriticalSection`; replace the timer queue's spin-wait strategy; run with `clock_no_scaling=true` or make `UpdateGuestClock` lock-free. | S each |
+| NP-3.5 | FMA3 build variant: measure a `-mfma` (x86-64-v3) build against the SSE4.1 baseline, then ship a dual baseline with runtime dispatch if it wins. Hardware FMA is bit-identical to `std::fma`; never substitute `a*b+c`. | S to test, M to ship |
+| NP-3.6 | Replace the two 500 µs yield-spins (vblank thread and presenter) with high-resolution waitable timers and a spin of at most 50 µs; watch vblank lateness and dropped presents. | S |
+| NP-3.7 | HFR correctness: locate the per-frame-stepped NPC and title-UI animation updaters (candidates: `sub_82AE8AE0`, which multiplies the video-mode refresh by a constant, and the consumers of the main-loop delta at `owner+448`), fix them with hooks that use real time, and extend `expect-simulation-time` to animation duration. | M–L |
+| NP-3.8 | Deferred until NP-3.0 evidence exists: codegen register-locality options (`non_volatile_as_local`, `cr_as_local`, `ctr/xer_as_local`, blocked by interior-PC resume and fiber re-entry), `vmsum` and unaligned vector store lowerings, an AVX2 baseline. | L |
+
+**Gates.** The fixed A/B protocol (seed `appdata-2026-09-27`,
+`fh1-race-sync` last 600 frames, `fh1-race-sustained` window, three runs per
+arm, frozen binary hashes); `expect-simulation-time 0.95 1.08`; pose-drift
+gate on `fh1-timing-straight`; `M5_TRACE save.file.write payload_hash`
+equality against control; NPC and title animation duration equal to real time
+at 60, 120 and 144 Hz; process CPU seconds and per-core utilisation reported
+alongside frame time.
+
+## NP-4 Any display
+
+**Why now.** Once settings live in-game, display options are the next thing a
+PC player reaches for. Integer internal scales stay: the translator bakes the
+scale into shader immediates and resolves address guest memory by integer
+area, so non-integer or dynamic scale is an architecture change with no
+payoff over "2x plus a good downscale". Ultrawide goes Hor+ through guest
+hooks, the approach the Skate 3 fork shipped, before anyone considers a wider
+back buffer.
+
+| Item | Work | Size |
+| --- | --- | --- |
+| NP-4.1 | Output settings in the NP-1 screen: fullscreen, monitor, window size, letterbox and overscan. Live resize already recomputes the paint flow. | S |
+| NP-4.2 | Presenter scaling quality: enable `REXGLUE_ENABLE_FIDELITYFX` (CAS and FSR 1) or add a Lanczos downscale so 2x on a 4K display and 3x on a 1440p display are sharp; expose `present_effect`. | S–M |
+| NP-4.3 | 4x internal scale: lift the gates at `fh1_native_executor.cpp:408` and `command_processor.cpp:1040` and in the scripts, widen the two-bit scale field in the resolve constants (`fh1_native_executor.cpp:1952`) and its compute shader, add fallbacks for the reflection-cube import and video textures, and budget the 512 MB × scale² tiled resolve range. Produce and validate a 4x pack. | M |
+| NP-4.4 | Ultrawide Hor+: guest investigation of the projection site (start from the device object written by `sub_829FD588` and read by `sub_829FC0A0`; `is_widescreen` is not consulted there), a projection hook that widens the horizontal FOV to the window aspect, report an ultrawide video mode so the presenter fills the window, and compensate the UI4 root X scale through the builder hooks so the HUD anchors to the edges. A FOV slider falls out of the same hook. | M–L |
+| NP-4.5 | Frame cap and VRR: expose `host_present_fps_limit`, `pinyon_shift_fh1_render_fps_limit`, `vsync` and tearing in-game; verify a 30, 60 and 120 cap with the distinct-presentation test and VRR with tearing on. | S |
+| NP-4.6 | Texture quality: anisotropy beyond the current 16x cap, a `MipLODBias` cvar and a force-trilinear override at `sdk/src/graphics/d3d12/texture_cache.cpp:1005-1074`. | S |
+| NP-4.7 | Runtime internal-scale switch: re-initialise executor surfaces, the tiled resolve ranges and the pack without a restart, with packs for every offered scale produced up front. | L |
+| NP-4.8 | Recorded decisions, not scheduled: non-integer or dynamic scale (architectural), a true wider back buffer (predicated tiling bands, every resolve kind, thumbnails; only if Hor+ shows unacceptable artifacts), HDR output (the guest tonemaps to SDR; plumbing is M, quality is L). | — |
+
+**Gates.** 21:9 and 32:9 show more world horizontally with no distortion and
+the HUD at the edges; 16:9 output is unchanged under golden replay; 2x on 4K
+and 3x on 1440p pass a sharpness comparison against the pixel-exact case;
+the 4x pack runs the race, free-roam and map routes with zero misses and the
+memory budget logged; caps honoured within the distinct-presentation
+tolerance.
+
+## NP-5 Native profile, achievements, dialogs, language
+
+| Item | Work | Size |
+| --- | --- | --- |
+| NP-5.1 | Profile cvars `user_name` and gamerpic path in the SDK `UserProfile` so `XamUserGetName` and `XamReadTileToTexture` return a real tag and tile; the XUID stays fixed by default because it names the save directory. Editable in the settings screen. | S–M |
+| NP-5.2 | An `XamUiProvider` interface in `sdk/src/kernel/xam/xam_ui.cpp` with the built-in ImGui provider as default; the host layer implements the message box, keyboard, achievements list, gamercard and `XamShowMessageBoxUIEx` (a stub today), preserving overlapped and `XN_SYS_UI` semantics and the `XamIsUIActive` count. | M |
+| NP-5.3 | Achievement toast and list on the host layer with XDBF icons and FH1 styling; unlock sound optional. Unlocks keep the existing TOML store. | S |
+| NP-5.4 | Language: implement `XGetLanguage` from `user_language`, verify the `.str` suffix mapping for all 18 disc languages, extend the `XLanguage` enum where the disc has more, and fall back to English for unmapped tables. | M |
+| NP-5.5 | Save backups in-game: snapshot the profile directory at safe points (after the game's own write completes, observed at the save hooks), keep N slots under the state root, and offer restore from the settings screen. Saves are raw files, so this is host-side copying with a manifest. Never touches the AppData save without the player's explicit restore. | S–M |
+| NP-5.6 | Photo-mode export: write a PNG of the front buffer at internal resolution on a bind, reusing the frame-dump path; store under the state root with a timestamp. | S |
+
+**Gates.** A guest `XamShowMessageBoxUI` shows the host-styled box and
+returns the chosen index; `XamShowAchievementsUI` opens the list and returns
+after close; booting in German, French and Japanese shows a localised pause
+menu with achievement strings following; the gamertag appears where the game
+renders it; a restored backup loads and the original file hash is unchanged.
+
+## NP-6 Input
+
+| Item | Work | Size |
+| --- | --- | --- |
+| NP-6.1 | Pad-to-pad remapping in `InputSystem` with per-user button and axis map cvars and a remap screen; merges with the SDL mapping database, rumble unaffected. | M |
+| NP-6.2 | Keyboard prompt text: show the bound key next to each pad button in the settings screen. Keyboard glyph textures in the game's HUD need the texture replacement path from NP-10.3 and are linked there. | S |
+| NP-6.3 | Haptics and modern pads: verify DualSense and Steam Input through SDL, expose rumble strength and trigger options, and document the Deck layout. | S |
+| NP-6.4 | Mouse steering and sensitivity exposed (`mnk_mouse`, `mnk_sensitivity` exist). | S |
+
+**Gates.** Swapping A and B in the remap screen changes pause navigation and
+the race, persists across restart, and the SDL database still resolves
+unmapped pads.
+
+## NP-7 Mod host v1
+
+**Design decisions.** Guest addresses are fixed by the supported XEX, so
+`config/rexglue/analysis/main-xex.toml` is already an address registry; host
+symbols are not stable. Mods therefore link against a versioned C ABI,
+semantic names and cvars, never raw addresses or the PPC context. The ABI
+adopts the shape the ReXGlue community already uses (`rex_mod_abi_version`,
+`rex_mod_create`, `IModPlugin` with `OnCreateDialogs`, `OnModuleLaunched` and
+`OnShutdown`, `ModHostContext`, `mod.toml` with `requires`, `load_after`,
+`conflicts` and `game_version`, `enabled_mods` ordering) so mods and tooling
+transfer between projects, and extends it with Pinyon hook points, the symbol
+table and a guest-thread request queue. Runtime DLLs can only replace indirect
+calls through the dispatch table; direct calls are C++ calls in the generated
+code. The host executable therefore owns a fixed set of hook points and
+publishes them.
+
+| Item | Work | Size |
+| --- | --- | --- |
+| NP-7.1 | Hook-point registry and guest-thread request queue: keep declaring sites as `[[midasm_hook]]`, but each site's C++ implementation dispatches to runtime-registered callbacks keyed by a semantic id (`frame.tick`, `vehicle.pose_written`, `save.before_encrypt`, `ui.pause_button_constructed`, `file.open`); mods enqueue closures that are drained on `frame.tick` at `0x823EDA10` using the existing `CallGuestFunction` helper. Re-host `ApplyUiMutationExperiment` and the three UI experiments on it. | M |
+| NP-7.2 | Semantic symbol table generated from `main-xex.toml` plus the known struct offsets (vehicle slot, pose, save body, career stage), keyed by XEX hash, exposed read-only through the ABI; a CI check fails when the TOML and the table disagree. | S |
+| NP-7.3 | Plugin ABI and loader: `include/pinyon_mod.h` (C), `DynamicLibrary` loading from `<state>/mods/<name>/code/`, `mod.toml` validation, dependency and conflict checks, never unloaded; context vtable with guest read and write, `call_guest`, `find_symbol`, `subscribe`, `enqueue_guest_task`, `register_cvar`, `add_dialog`, `register_bind` and `log_event`. Document the direct-call limitation. | M |
+| NP-7.4 | Whole-file asset overlay: register an overlay `HostPathDevice` for `mods/<name>/game` ahead of the base game device in `OnPostSetup` (the Skate 3 pattern); granularity is whole archives because the title reads them through a C `FILE*`. | S |
+| NP-7.5 | Profile isolation and save tagging: when mods or cheats are enabled, `OnConfigurePaths` points `user_data_root` at `<state>/user-modded`; a sidecar `pinyon_shift_mods.json` written from `save.before_encrypt` records enabled mods, active cheats, the mod-set hash and the plaintext body hash; the launcher and settings screen show the badge; loading a tagged profile with mods disabled asks first. Config schema 25 with the migration entry. | S–M |
+| NP-7.6 | Samples and docs: a telemetry HUD widget through the UI API, a symbol-library mod, an asset-override mod, `mods_src/` scaffolding with the shared CMake include, and `docs/MODDING.md` (ABI, hook points, overlay layout, save policy). | S |
+
+**Gates.** A sample DLL adds a cvar, opens a host-layer dialog, subscribes
+to `frame.tick`, calls a guest function through the queue and shuts down
+cleanly; a replaced `media/stringtables/EN.zip` is observed through the
+file-open observer with the stock file untouched when the mod is disabled;
+enabling cheats creates `user-modded` and the AppData save hash is unchanged;
+`tools/check-markdown-links.py` passes with the new document.
+
+## NP-8 Cheat menu v1
+
+**Cheapest first.** The trainer ships as a first-party mod on the NP-7 hook
+registry and profile isolation so the ABI is dog-fooded before third parties
+use it; it does not wait for the plugin loader or the asset overlay.
+Post-effect toggles and movie skip exist. Teleport and
+position freeze use the vehicle-pose hook the project already writes through;
+time scale uses the simulation delta the project already observes; career
+stage skip reuses the checkpoint seeding that exists as a test variable; the
+save-body editor uses the plaintext hook plus the disc's own profile schema.
+Credits, XP, wristband, weather, traffic, race state, rewind and camera have
+no located function yet and need the discovery programme.
+
+| Item | Work | Size |
+| --- | --- | --- |
+| NP-8.1 | Cheat cvars in a `Cheats` category (hot-reload): `cheat_time_scale` (scale `f31` before the store at `0x823EDB84`, clamped and logged), `cheat_freeze_vehicle` and stored teleport points on `0x82BC5A3C`, `cheat_skip_career_intro`, and the title's own `perfmode`, `fasttrackrender` and `trackfardistance` command-line parameters (`0x824F8150`) exposed as cvars. | S |
+| NP-8.2 | Trainer screen on the host layer: pages Player, Vehicle, World, Graphics and Debug; controller navigation; the guest pauses while it is open; every toggle logs a diagnostics event; only available when profile isolation (NP-7.5) is active. | M |
+| NP-8.3 | Save-body editor: locate the credits, XP and wristband keys in the serialised body at `0x82C666D0` using `media/profileschema/ForzaProfile.sch` and the existing keyed-record search in `SeedCareerCheckpointInSavePayload`, edit in place with the body size unchanged, and verify the title reloads the value. A host-side profile decoder tool that round-trips a `save-snapshots` capture byte-identically is the first deliverable. | M |
+| NP-8.4 | Discovery programme: name at least one function with a register contract for credits, XP, wristband, time of day, weather, traffic density, race state, rewind and camera, using trace probes, `gamedb.slt` table names and the existing UI-trace workflow; register each in the symbol table. | L, ongoing |
+| NP-8.5 | Follow-on cheats as NP-8.4 lands: freecam, infinite rewind, traffic density, time-of-day and weather lock, unlock all cars and events. | S each |
+
+**Gates.** The trainer opens and closes 20 times in free roam with no leaked
+input and no guest call from the UI thread (asserted); teleport to five stored
+points with the camera following and no discontinuity storm in vehicle
+telemetry; an edited credit value survives a save, reload and UI display on
+the isolated profile; the race route still passes with cheats off.
+
+## NP-9 Fast frame, pass 2
+
+**Why after NP-2 and NP-3.** These are the rewrites that make the race
+window GPU-bound and that the Vulkan executor in NP-12 depends on. NP-9.0
+comes first because the resolve work rewrites the executor, and the
+portability assessment wants the API-agnostic core proven behaviour-preserving
+on Windows before it gains a second consumer.
+
+| Item | Work | Size |
+| --- | --- | --- |
+| NP-9.0 | Split `Fh1NativeExecutor` into an API-agnostic core (surface keys, tile ownership, `ClaimTiles`, `PlanCopy`, `GetResolveSources`, the overwrite-rect interpreter, stats and skips) and a thin D3D12 surface and pipeline layer, validated by byte-identical replays. | M |
+| NP-9.1 | Resolve output aliasing: resolve directly into the destination texture (or bind native-written ranges as SRVs keyed by destination range and write generation), keep the mirror write for one-off CPU readbacks and thumbnails, fall back to the mirror decode when the CPU touched the range, and present the front buffer from the native surface without `RequestSwapTexture`. This removes the encode, untile and copy round trip for 15 M resolve-sourced fetches and the front buffer every frame. | L |
+| NP-9.2 | Direct D3D12 recording if NP-2.6 chose overlap rather than removal of the tape. | M |
+| NP-9.3 | GPU Commands thread parallelism: PM4 decode, binding updates and `UploadRanges` on worker threads, or a decode-to-record pipeline, with the ordering constraints of write-watches and `EVENT_WRITE_SHD` visibility documented and tested. | L |
+| NP-9.4 | Backend-neutral shader pack format v3: move `Fh1ShaderPack` out of the `d3d12` namespace, key identity by translator version, a device features hash and scale instead of vendor id, add the prebuilt geometry-shader stage from NP-0.7, and update `tools/native-shader-pack.py` and [the pack contract](native-renderer/SHADER_PACK_FORMAT.md). | M |
+| NP-9.5 | Decision point, native draw ABI: replacing the per-draw register-to-`PipelineDescription`, `SystemConstants` and `UpdateBindings` derivation with a native contract requires the pack to stop targeting Xenia's constant-buffer and root-signature layout, a new translator output. This is the real boundary between "Xenia backend with native surfaces" and a native renderer. Decide after NP-9.1 and NP-9.3 with measurements; do not start it on speculation. | XL |
+
+**Gates.** Race window median at or below the GPU span plus 2 ms on the
+baseline machine; resolve-sourced fetches served without an untile dispatch
+on `fh1-race-sync` and `fh1-free-roam`; golden replays within tolerance;
+`fh1-buy-car` thumbnail real at 1x and 2x; no new executor skip reasons; the
+pack format version bumped and documented.
+
+## NP-10 Content mods
+
+| Item | Work | Size |
+| --- | --- | --- |
+| NP-10.1 | Per-member overrides: a repacker that writes an overlay archive with stored (method 0) members for overridden entries and pass-through LZX members for the rest (stock archives already contain stored entries), plus the generalised stream adapter from the `scene_insert` experiment for UI scenes. Prefer the repacker for data and textures. | M–L |
+| NP-10.2 | Database and tunable patches: apply SQL patch scripts to a per-mod-set overlay copy of `media/db/gamedb.slt` at launch with the base hash recorded, and merge `physics.zip` and `gametunablesettings.zip` XML and INI by key. First check whether the title opens `media/db` loose or through an archive, which decides whether NP-10.1's repacker is a prerequisite. | M |
+| NP-10.3 | Texture replacement: a BC3 import path in the texture cache (the tiled decoder exists only in `tools/fh1_texture_import.cpp`), hash-named dumps and a `mods/<name>/textures/` directory, hot rescan. Enables keyboard glyphs and HD texture packs. | L |
+| NP-10.4 | Optional: Lua 5.4 bound to the mod ABI (symbols, hook points, cvars, guest queue) loaded from `mods/<name>/code/*.lua`, with a per-tick overhead budget. | L |
+
+**Gates.** One tunable XML member and one `.bgf` overridden without whole
+archive replacement; a modified `Data_Car` row visible in-game and stock
+restored when disabled; one car card texture replaced and rendered correctly
+at 1080p and ultrawide.
+
+## NP-11 UI extension API, production
+
+| Item | Work | Size |
+| --- | --- | --- |
+| NP-11.1 | Production adapter from the [UI API plan](UI_API_PLAN.md): semantic component registry, per-operation completion status, `SceneReady` from the native scene-open boundary and `SceneClosing` before guest objects are released, activation callbacks keyed by component id, host-layer backend for additive HUD widgets. | M |
+| NP-11.2 | Variable-length string tables so labels are not limited to same-byte-length rewrites. | M |
+| NP-11.3 | Native insertion research: recover how the animation loader registers a cloned owner's scaler bindings in `sub_8281BBA8`; only connect `AddMenuItem` to the native backend after the eight-row acceptance test passes. Runs in parallel and may never converge; nothing else depends on it. | L |
+
+**Gates.** The plan's production-adapter checklist is green;
+`pinyon_shift_fh1_ui_api_tests` extended; a sample mod adds a HUD widget and a
+pause action without touching guest addresses.
+
+## NP-12 Linux and Steam Deck
+
+Ordering follows the portability assessment: Linux x86-64 isolates the one
+hard problem, graphics, from any CPU-architecture risk, exercises the POSIX
+layer that already exists, and targets RADV, the driver with the fewest
+feature gaps. Build a Vulkan-native executor on the existing base-class seams;
+do not introduce a general RHI.
+
+| Item | Work | Size |
+| --- | --- | --- |
+| NP-12.1 | Host CMake and presets for Linux: `linux-amd64` preset, codegen path from the built `rexglue` target instead of `out/win-amd64/Release/rexglue.exe`, drop `-fasync-exceptions` and `/Brepro` off Windows, link `pthread` and `dl`, generalise the CPU baseline check. | S |
+| NP-12.2 | Host sources off Win32: a POSIX crash reporter behind the diagnostics interface, SHA-256 through the vendored `thirdparty/crypto`, atomic rename through `std::filesystem`, env access through the platform layer, `Windows.h` out of the app. | S–M |
+| NP-12.3 | Un-drift the Vulkan backend so `REXGLUE_USE_VULKAN=ON` compiles in the fork (base-class virtuals, ZPD, native guest-output registration, texture-cache base changes since `6db74f6`). | M |
+| NP-12.4 | `vulkan::Fh1NativeExecutor` and `VulkanHostRenderConfig` on the NP-9.0 core: image surfaces with layout tracking, dynamic rendering, transfer and resolve pipelines, readback buffers, timestamp queries; replace the Vulkan render-target cache at the same call sites the D3D12 side uses. | L |
+| NP-12.5 | Compile the 67 `fh1_*` fixed-function shaders and the two texture-cache compute shaders to SPIR-V with `dxc -spirv` from the same HLSL; port the FH1 texture-cache features (reflection-cube import, scaled 32-bpp, linear video upload). | S + M |
+| NP-12.6 | SPIR-V shader pack on the NP-9.4 format: on-device producer through the vendored glslang builder (no external compiler), pack identity from the SPIR-V translator version and a features hash, miss recording and self-repair. | M |
+| NP-12.7 | Tooling and launcher: shell and Python equivalents of setup, toolchain provisioning, SDK preparation, build, shader preparation and launch; artifact keys from the Vulkan device UUID; a CLI or TUI launcher; a documented desktop-build-then-copy-to-Deck workflow and a distrobox recipe for SteamOS. | M |
+| NP-12.8 | Deck qualification: gamescope and Wayland presentation, 1280×800, the POSIX multi-object wait polling and `SCHED_FIFO` degradation measured and fixed if pacing regresses, controls layout. | M |
+
+**Gates.** Disc-to-play on Ubuntu 24.04 and on a Deck with the documented
+steps; the route matrix runs with zero executor skips on RADV; frame time
+within an agreed margin of the Windows 1x baseline on comparable hardware.
+
+## NP-13 macOS
+
+| Item | Work | Size |
+| --- | --- | --- |
+| NP-13.1 | `mac-arm64` preset, ARM64 baseline, verification of the Mach-O `musttail` thunks for 76,502 functions under the small code model. | S |
+| NP-13.2 | Guest-code correctness on ARM64: the render-test routes and save and load flows, hunting simde lane-order, denormal and `vmsum` NaN discrepancies; deterministic routes must match Windows outcomes. | M |
+| NP-13.3 | MoltenVK validation of the Vulkan executor (portability subset gaps, sample-rate shading, storage-buffer range, MSAA depth resolve, timeline semaphores); record the Metal-via-MoltenVK baseline. | M |
+| NP-13.4 | macOS tooling: Homebrew-pinned toolchain manifest, app bundle layout with dylibs beside the executable. | S–M |
+| NP-13.5 | Conditional: a native Metal backend only if NP-13.3 shows unacceptable overhead or an unworkable gap. Not recommended by default. | XL |
+
+## NP-14 Android
+
+| Item | Work | Size |
+| --- | --- | --- |
+| NP-14.1 | SDK Android build: NDK toolchain, the missing `rex/main_android.h` glue, SDL3 activity and Gradle project, Android surface path. | L |
+| NP-14.2 | Fibers without `ucontext`: a hand-written AArch64 context switch (also removes a syscall per switch on every POSIX target). | S–M |
+| NP-14.3 | Page-size independence: make the `0xE0000000` host offset runtime-selected in `xmemory` and the generated `REX_PHYS_HOST_OFFSET`; also fixes Linux ARM64 16 KiB kernels. | M |
+| NP-14.4 | Mobile GPU constraints: descriptor-indexing fallback, BC decode when compression is absent, storage-buffer bucketing, MSAA 2x emulation, Adreno and Mali workarounds. | L |
+| NP-14.5 | Cross-build and sideload workflow: codegen and NDK cross-compile on the user's PC from their own ISO, on-device or PC-side pack production keyed by the device features hash, nothing derived distributed. | M |
+| NP-14.6 | Performance and thermals on the reference device; touch and controller input; scale fixed at 1x. | L |
+
+## NP-X Quality and tooling (ongoing)
+
+- **CI compiles C++.** Build `rexruntime`, `rexgpu-fh1` and the four
+  excluded test targets on Windows and, after NP-12.1, Linux; no game data is
+  needed for them. Run `pinyon_shift_fh1_ui_api_tests`,
+  `pinyon_shift_fh1_pass_tracker_tests` (or delete with NP-0.5),
+  `pinyon_shift_fh1_shader_pack_tests` and `pinyon_shift_fh1_execution_key_tests`.
+- **Performance gate.** Keep the three-by-three A/B protocol manual on the
+  baseline machine until a fixed CI machine exists; publish the baseline
+  summary JSON with every train.
+- **Hardware qualification.** AMD, Intel and lower-end GPUs (XR-09) and an
+  unscripted human drive (XR-08) before every train; these need people and
+  hardware the project does not have and are tracked, not scheduled.
+- **Determinism guardrails.** Pose baseline, save payload hash and golden
+  replays are mandatory for any timing, numerics or resolve change.
+- **Docs hygiene.** One focused document per retained contract; run-by-run
+  logs under `.local`; `tools/check-markdown-links.py` in CI stays.
+
+## NP-D Distribution and first run (ongoing)
+
+The legal model does not change: nothing derived from the disc ships, the
+user builds locally, packs stay local ([legal](LEGAL.md)). What changes is how
+long and how Windows-specific that is.
+
+- **First build time.** Cache the SDK and toolchain builds between source
+  versions, use a compiler cache for the generated translation units, produce
+  packs in parallel with the build, and measure; target under 20 minutes on
+  an eight-core machine from the current 20–60.
+- **Launcher core.** Extract a Python or CLI core (setup, verify, build,
+  launch, report) that the WPF launcher calls today and that NP-12.7 reuses on
+  Linux and macOS; a cross-platform GUI is a later option.
+- **Signing and portability.** Sign the launcher and preview executables;
+  support portable installs (both on the README roadmap).
+- **Crash reporting.** Keep the sanitised bundle and prefilled issue; the
+  POSIX reporter from NP-12.2 joins it.
+
+## Parking lot
+
+Ideas considered and not scheduled; add to a slice when a train has room.
+
+- Local rivals and leaderboards from `GameplayLog` and the profile, replacing
+  the dead Xbox Live rivals (all Live exports are stubs today).
+- Rich presence for Discord and Steam.
+- Import cars from *Forza Horizon 2* (README roadmap; needs NP-10 and asset
+  format research).
+- Accessibility: subtitle size and HUD scale through the UI4 root transform
+  once NP-4.4 finds it.
+- DualSense adaptive triggers and a Deck controls layout beyond defaults.
+- HDR output and a true wider back buffer (recorded under NP-4.8).
+- Frame generation: not planned; distinct rendered frames are the contract.
+
+## Mapping to the original asks
+
+| Ask | Slices |
+| --- | --- |
+| Confirm and remove remaining Xenos compatibility; port the rest to the native renderer | NP-0, NP-9.4, NP-9.5 |
+| Optimise the renderer | NP-2, NP-9 |
+| Optimise the CPU side for modern machines and multi-threading | NP-3, NP-9.3 |
+| Any resolution, aspect ratio, ultrawide, modern graphics settings | NP-4 (settings surface from NP-1) |
+| Replace ImGui with native menus, achievements, profile settings | NP-1, NP-5, NP-6 |
+| Modding APIs, UI first | NP-7, NP-11, NP-10 |
+| Cheat menu for playthroughs | NP-8 |
+| Metal and Vulkan for Android and macOS later | NP-9.0, NP-9.4 as prerequisites; NP-12, NP-13, NP-14 |
+| Additions | HFR correctness (NP-3.7), save backups and photo export (NP-5.5, NP-5.6), profile isolation for mods (NP-7.5), CI that compiles C++ (NP-X), first-build time (NP-D), parking lot |

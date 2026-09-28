@@ -112,8 +112,9 @@ builds Release. See [Building](docs/BUILDING.md) and
 
 ## Roadmap
 
-Longer-term direction, in no particular order. None of it is scheduled, and the
-current preview supports none of it.
+Longer-term direction, in no particular order. The current preview supports
+none of it. The ordered plan, with vertical slices, sizes, dependencies and
+acceptance gates, is the [native port backlog](docs/NATIVE_PORT_BACKLOG.md).
 
 - [ ] Lower the hardware requirements and qualify AMD and Intel GPUs
 - [ ] Fix the remaining rendering regressions
@@ -132,7 +133,7 @@ current preview supports none of it.
 - [ ] Sign the launcher and preview executables
 - [ ] Import cars from *Forza Horizon 2*
 
-Nearer-term work is tracked in
+Measured findings and validation rules are in
 [development findings and priorities](docs/DEVELOPMENT.md).
 
 ## Project boundaries

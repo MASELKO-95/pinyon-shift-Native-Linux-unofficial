@@ -13,6 +13,7 @@ experiment reports describe those experiments.
 | --- | --- |
 | Build or recover an installation | [Building](BUILDING.md), [troubleshooting](TROUBLESHOOTING.md) |
 | Configure experimental graphics | [Graphics recovery/settings](TROUBLESHOOTING.md) |
+| What comes next, in order | [Native port backlog](NATIVE_PORT_BACKLOG.md) (vertical slices NP-0 to NP-14 with sizes, dependencies and gates) |
 | How the native renderer replaced Xenos, and what is still open | [Xenos retirement backlog](native-renderer/XENOS_RETIREMENT_BACKLOG.md) (closed; XR-08 and XR-09 keep items that need a person or hardware) |
 | What the renderer must implement | [Native frame contract](native-renderer/NATIVE_FRAME_CONTRACT.md), [guest-visible dependencies](native-renderer/GUEST_VISIBLE_RENDER_DEPENDENCIES.md) |
 | Current findings and retained changes | This document |
