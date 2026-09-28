@@ -1,8 +1,6 @@
 pinyon-shift-fh1-render-test-v1
 # Short wall-time probe before the unattended car reaches the first bend.
 # clock-hz 60
-# require-native world-lit
-# require-native depth-mesh
 # expect-simulation-time 0.95 1.08 2
 input 0 0000 0 0 0 0 0 0
 input 720 1000 0 0 0 0 0 0

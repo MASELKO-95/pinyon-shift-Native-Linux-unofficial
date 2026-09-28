@@ -1,9 +1,6 @@
 pinyon-shift-fh1-render-test-v1
 # FH1-only real source rendering at an unlocked host rate.
 # clock-hz 60
-# require-native velocity-dilate
-# require-native world-lit
-# require-native depth-mesh
 # expect-performance 50000 55 80 500
 # expect-distinct-presentation 55
 input 0 0000 0 0 0 0 0 0

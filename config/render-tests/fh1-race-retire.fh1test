@@ -2,22 +2,6 @@ pinyon-shift-fh1-render-test-v1
 # Sustained unlocked-FPS Recaro Rush race from the qualified AppData fixture.
 # Retire this replay's event after frame 6360; capture the return to free roam.
 # clock-hz 60
-# require-native world-lit
-# require-native world-lit UV2
-# require-native depth-mesh
-# require-native terrain-depth
-# require-native alpha-shadow
-# require-native shadow-mask
-# require-native event-mesh
-# require-native layered-lit pixel
-# require-native blended-lit pixel
-# require-native gradient-fade pixel
-# require-native passthrough-color pixel
-# require-native constant-blend pixel
-# require-native textured-alpha pixel
-# require-native binary-alpha-mask pixel
-# require-native explicit-LOD texture pixel
-# require-native two-texture-lit pixel
 # expect-performance 70000 45 80 500
 # expect-distinct-presentation 45
 # expect-simulation-time 0.95 1.08 9

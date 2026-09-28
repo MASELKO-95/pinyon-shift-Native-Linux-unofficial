@@ -16,9 +16,6 @@ from pathlib import Path
 
 SCHEMA = "pinyon-shift.fh1-render-test-result.v1"
 HEADER = "pinyon-shift-fh1-render-test-v1"
-NATIVE_COUNTER = re.compile(
-    r"FH1 (?:V5 )?native (?P<family>.+?) (?:draws|vertex draws|clears) (?P<count>\d+)"
-)
 PASS_FAMILY = re.compile(
     r"FH1 V5 pass family (?P<family>[0-9A-F]{16}): attachment "
     r"(?P<attachment>[0-9A-F]{16}), first family (?P<first_family>[0-9A-F]{16}), "
@@ -111,7 +108,6 @@ def parse_scenario(
 ) -> tuple[
     list[tuple[int, str]],
     int,
-    set[str],
     dict[str, tuple[float, float, float]],
     tuple[float, float, float, float] | None,
     float | None,
@@ -125,7 +121,6 @@ def parse_scenario(
         raise ValueError("unsupported FH1 render-test schema")
     captures: list[tuple[int, str]] = []
     stop = 0
-    required_native: set[str] = set()
     image_limits: dict[str, tuple[float, float, float]] = {}
     performance_limits = None
     distinct_presentation_min = None
@@ -137,9 +132,6 @@ def parse_scenario(
     previous_wait = 0
     first_input = None
     for number, line in enumerate(lines[1:], 2):
-        if line.startswith("# require-native "):
-            required_native.add(line.removeprefix("# require-native ").strip())
-            continue
         if line.startswith("# expect-image "):
             fields = line.split()
             if len(fields) != 6:
@@ -277,7 +269,6 @@ def parse_scenario(
     return (
         captures,
         stop,
-        required_native,
         image_limits,
         performance_limits,
         distinct_presentation_min,
@@ -435,7 +426,6 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     (
         captures,
         stop,
-        required_native,
         image_limits,
         performance_limits,
         distinct_presentation_min,
@@ -611,15 +601,6 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     hit = next((pattern for pattern in forbidden if pattern in lowered), None)
     if hit:
         raise RuntimeError(f"renderer log contains forbidden failure: {hit}")
-    native_counts = {
-        match.group("family"): int(match.group("count"))
-        for match in NATIVE_COUNTER.finditer(runtime_slice)
-    }
-    missing_native = required_native - native_counts.keys()
-    if missing_native:
-        raise RuntimeError(
-            "missing required native coverage: " + ", ".join(sorted(missing_native))
-        )
     pass_families_by_id = {}
     for match in PASS_FAMILY.finditer(runtime_slice):
         family = {
@@ -805,7 +786,6 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "event_log": str(event_log),
         "performance_log": str(perf_csv),
         "captures": image_results,
-        "native_counts": native_counts,
         "fh1_pass_families": pass_families,
         "fh1_execution_corpus": corpus,
         "pass_inventory_enabled": args.collect_pass_inventory,

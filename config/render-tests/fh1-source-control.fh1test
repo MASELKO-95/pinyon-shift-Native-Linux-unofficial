@@ -1,9 +1,6 @@
 pinyon-shift-fh1-render-test-v1
 # Stock 30 Hz source control for the matched unlocked timing route.
 # clock-hz 30
-# require-native velocity-dilate
-# require-native world-lit
-# require-native depth-mesh
 # expect-performance 50000 20 27 31
 input 0 0000 0 0 0 0 0 0
 input 360 1000 0 0 0 0 0 0

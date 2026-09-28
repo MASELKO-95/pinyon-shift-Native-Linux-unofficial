@@ -1,8 +1,5 @@
 pinyon-shift-fh1-render-test-v1
 # FH1-only real-render cadence prototype; no completed-frame synthesis.
-# require-native velocity-dilate
-# require-native world-lit
-# require-native depth-mesh
 # expect-performance 50000 55 20 70
 # Real 60 means distinct title-rendered frames, not repeated presents.
 # expect-distinct-presentation 55

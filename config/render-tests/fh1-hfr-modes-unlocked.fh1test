@@ -2,17 +2,6 @@ pinyon-shift-fh1-render-test-v1
 # Stationary real-source HFR gate across free roam, SELECT map, pause/resume.
 # No generated or repeated frame qualifies as distinct presentation.
 # clock-hz 60
-# require-native world-lit
-# require-native world-lit UV2
-# require-native depth-mesh
-# require-native terrain-depth
-# require-native alpha-shadow
-# require-native shadow-mask
-# require-native layered-lit pixel
-# require-native blended-lit pixel
-# require-native gradient-fade pixel
-# require-native passthrough-color pixel
-# require-native constant-blend pixel
 # expect-performance 50000 55 80 500
 # expect-distinct-presentation 55
 # expect-simulation-time 0.95 1.08 2

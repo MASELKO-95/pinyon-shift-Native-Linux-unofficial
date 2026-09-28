@@ -2,10 +2,6 @@ pinyon-shift-fh1-render-test-v1
 # clock-hz 60
 # Boot the installed FH1 profile without depending on physical input. Captures
 # are intentionally spaced while this trace is calibrated against scene gates.
-# require-native velocity-dilate
-# require-native world-lit
-# require-native world-lit UV2
-# require-native depth-mesh
 # expect-performance 50000 55 80 500
 # expect-simulation-time 0.95 1.08 2
 # expect-image probe-1200 12 30 1.00

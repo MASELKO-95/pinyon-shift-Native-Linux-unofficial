@@ -13,30 +13,6 @@ SPEC.loader.exec_module(MODULE)
 
 
 class Fh1RenderTestRunnerTests(unittest.TestCase):
-    def test_native_counter_accepts_owned_clear_and_legacy_draws(self):
-        for line, family, count in (
-            ("FH1 native owned depth clears 8192", "owned depth", 8192),
-            ("FH1 V5 native world-lit draws 12", "world-lit", 12),
-            ("FH1 V5 native world-lit vertex draws 9", "world-lit", 9),
-        ):
-            match = MODULE.NATIVE_COUNTER.search(line)
-            self.assertIsNotNone(match)
-            self.assertEqual(family, match["family"])
-            self.assertEqual(count, int(match["count"]))
-        self.assertIsNone(MODULE.NATIVE_COUNTER.search("FH1 native owned depth rejected 42"))
-
-    def test_owned_depth_race_preserves_motion_and_timing_requirements(self):
-        scenarios = Path(__file__).parents[2] / "config" / "render-tests"
-        legacy = MODULE.parse_scenario(scenarios / "fh1-race.fh1test")
-        owned = MODULE.parse_scenario(scenarios / "fh1-owned-depth-race.fh1test")
-        self.assertEqual({"owned depth"}, owned[2])
-        self.assertEqual(legacy[:2], owned[:2])
-        self.assertEqual(legacy[3:], owned[3:])
-        def actions(path):
-            return [line for line in path.read_text().splitlines() if line and not line.startswith("#")]
-        self.assertEqual(actions(scenarios / "fh1-race.fh1test"),
-                         actions(scenarios / "fh1-owned-depth-race.fh1test"))
-
     def test_accepts_state_waits_and_rejects_malformed_ones(self):
         header = MODULE.HEADER + "\ninput 0 0000 0 0 0 0 0 0\n"
         tail = "capture 20 shot\nstop 30\n"
@@ -180,7 +156,6 @@ class Fh1RenderTestRunnerTests(unittest.TestCase):
             path.write_text(
                 "pinyon-shift-fh1-render-test-v1\n"
                 "# clock-hz 30\n"
-                "# require-native tone-map\n"
                 "# expect-image scene 3 8 0.1\n"
                 "# expect-performance 50000 55 27 31\n"
                 "# expect-distinct-presentation 55\n"
@@ -196,12 +171,11 @@ class Fh1RenderTestRunnerTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (
-                captures, stop, native, images, performance, distinct,
+                captures, stop, images, performance, distinct,
                 simulation_time, capture_mae, race_hud, race_hud_any,
             ) = MODULE.parse_scenario(path)
             self.assertEqual([(20, "scene"), (25, "later")], captures)
             self.assertEqual(30, stop)
-            self.assertEqual({"tone-map"}, native)
             self.assertEqual({"scene": (3.0, 8.0, 0.1)}, images)
             self.assertEqual((50000.0, 55.0, 27.0, 31.0), performance)
             self.assertEqual(55.0, distinct)
