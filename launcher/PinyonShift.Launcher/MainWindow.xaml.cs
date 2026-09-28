@@ -764,18 +764,6 @@ public partial class MainWindow : Window
         }
     }
 
-    // The native renderer runs at 1x only: choosing it selects the 1x preset.
-    private void RendererComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_applyingGraphicsResult || RendererComboBox?.SelectedItem is null ||
-            ResolutionComboBox is null || GraphicsPresetComboBox is null) return;
-        if (SelectedTag(RendererComboBox) != "native") return;
-        _applyingGraphicsResult = true;
-        SelectTag(ResolutionComboBox, "1");
-        SelectTag(GraphicsPresetComboBox, "shipping_1x");
-        _applyingGraphicsResult = false;
-    }
-
     private void GraphicsControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_applyingGraphicsResult || ResolutionComboBox?.SelectedItem is null ||

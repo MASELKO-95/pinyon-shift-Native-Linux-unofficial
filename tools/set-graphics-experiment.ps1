@@ -218,7 +218,6 @@ switch ($Action) {
         $text = Remove-TomlValue $text 'readback_memexport'
         $text = Remove-TomlValue $text 'readback_memexport_fast'
         $text = Set-TomlValue $text 'pinyon_shift_config_schema' '23'
-        # The native renderer is 1x only; scaled presets keep Xenos.
         $text = Set-TomlValue $text 'fh1_renderer' ('"' + $Renderer + '"')
         $text = Set-TomlValue $text 'pinyon_shift_fh1_render_fps_limit' '0'
         $text = Set-TomlValue $text 'pinyon_shift_fh1_source_presentation' 'true'

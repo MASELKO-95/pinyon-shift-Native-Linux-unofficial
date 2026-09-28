@@ -294,9 +294,8 @@
                     <StackPanel Grid.Row="5" Margin="0,17,0,0">
                         <TextBlock Text="RENDERER" FontSize="10" Foreground="{StaticResource MutedBrush}"/>
                         <ComboBox x:Name="RendererComboBox" Margin="0,8,0,0" SelectedIndex="0"
-                                  SelectionChanged="RendererComboBox_SelectionChanged"
                                   AutomationProperties.Name="Renderer">
-                            <ComboBoxItem Tag="native"><TextBlock Text="Native · default (1× only)" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
+                            <ComboBoxItem Tag="native"><TextBlock Text="Native · default" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
                             <ComboBoxItem Tag="xenos"><TextBlock Text="Xenos · rollback" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
                         </ComboBox>
                     </StackPanel>
