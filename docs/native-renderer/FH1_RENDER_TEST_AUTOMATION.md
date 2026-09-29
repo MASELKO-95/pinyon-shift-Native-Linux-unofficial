@@ -122,7 +122,14 @@ tear). `tools/scan-guest-snapshots.py s0.mem s1.mem s2.mem --min 0 --max 1
 --increasing` lists the words that step by the same amount between snapshots
 taken at equal spacing, such as game clocks. Heap layouts differ between
 runs, so confirm a candidate with `poke` in a run that found it; delete the
-snapshots afterwards (1.5 GB for three).
+snapshots afterwards (1.5 GB for three). For that, `mark <frame>` keeps a
+copy of the title's committed virtual heap pages (0x00010000-0x7EFFFFFF,
+about 110 MB in free roam) in memory, and `scanpoke <frame> <min> <max>
+<float> [<min step> <max step>]` pokes every float in `[min, max]` that rose
+by the same step (within 2 %) between each pair of three or more marks, then
+records `fh1.render_test.scanpoke` with the count and the first 64 virtual
+addresses. Poking hundreds of values can crash the title; narrow the range
+and step first.
 `hostclick <frame> <left|right> <x> <y>` moves the pointer and clicks at
 `(x, y)` in the title's 1280x720 layout space, mapped onto the painted guest
 output, which is the space the host UI lays its rows out in. The host UI

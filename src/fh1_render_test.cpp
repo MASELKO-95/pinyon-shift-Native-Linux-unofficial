@@ -5,7 +5,9 @@
 #include <atomic>
 #include <condition_variable>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -92,6 +94,17 @@ struct HostKeyStep {
   bool poke = false;
   uint32_t poke_address = 0;
   float poke_value = 0.0f;
+  // mark: keep a copy of the title's committed virtual heap pages for
+  // scanpoke.
+  bool mark = false;
+  // scanpoke: poke every float in [scan_min, scan_max] that rose by the same
+  // step between each pair of marks (clocks), confirming in the same run.
+  bool scanpoke = false;
+  float scan_min = 0.0f;
+  float scan_max = 0.0f;
+  // Optional: only values whose step between marks is in this range.
+  float scan_step_min = 1e-6f;
+  float scan_step_max = 1e30f;
 };
 
 rex::ui::VirtualKey ParseHostKey(const std::string& name) {
@@ -139,6 +152,12 @@ struct TestState {
   std::vector<WaitStep> waits;
   size_t next_wait = 0;
   std::vector<HostKeyStep> host_keys;
+  // One mark: committed runs of the virtual heaps as (address, bytes).
+  struct MarkRegion {
+    uint32_t address;
+    std::vector<uint8_t> bytes;
+  };
+  std::vector<std::vector<MarkRegion>> marks;
   size_t next_host_key = 0;
   // Output frames spent in completed and active waits.
   uint64_t wait_offset = 0;
@@ -350,6 +369,33 @@ void LoadScript(const std::filesystem::path& path) {
       HostKeyStep step{ParseUnsigned(frame, 10, "cvar_frame")};
       step.cvar_name = name;
       step.cvar_value = value;
+      if (!g_test.host_keys.empty() && step.frame <= g_test.host_keys.back().frame) {
+        Fail("script_hostkey_order");
+      }
+      g_test.host_keys.push_back(step);
+    } else if (command == "mark" || command == "scanpoke") {
+      std::string frame, minimum, maximum, value, extra;
+      HostKeyStep step;
+      if (command == "mark") {
+        if (!(row >> frame) || row >> extra) Fail("script_mark_columns");
+        step.frame = ParseUnsigned(frame, 10, "mark_frame");
+        step.mark = true;
+      } else {
+        std::string step_min, step_max;
+        if (!(row >> frame >> minimum >> maximum >> value)) Fail("script_scanpoke_columns");
+        if (row >> step_min && (!(row >> step_max) || row >> extra)) {
+          Fail("script_scanpoke_columns");
+        }
+        step.frame = ParseUnsigned(frame, 10, "scanpoke_frame");
+        step.scanpoke = true;
+        step.scan_min = std::strtof(minimum.c_str(), nullptr);
+        step.scan_max = std::strtof(maximum.c_str(), nullptr);
+        step.poke_value = std::strtof(value.c_str(), nullptr);
+        if (!step_max.empty()) {
+          step.scan_step_min = std::strtof(step_min.c_str(), nullptr);
+          step.scan_step_max = std::strtof(step_max.c_str(), nullptr);
+        }
+      }
       if (!g_test.host_keys.empty() && step.frame <= g_test.host_keys.back().frame) {
         Fail("script_hostkey_order");
       }
@@ -783,6 +829,107 @@ bool ObserveOutput(
                               {"output_frame", std::to_string(context.frame_sequence)}});
     auto* window = g_test.window;
     auto* presenter = g_test.presenter;
+    if (step.mark || step.scanpoke) {
+      auto* memory = REX_KERNEL_MEMORY();
+      if (step.mark) {
+        // The title's own heaps (4 KB pages below 0x40000000, 64 KB above).
+        std::vector<TestState::MarkRegion> regions;
+        size_t bytes = 0;
+        for (const auto& [heap_start, heap_end] :
+             {std::pair<uint32_t, uint32_t>{0x00010000, 0x40000000},
+              std::pair<uint32_t, uint32_t>{0x40000000, 0x7F000000}}) {
+          auto* heap = memory->LookupHeap(heap_start);
+          if (!heap) continue;
+          for (uint32_t address = heap_start; address < heap_end;) {
+            rex::memory::HeapAllocationInfo info = {};
+            if (!heap->QueryRegionInfo(address, &info) || !info.region_size) break;
+            const uint32_t size = std::min(info.region_size, heap_end - address);
+            // Committed and readable (guard and no-access pages are skipped).
+            if ((info.state & rex::memory::kMemoryAllocationCommit) &&
+                (info.protect & rex::memory::kMemoryProtectRead)) {
+              const uint8_t* host = memory->TranslateVirtual(address);
+              regions.push_back({address, std::vector<uint8_t>(host, host + size)});
+              bytes += size;
+            }
+            address += size;
+          }
+        }
+        g_test.marks.push_back(std::move(regions));
+        diagnostics::RecordEvent("fh1.render_test.mark",
+                                 {{"count", std::to_string(g_test.marks.size())},
+                                  {"bytes", std::to_string(bytes)}});
+        continue;
+      }
+      auto load = [](const uint8_t* bytes) {
+        uint32_t bits;
+        std::memcpy(&bits, bytes, sizeof(bits));
+        bits = (bits >> 24) | ((bits >> 8) & 0xFF00) | ((bits << 8) & 0xFF0000) | (bits << 24);
+        float value;
+        std::memcpy(&value, &bits, sizeof(value));
+        return value;
+      };
+      // A word's value in a mark, or nullptr where that mark lacks the page.
+      auto find = [](const std::vector<TestState::MarkRegion>& regions,
+                     uint32_t address) -> const uint8_t* {
+        auto it = std::upper_bound(
+            regions.begin(), regions.end(), address,
+            [](uint32_t a, const TestState::MarkRegion& region) { return a < region.address; });
+        if (it == regions.begin()) return nullptr;
+        --it;
+        if (address + 4 > it->address + it->bytes.size()) return nullptr;
+        return it->bytes.data() + (address - it->address);
+      };
+      std::vector<uint32_t> addresses;
+      if (g_test.marks.size() >= 3) {
+        for (const TestState::MarkRegion& region : g_test.marks[0]) {
+          for (size_t offset = 0; offset + 4 <= region.bytes.size(); offset += 4) {
+            const uint32_t address = region.address + uint32_t(offset);
+            float previous = load(region.bytes.data() + offset);
+            if (!(previous >= step.scan_min && previous <= step.scan_max)) continue;
+            float reference = 0.0f;
+            bool steady = true;
+            for (size_t i = 1; i < g_test.marks.size() && steady; ++i) {
+              const uint8_t* word = find(g_test.marks[i], address);
+              if (!word) {
+                steady = false;
+                break;
+              }
+              const float current = load(word);
+              const float delta = current - previous;
+              if (!(current >= step.scan_min && current <= step.scan_max) ||
+                  !(delta >= step.scan_step_min && delta <= step.scan_step_max)) {
+                steady = false;
+              } else if (i == 1) {
+                reference = delta;
+              } else if (std::abs(delta - reference) > 0.02f * reference) {
+                steady = false;
+              }
+              previous = current;
+            }
+            if (steady) addresses.push_back(address);
+          }
+        }
+      }
+      uint32_t bits;
+      std::memcpy(&bits, &step.poke_value, sizeof(bits));
+      bits = (bits >> 24) | ((bits >> 8) & 0xFF00) | ((bits << 8) & 0xFF0000) | (bits << 24);
+      std::string listed;
+      for (size_t i = 0; i < addresses.size(); ++i) {
+        std::memcpy(memory->TranslateVirtual(addresses[i]), &bits, sizeof(bits));
+        if (i < 64) {
+          char text[16];
+          std::snprintf(text, sizeof(text), "%s%08X", i ? " " : "", addresses[i]);
+          listed += text;
+        }
+      }
+      diagnostics::RecordEvent("fh1.render_test.scanpoke",
+                               {{"count", std::to_string(addresses.size())},
+                                {"value", std::to_string(step.poke_value)},
+                                {"addresses", listed}});
+      g_test.marks.clear();
+      g_test.marks.shrink_to_fit();
+      continue;
+    }
     if (!step.snapshot.empty() || step.poke) {
       // Guest memory is touched from this thread, as the title runs: a
       // snapshot may tear, which scans for slowly changing values tolerate.
