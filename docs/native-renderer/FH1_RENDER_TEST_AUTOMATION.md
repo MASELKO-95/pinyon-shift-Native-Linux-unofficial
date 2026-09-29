@@ -201,8 +201,8 @@ except the resolve read-back, which is on by default.
 | `--vulkan_async_submission=false` | Vulkan: replays and submits command buffers on the GPU commands thread instead of the `GPU Submission` worker; `--vulkan_async_submission_split_draws=<n>` sets how many draws a submission holds before the worker gets it (default 1024, 0 splits only at swaps) |
 | `--fh1_native_readback_new_resolves=false` | Stops copying one-off resolves (such as saved car thumbnails) back to guest memory |
 | `--fh1_debug_log_draws=true` | Logs every draw (copies included) with its index in the frame, EDRAM mode, primitive, shaders, render target, blend, copy registers and the pixel shader's texture fetch constants; use it on a frame replay |
-| `--fh1_debug_skip_draws=<first>-<last>` | Skips those draw indices in every frame: bisect a replayed frame for the draw that causes a fault |
-| `--fh1_debug_null_fetch=<draw>:<slot>` | That draw sees the texture fetch constant as invalid (a null texture), to tell texture faults from shader math |
+| `--fh1_debug_skip_draws=<first>-<last>[,<first>-<last>...]` | Skips those draw indices in every frame: bisect a replayed frame for the draw that causes a fault, keeping a known contributor skipped with a second range |
+| `--fh1_debug_null_fetch=<draw>:<slot>` | That draw binds a null texture for that fetch constant (logged as "completely invalid"), to tell texture faults from shader math |
 | `--perf_critical_path_trace=true` | Correlated title/PM4/submission/present trace |
 
 The executor logs its skip counters, memory (`FH1 native executor memory
