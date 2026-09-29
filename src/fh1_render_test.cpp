@@ -81,6 +81,9 @@ struct HostKeyStep {
   uint32_t x = 0;
   uint32_t y = 0;
   std::string xam_dialog;
+  // cvar: set this flag to this value, as a settings change would.
+  std::string cvar_name;
+  std::string cvar_value;
 };
 
 rex::ui::VirtualKey ParseHostKey(const std::string& name) {
@@ -329,6 +332,16 @@ void LoadScript(const std::filesystem::path& path) {
       }
       HostKeyStep step{ParseUnsigned(frame, 10, "xamdialog_frame")};
       step.xam_dialog = kind;
+      if (!g_test.host_keys.empty() && step.frame <= g_test.host_keys.back().frame) {
+        Fail("script_hostkey_order");
+      }
+      g_test.host_keys.push_back(step);
+    } else if (command == "cvar") {
+      std::string frame, name, value, extra;
+      if (!(row >> frame >> name >> value) || row >> extra) Fail("script_cvar_columns");
+      HostKeyStep step{ParseUnsigned(frame, 10, "cvar_frame")};
+      step.cvar_name = name;
+      step.cvar_value = value;
       if (!g_test.host_keys.empty() && step.frame <= g_test.host_keys.back().frame) {
         Fail("script_hostkey_order");
       }
@@ -745,6 +758,13 @@ bool ObserveOutput(
     auto* window = g_test.window;
     auto* presenter = g_test.presenter;
     g_test.app_context->CallInUIThread([window, presenter, step] {
+      if (!step.cvar_name.empty()) {
+        const bool set = rex::cvar::SetFlagByName(step.cvar_name, step.cvar_value);
+        diagnostics::RecordEvent("fh1.render_test.cvar", {{"name", step.cvar_name},
+                                                          {"value", step.cvar_value},
+                                                          {"result", set ? "set" : "rejected"}});
+        return;
+      }
       if (!step.xam_dialog.empty()) {
         auto* provider = rex::kernel::xam::GetXamUiProvider();
         if (!provider) {

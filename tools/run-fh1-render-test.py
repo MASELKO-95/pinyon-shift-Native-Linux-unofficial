@@ -249,6 +249,11 @@ def parse_scenario(
             if int(fields[1]) <= previous_hostkey:
                 raise ValueError(f"line {number}: host keys must be in increasing frame order")
             previous_hostkey = int(fields[1])
+        elif fields[0] == "cvar" and len(fields) == 4:
+            # cvar <frame> <name> <value>: a settings change at run time.
+            if int(fields[1]) <= previous_hostkey:
+                raise ValueError(f"line {number}: host keys must be in increasing frame order")
+            previous_hostkey = int(fields[1])
         elif fields[0] == "hostclick" and len(fields) == 5:
             # hostclick <frame> <left|right> <x> <y>, in 1280x720 title space.
             if fields[2] not in ("left", "right"):
@@ -485,14 +490,16 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         if args.seed_pipeline_prewarm
         else None
     )
-    staged_shader_pack = None
-    if args.shader_pack:
+    # Each pack is staged under its own name, so packs for several scales can
+    # be present for a run that switches scale.
+    staged_shader_packs = []
+    for shader_pack in args.shader_pack or []:
         stage = subprocess.run(
             [
                 sys.executable,
                 str(Path(__file__).with_name("native-shader-pack.py")),
                 "stage",
-                str(args.shader_pack.resolve()),
+                str(shader_pack.resolve()),
                 "--state-root",
                 str(run_state_root),
             ],
@@ -500,7 +507,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             text=True,
             check=True,
         )
-        staged_shader_pack = Path(json.loads(stage.stdout)["destination"])
+        staged_shader_packs.append(Path(json.loads(stage.stdout)["destination"]))
+    staged_shader_pack = staged_shader_packs[0] if staged_shader_packs else None
 
     logs = run_state_root / "logs"
     previous_logs = set(logs.glob("*.jsonl")) if logs.exists() else set()
@@ -797,6 +805,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             str(disc_shader_corpus_dir) if disc_shader_corpus_dir else None
         ),
         "shader_pack": str(staged_shader_pack) if staged_shader_pack else None,
+        "shader_packs": [str(path) for path in staged_shader_packs],
         "shader_capture": shader_capture,
         "seeded_shader_storage": seeded_shader_storage,
         "seeded_pipeline_prewarm": seeded_pipeline_prewarm,
@@ -836,7 +845,9 @@ def main() -> int:
     parser.add_argument("--collect-pass-inventory", action="store_true")
     parser.add_argument("--shader-capture-dir", type=Path)
     parser.add_argument("--disc-shader-corpus-dir", type=Path)
-    parser.add_argument("--shader-pack", type=Path)
+    parser.add_argument(
+        "--shader-pack", type=Path, action="append", help="stage this pack (repeatable)"
+    )
     parser.add_argument("--seed-shader-storage", action="store_true")
     parser.add_argument("--seed-pipeline-prewarm", action="store_true")
     parser.add_argument("--require-zero-shader-misses", action="store_true")
