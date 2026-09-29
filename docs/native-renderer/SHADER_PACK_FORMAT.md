@@ -167,12 +167,11 @@ Every translation is also sent to the shader translation observer, so a
 pack comes from any Vulkan session with a capture:
 
 ```powershell
-python .	oolsun-fh1-render-test.py .\configender-testsh1-race-sync.fh1test `
+python .\tools\run-fh1-render-test.py .\config\render-tests\fh1-race-sync.fh1test `
   --state-root <seed> --output <out> --build-directory <vulkan build> `
-  --shader-capture-dir .\.localk-capture --game-argument=--gpu_backend=vulkan
-python .	ools
-ative-shader-pack.py build .\.localk-capture\shader-manifest.json `
-  --output .\.localk.pnsp
+  --shader-capture-dir .\.local\vk-capture --game-argument=--gpu_backend=vulkan
+python .\tools\native-shader-pack.py build .\.local\vk-capture\shader-manifest.json `
+  --output .\.local\vk.pnsp
 ```
 
 A later session's capture adds its misses. A pack captured from
