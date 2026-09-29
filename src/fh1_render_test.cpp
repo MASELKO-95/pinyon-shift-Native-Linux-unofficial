@@ -787,13 +787,24 @@ bool ObserveOutput(
         window->InjectKey(step.key, false);
         return;
       }
-      auto rect = presenter->GetPaintedGuestOutputRectFromUIThread();
-      if (!rect) {
+      // Title space as the host UI lays it out: the painted guest image, or
+      // the whole window when the last paint drew only UI (a paused title).
+      double x = 0.0, y = 0.0, width = window->GetActualPhysicalWidth(),
+             height = window->GetActualPhysicalHeight();
+      if (auto rect = presenter->GetPaintedGuestOutputRectFromUIThread()) {
+        x = rect->x;
+        y = rect->y;
+        width = rect->width;
+        height = rect->height;
+      }
+      const double scale = std::min(width / 1280.0, height / 720.0);
+      if (scale <= 0.0) {
         return;
       }
-      window->InjectMouseClick(step.button,
-                               int32_t(rect->x) + int32_t(step.x * rect->width / 1280),
-                               int32_t(rect->y) + int32_t(step.y * rect->height / 720));
+      x += (width - 1280.0 * scale) * 0.5;
+      y += (height - 720.0 * scale) * 0.5;
+      window->InjectMouseClick(step.button, int32_t(x + step.x * scale),
+                               int32_t(y + step.y * scale));
     });
   }
   std::unique_lock lock(g_test.mutex);
