@@ -1,0 +1,310 @@
+#include "ui/settings_menu.h"
+
+#include <algorithm>
+#include <memory>
+#include <cctype>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <rex/audio/downmix.h>
+#include <rex/cvar.h>
+#include <rex/logging.h>
+
+REXCVAR_DEFINE_INT32(pinyon_shift_master_volume, 100, "Pinyon Shift",
+                     "Master volume, 0 to 100, applied to the output mix");
+
+namespace pinyon_shift::ui {
+namespace {
+
+using hostui::MenuRow;
+using hostui::MenuScreen;
+
+// One choice of a setting: the label shown and the TOML literal each
+// setting takes (several for choices such as the resolution scale, which
+// sets both axes).
+struct Choice {
+  std::string label;
+  std::vector<std::pair<std::string, std::string>> values;
+};
+
+std::string Unquote(std::string_view literal) {
+  if (literal.size() >= 2 && literal.front() == '"' && literal.back() == '"') {
+    literal = literal.substr(1, literal.size() - 2);
+  }
+  return std::string(literal);
+}
+
+bool SameValue(std::string_view a, std::string_view b) {
+  return a.size() == b.size() &&
+         std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
+           return std::tolower(static_cast<unsigned char>(x)) ==
+                  std::tolower(static_cast<unsigned char>(y));
+         });
+}
+
+std::string Upper(std::string text) {
+  std::transform(text.begin(), text.end(), text.begin(),
+                 [](unsigned char c) { return char(std::toupper(c)); });
+  return text;
+}
+
+// Screens of one opening of the menu. The root screen's rows own the pages
+// (every other screen sits above the root on the host UI's stack), so each
+// function here may capture `this`.
+class SettingsPages : public std::enable_shared_from_this<SettingsPages> {
+ public:
+  SettingsPages(hostui::HostUi& host_ui, config::HostConfig& config)
+      : host_ui_(host_ui), config_(config) {}
+
+  std::unique_ptr<MenuScreen> Root();
+
+ private:
+  // The value the game started with (what is live for restart settings).
+  static std::string Live(const std::string& name) { return rex::cvar::GetFlagByName(name); }
+  // The saved value, or the live one when the file does not set it.
+  std::string Saved(const std::string& name) const {
+    return config_.Get(name).value_or(Live(name));
+  }
+
+  static int Find(const std::vector<Choice>& choices, auto&& lookup) {
+    for (size_t i = 0; i < choices.size(); ++i) {
+      bool all = true;
+      for (const auto& [name, literal] : choices[i].values) {
+        all = all && SameValue(lookup(name), Unquote(literal));
+      }
+      if (all) {
+        return int(i);
+      }
+    }
+    return -1;
+  }
+
+  MenuRow Setting(std::string label, std::vector<Choice> choices, bool restart);
+  MenuRow Toggle(std::string label, std::string name, bool restart = false, bool inverted = false);
+  MenuRow Page(std::string label, std::unique_ptr<MenuScreen> (SettingsPages::*page)());
+  std::function<std::string()> RestartNote(std::vector<MenuRow>& rows);
+  void Save();
+
+  std::unique_ptr<MenuScreen> Display();
+  std::unique_ptr<MenuScreen> Graphics();
+  std::unique_ptr<MenuScreen> Audio();
+  std::unique_ptr<MenuScreen> Controls();
+  std::unique_ptr<MenuScreen> Profile();
+
+  hostui::HostUi& host_ui_;
+  config::HostConfig& config_;
+};
+
+MenuRow SettingsPages::Setting(std::string label, std::vector<Choice> choices, bool restart) {
+  MenuRow row;
+  row.label = std::move(label);
+  row.restart_required = restart;
+  auto shared = std::make_shared<std::vector<Choice>>(std::move(choices));
+  row.value = [this, shared] {
+    const int index = Find(*shared, [this](const std::string& name) { return Saved(name); });
+    return index >= 0 ? (*shared)[size_t(index)].label : std::string("CUSTOM");
+  };
+  row.adjust = [this, shared, restart](int direction) {
+    const auto& choices = *shared;
+    const int count = int(choices.size());
+    const int current = Find(choices, [this](const std::string& name) { return Saved(name); });
+    const int next = current < 0 ? 0 : (current + direction + count) % count;
+    for (const auto& [name, literal] : choices[size_t(next)].values) {
+      config_.Set(name, literal);
+      if (!restart) {
+        rex::cvar::SetFlagByName(name, Unquote(literal));
+      }
+    }
+    Save();
+  };
+  if (restart) {
+    row.restart_pending = [this, shared] {
+      const auto saved = Find(*shared, [this](const std::string& name) { return Saved(name); });
+      const auto live = Find(*shared, [](const std::string& name) { return Live(name); });
+      return saved != live;
+    };
+  }
+  return row;
+}
+
+MenuRow SettingsPages::Toggle(std::string label, std::string name, bool restart, bool inverted) {
+  const char* on = inverted ? "false" : "true";
+  const char* off = inverted ? "true" : "false";
+  return Setting(std::move(label), {{"OFF", {{name, off}}}, {"ON", {{name, on}}}}, restart);
+}
+
+MenuRow SettingsPages::Page(std::string label,
+                            std::unique_ptr<MenuScreen> (SettingsPages::*page)()) {
+  MenuRow row;
+  row.label = std::move(label);
+  row.activate = [self = shared_from_this(), page] { self->host_ui_.Push(((*self).*page)()); };
+  return row;
+}
+
+std::function<std::string()> SettingsPages::RestartNote(std::vector<MenuRow>& rows) {
+  std::vector<std::function<bool()>> pending;
+  for (const MenuRow& row : rows) {
+    if (row.restart_pending) {
+      pending.push_back(row.restart_pending);
+    }
+  }
+  if (pending.empty()) {
+    return nullptr;
+  }
+  return [pending] {
+    for (const auto& check : pending) {
+      if (check()) {
+        return std::string("RESTART THE GAME TO APPLY THE MARKED CHANGES");
+      }
+    }
+    return std::string();
+  };
+}
+
+void SettingsPages::Save() {
+  if (!config_.Save()) {
+    REXLOG_ERROR("Settings: could not write {}", config_.path().string());
+  }
+}
+
+std::unique_ptr<MenuScreen> SettingsPages::Display() {
+  std::vector<MenuRow> rows;
+  rows.push_back(Toggle("FULLSCREEN", "fullscreen"));
+  rows.push_back(Toggle("VSYNC", "vsync"));
+  rows.push_back(Setting("FRAME RATE LIMIT",
+                         {{"OFF", {{"host_present_fps_limit", "0"}}},
+                          {"30", {{"host_present_fps_limit", "30"}}},
+                          {"60", {{"host_present_fps_limit", "60"}}},
+                          {"120", {{"host_present_fps_limit", "120"}}},
+                          {"240", {{"host_present_fps_limit", "240"}}}},
+                         false));
+  rows.push_back(Toggle("VARIABLE REFRESH RATE", "d3d12_allow_variable_refresh_rate_and_tearing",
+                        true));
+  rows.push_back(Setting("GAME FRAME RATE LIMIT",
+                         {{"OFF", {{"pinyon_shift_fh1_render_fps_limit", "0"}}},
+                          {"30", {{"pinyon_shift_fh1_render_fps_limit", "30"}}},
+                          {"60", {{"pinyon_shift_fh1_render_fps_limit", "60"}}},
+                          {"120", {{"pinyon_shift_fh1_render_fps_limit", "120"}}}},
+                         true));
+  auto note = RestartNote(rows);
+  return std::make_unique<MenuScreen>("DISPLAY", std::move(rows), std::move(note));
+}
+
+std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
+  std::vector<MenuRow> rows;
+  std::vector<Choice> scales;
+  for (int scale = 1; scale <= 3; ++scale) {
+    const std::string value = std::to_string(scale);
+    scales.push_back({value + "X",
+                      {{"draw_resolution_scale_x", value}, {"draw_resolution_scale_y", value}}});
+  }
+  rows.push_back(Setting("RESOLUTION SCALE", std::move(scales), true));
+  // anisotropic_override holds the Xenos filter: 3, 4 and 5 are 4x, 8x, 16x.
+  rows.push_back(Setting("ANISOTROPIC FILTERING",
+                         {{"4X", {{"anisotropic_override", "3"}}},
+                          {"8X", {{"anisotropic_override", "4"}}},
+                          {"16X", {{"anisotropic_override", "5"}}}},
+                         false));
+  rows.push_back(Setting("ANTI-ALIASING",
+                         {{"OFF", {{"swap_post_effect", "\"none\""}}},
+                          {"FXAA", {{"swap_post_effect", "\"fxaa\""}}},
+                          {"FXAA EXTREME", {{"swap_post_effect", "\"fxaa_extreme\""}}}},
+                         true));
+  rows.push_back(Toggle("MOTION BLUR", "disable_motion_blur", false, true));
+  rows.push_back(Toggle("DEPTH OF FIELD", "disable_depth_of_field", false, true));
+  auto note = RestartNote(rows);
+  return std::make_unique<MenuScreen>("GRAPHICS", std::move(rows), std::move(note));
+}
+
+std::unique_ptr<MenuScreen> SettingsPages::Audio() {
+  std::vector<MenuRow> rows;
+  std::vector<Choice> volumes;
+  for (int volume = 0; volume <= 100; volume += 10) {
+    volumes.push_back({std::to_string(volume), {{"pinyon_shift_master_volume",
+                                                 std::to_string(volume)}}});
+  }
+  rows.push_back(Setting("MASTER VOLUME", std::move(volumes), false));
+  rows.push_back(Toggle("MUTE", "audio_mute"));
+  return std::make_unique<MenuScreen>("AUDIO", std::move(rows));
+}
+
+std::unique_ptr<MenuScreen> SettingsPages::Controls() {
+  std::vector<MenuRow> rows;
+  rows.push_back(Toggle("MOUSE AND KEYBOARD", "mnk_mode"));
+  // The keys each pad control maps to in mouse-and-keyboard mode. Editing
+  // them is NP-6.1.
+  const std::pair<const char*, const char*> binds[] = {
+      {"A", "keybind_a"},
+      {"B", "keybind_b"},
+      {"X", "keybind_x"},
+      {"Y", "keybind_y"},
+      {"LEFT TRIGGER", "keybind_left_trigger"},
+      {"RIGHT TRIGGER", "keybind_right_trigger"},
+      {"LEFT BUMPER", "keybind_left_shoulder"},
+      {"RIGHT BUMPER", "keybind_right_shoulder"},
+      {"STEER LEFT", "keybind_lstick_left"},
+      {"STEER RIGHT", "keybind_lstick_right"},
+      {"BACK", "keybind_back"},
+      {"START", "keybind_start"},
+  };
+  for (const auto& [label, name] : binds) {
+    MenuRow row;
+    row.label = label;
+    row.value = [this, name = std::string(name)] {
+      std::string keys = Upper(Saved(name));
+      for (size_t at = keys.find(','); at != std::string::npos; at = keys.find(',', at + 3)) {
+        keys.replace(at, 1, " / ");
+      }
+      return keys.empty() ? std::string("NONE") : keys;
+    };
+    rows.push_back(std::move(row));
+  }
+  return std::make_unique<MenuScreen>("CONTROLS", std::move(rows));
+}
+
+std::unique_ptr<MenuScreen> SettingsPages::Profile() {
+  // Placeholders until NP-5 brings the gamertag, picture and language.
+  std::vector<MenuRow> rows(2);
+  rows[0].label = "GAMERTAG";
+  rows[0].value = [] { return std::string("USER"); };
+  rows[0].enabled = [] { return false; };
+  rows[1].label = "LANGUAGE";
+  rows[1].value = [] { return std::string("ENGLISH"); };
+  rows[1].enabled = [] { return false; };
+  return std::make_unique<MenuScreen>("PROFILE", std::move(rows),
+                                      [] { return std::string("PROFILE SETTINGS ARRIVE IN A LATER UPDATE"); });
+}
+
+std::unique_ptr<MenuScreen> SettingsPages::Root() {
+  std::vector<MenuRow> rows;
+  MenuRow resume;
+  resume.label = "RESUME";
+  resume.activate = [self = shared_from_this()] { self->host_ui_.Close(); };
+  rows.push_back(std::move(resume));
+  rows.push_back(Page("DISPLAY", &SettingsPages::Display));
+  rows.push_back(Page("GRAPHICS", &SettingsPages::Graphics));
+  rows.push_back(Page("AUDIO", &SettingsPages::Audio));
+  rows.push_back(Page("CONTROLS", &SettingsPages::Controls));
+  rows.push_back(Page("PROFILE", &SettingsPages::Profile));
+  return std::make_unique<MenuScreen>("SETTINGS", std::move(rows));
+}
+
+}  // namespace
+
+std::unique_ptr<hostui::MenuScreen> CreateSettingsMenu(hostui::HostUi& host_ui,
+                                                       config::HostConfig& config) {
+  if (!config.Load()) {
+    REXLOG_ERROR("Settings: cannot read {}; changes will not be saved", config.path().string());
+  }
+  return std::make_shared<SettingsPages>(host_ui, config)->Root();
+}
+
+void ApplyMasterVolume() {
+  const int volume = std::clamp(REXCVAR_GET(pinyon_shift_master_volume), 0, 100);
+  // Squared so equal steps sound roughly even.
+  const float linear = float(volume) / 100.0f;
+  rex::audio::SetOutputGain(linear * linear);
+}
+
+}  // namespace pinyon_shift::ui

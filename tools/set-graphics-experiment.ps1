@@ -34,6 +34,7 @@ $resolvedStateRoot = if ($StateRoot) {
 $configDirectory = Join-Path $resolvedStateRoot 'config'
 $configPath = Join-Path $configDirectory 'pinyon_shift.toml'
 $backupDirectory = Join-Path $configDirectory 'backups'
+. (Join-Path $PSScriptRoot 'host-config.ps1')
 
 function Get-DefaultConfigText {
     @'
@@ -131,57 +132,11 @@ $retiredSettings = @(
     'zpd_end_fallback'
 )
 
-function New-ConfigBackup {
-    if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { return $null }
-    [void](New-Item -ItemType Directory -Force -Path $backupDirectory)
-    $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
-    $destination = Join-Path $backupDirectory "pinyon_shift-$stamp.toml"
-    Copy-Item -LiteralPath $configPath -Destination $destination
-    $destination
-}
-
 function Get-SchemaVersion([string]$Text) {
     $match = [regex]::Match($Text,
         '(?m)^\s*pinyon_shift_config_schema\s*=\s*(?<value>[0-9]+)\s*(?:#.*)?$')
     if (-not $match.Success) { throw 'The host configuration has no schema version.' }
     [int]$match.Groups['value'].Value
-}
-
-function Set-TomlValue([string]$Text, [string]$Name, [string]$Value) {
-    $pattern = '(?m)^\s*' + [regex]::Escape($Name) + '\s*=.*$'
-    $replacement = "$Name = $Value"
-    if ([regex]::IsMatch($Text, $pattern)) {
-        return [regex]::Replace($Text, $pattern, $replacement, 1)
-    }
-    $trimmed = $Text.TrimEnd("`r", "`n")
-    "$trimmed`r`n$replacement`r`n"
-}
-
-function Remove-TomlValue([string]$Text, [string]$Name) {
-    [regex]::Replace(
-        $Text,
-        '(?m)^\s*' + [regex]::Escape($Name) + '\s*=.*(?:\r?\n|$)',
-        '')
-}
-
-function Get-TomlValue([string]$Text, [string]$Name, [string]$Default) {
-    $pattern = '(?m)^\s*' + [regex]::Escape($Name) + '\s*=\s*(?<value>[^#\r\n]+)'
-    $match = [regex]::Match($Text, $pattern)
-    if ($match.Success) { return $match.Groups['value'].Value.Trim().Trim('"') }
-    $Default
-}
-
-function Write-Config([string]$Text) {
-    [void](New-Item -ItemType Directory -Force -Path $configDirectory)
-    $temporary = "$configPath.tmp"
-    try {
-        [IO.File]::WriteAllText($temporary, $Text.TrimEnd("`r", "`n") + [Environment]::NewLine,
-            [Text.UTF8Encoding]::new($false))
-        Move-Item -LiteralPath $temporary -Destination $configPath -Force
-    }
-    finally {
-        if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force }
-    }
 }
 
 function Get-SettingsResult([string]$Text, [string]$BackupPath, [string]$Operation) {
@@ -235,9 +190,9 @@ switch ($Action) {
         if ($schema -lt 1 -or $schema -gt 25) { throw "Unsupported host configuration schema: $schema" }
     }
     'Reset' {
-        $backup = New-ConfigBackup
+        $backup = New-HostConfigBackup $configPath
         $text = Get-DefaultConfigText
-        Write-Config $text
+        Write-HostConfig $configPath $text
     }
     'Restore' {
         if (-not (Test-Path -LiteralPath $backupDirectory -PathType Container)) {
@@ -246,11 +201,11 @@ switch ($Action) {
         $source = Get-ChildItem -LiteralPath $backupDirectory -Filter 'pinyon_shift-*.toml' -File |
             Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
         if ($null -eq $source) { throw 'No runtime-settings backup is available.' }
-        $backup = New-ConfigBackup
+        $backup = New-HostConfigBackup $configPath
         $text = Get-Content -LiteralPath $source.FullName -Raw
         $schema = Get-SchemaVersion $text
         if ($schema -lt 1 -or $schema -gt 25) { throw "Backup uses unsupported schema: $schema" }
-        Write-Config $text
+        Write-HostConfig $configPath $text
     }
     'Apply' {
         $text = if (Test-Path -LiteralPath $configPath -PathType Leaf) {
@@ -258,7 +213,7 @@ switch ($Action) {
         } else { Get-DefaultConfigText }
         $schema = Get-SchemaVersion $text
         if ($schema -lt 1 -or $schema -gt 25) { throw "Unsupported host configuration schema: $schema" }
-        $backup = New-ConfigBackup
+        $backup = New-HostConfigBackup $configPath
         foreach ($retired in $retiredSettings) {
             $text = Remove-TomlValue $text $retired
         }
@@ -289,7 +244,7 @@ switch ($Action) {
         $text = Set-TomlValue $text 'pinyon_shift_fh1_render_fps_limit' ([string]$RenderFps)
         $text = Set-TomlValue $text 'host_present_sleep_spin' 'true'
         $text = Set-TomlValue $text 'clear_memory_page_state' 'true'
-        Write-Config $text
+        Write-HostConfig $configPath $text
     }
 }
 

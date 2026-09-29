@@ -5,6 +5,9 @@
 
 #include <rex/rex_app.h>
 
+namespace pinyon_shift::config {
+class HostConfig;
+}
 namespace pinyon_shift::hostui {
 class HostUi;
 }
@@ -43,4 +46,6 @@ class PinyonShiftApp final : public rex::ReXApp {
   // Created on first use: the presenter and input system it needs exist only
   // after runtime setup.
   std::unique_ptr<pinyon_shift::hostui::HostUi> host_ui_;
+  // The settings file the in-game settings screen edits.
+  std::unique_ptr<pinyon_shift::config::HostConfig> host_config_;
 };

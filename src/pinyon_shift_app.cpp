@@ -28,9 +28,10 @@
 #include "native_renderer/shader_capture.h"
 #include "pinyon_shift_diagnostics.h"
 #include "pinyon_shift_runtime_hooks.h"
-#include "ui/game_menu.h"
+#include "config/host_config.h"
 #include "ui/host_style.h"
 #include "ui/hostui/host_ui.h"
+#include "ui/settings_menu.h"
 
 #include <cstdio>
 
@@ -332,6 +333,7 @@ void PinyonShiftApp::OnConfigurePaths(rex::PathConfig& paths) {
   paths.update_data_root = state_root / "update";
   paths.cache_root = state_root / "cache";
   paths.config_path = state_root / "config" / "pinyon_shift.toml";
+  host_config_ = std::make_unique<pinyon_shift::config::HostConfig>(paths.config_path);
 
   bool config_created = false;
   bool config_migrated = false;
@@ -495,12 +497,20 @@ void PinyonShiftApp::ToggleGameMenu() {
         *this, *presenter, *immediate_drawer(), *window(),
         static_cast<rex::input::InputSystem*>(runtime()->input_system()), game_data_root());
   }
-  host_ui_->Open(pinyon_shift::ui::CreateGameMenu(*host_ui_));
+  if (!host_config_) {
+    REXLOG_WARN("Host UI: the settings file is not known yet");
+    return;
+  }
+  host_ui_->Open(pinyon_shift::ui::CreateSettingsMenu(*host_ui_, *host_config_));
 }
 
 void PinyonShiftApp::OnPostSetup() {
   rex::ui::RegisterBind("bind_game_menu", "F6", "Open the in-game settings menu",
                         [this] { ToggleGameMenu(); });
+  pinyon_shift::ui::ApplyMasterVolume();
+  rex::cvar::RegisterChangeCallback(
+      "pinyon_shift_master_volume",
+      [](std::string_view, std::string_view) { pinyon_shift::ui::ApplyMasterVolume(); });
   pinyon_shift::diagnostics::RefreshCrashReporter();
   rex::kernel::xboxkrnl::SetGuestFileOpenObserver(&PinyonShiftObserveGuestFileOpen);
   pinyon_shift::native_renderer::InstallGuestOutputRenderer(

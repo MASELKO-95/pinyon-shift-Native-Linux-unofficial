@@ -458,8 +458,9 @@ void HostUi::Draw(rex::ui::UIDrawContext& context) {
     const float label_width =
         DrawText(Face::kDisplay, kRowSize, row.label, kRowsLeft, baseline, label_color);
     if (row.restart_required) {
+      const bool pending = row.restart_pending && row.restart_pending();
       DrawText(Face::kLabel, kBadgeSize, "RESTART", kRowsLeft + label_width + 16.0f,
-               baseline - 12.0f, kOrange);
+               baseline - 12.0f, pending ? kOrange : kDisabled);
     }
     if (row.value) {
       const std::string value = row.value();
@@ -476,6 +477,12 @@ void HostUi::Draw(rex::ui::UIDrawContext& context) {
                             canvas_.y + top * canvas_.scale,
                             canvas_.x + (row_right + 36.0f) * canvas_.scale,
                             canvas_.y + (top + kRowPitch) * canvas_.scale};
+  }
+
+  const std::string note = screen.note();
+  if (!note.empty()) {
+    const float note_top = kRowsTop + float(std::min(rows.size(), kVisibleRows)) * kRowPitch;
+    DrawText(Face::kLabel, kValueSize, note, kRowsLeft, note_top + 44.0f, kOrange);
   }
 
   // Button help bar.

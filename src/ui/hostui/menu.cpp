@@ -4,8 +4,9 @@
 
 namespace pinyon_shift::hostui {
 
-MenuScreen::MenuScreen(std::string title, std::vector<MenuRow> rows)
-    : title_(std::move(title)), rows_(std::move(rows)) {
+MenuScreen::MenuScreen(std::string title, std::vector<MenuRow> rows,
+                       std::function<std::string()> note)
+    : title_(std::move(title)), rows_(std::move(rows)), note_(std::move(note)) {
   for (size_t i = 0; i < rows_.size(); ++i) {
     if (rows_[i].is_enabled()) {
       focus_ = i;

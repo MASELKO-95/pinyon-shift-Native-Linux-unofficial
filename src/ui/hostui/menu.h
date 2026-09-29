@@ -27,17 +27,22 @@ struct MenuRow {
   std::function<void(int direction)> adjust;
   std::function<void()> activate;
   std::function<bool()> enabled;
-  // The change takes effect after a restart; the screen shows a badge.
+  // The change takes effect after a restart; the screen shows a badge,
+  // highlighted while `restart_pending` reports a saved change not yet live.
   bool restart_required = false;
+  std::function<bool()> restart_pending;
 
   bool is_enabled() const { return !enabled || enabled(); }
 };
 
 class MenuScreen {
  public:
-  MenuScreen(std::string title, std::vector<MenuRow> rows);
+  MenuScreen(std::string title, std::vector<MenuRow> rows,
+             std::function<std::string()> note = nullptr);
 
   const std::string& title() const { return title_; }
+  // A line shown under the rows, or empty.
+  std::string note() const { return note_ ? note_() : std::string(); }
   const std::vector<MenuRow>& rows() const { return rows_; }
   size_t focus() const { return focus_; }
   // Moves the focus to `index` if that row is enabled.
@@ -52,6 +57,7 @@ class MenuScreen {
  private:
   std::string title_;
   std::vector<MenuRow> rows_;
+  std::function<std::string()> note_;
   size_t focus_ = 0;
 };
 

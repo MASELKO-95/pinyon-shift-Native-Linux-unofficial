@@ -242,12 +242,12 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         required = {
             "build-preview.ps1", "create-crash-report.ps1", "install-build-tools.ps1", "launch-preview.ps1",
             "prepare-rexglue.ps1", "provision-toolchain.ps1", "release-common.ps1",
-            "set-graphics-experiment.ps1", "setup-preview.ps1", "verify-codegen-log.ps1",
-            "verify-game.ps1",
+            "host-config.ps1", "set-graphics-experiment.ps1", "setup-preview.ps1",
+            "verify-codegen-log.ps1", "verify-game.ps1",
         }
         self.assertTrue(required.issubset({p.name for p in (ROOT / "tools").glob("*.ps1")}))
         package_script = (ROOT / "tools/package-launcher.ps1").read_text(encoding="utf-8")
-        for shipped in ("set-graphics-experiment.ps1", "verify-codegen-log.ps1"):
+        for shipped in ("host-config.ps1", "set-graphics-experiment.ps1", "verify-codegen-log.ps1"):
             self.assertIn(shipped, package_script)
 
     def test_native_tools_use_the_configured_sdk_and_ship_their_sources(self):
