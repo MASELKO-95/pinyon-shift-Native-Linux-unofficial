@@ -118,7 +118,17 @@ class SettingsPages : public std::enable_shared_from_this<SettingsPages> {
   std::unique_ptr<MenuScreen> Backups();
   std::unique_ptr<MenuScreen> ControllerButtons();
   std::unique_ptr<MenuScreen> Mods();
+  std::unique_ptr<MenuScreen> Cheats();
   std::unique_ptr<MenuScreen> ModActions();
+
+ public:
+  std::unique_ptr<MenuScreen> Trainer();
+
+ private:
+  std::unique_ptr<MenuScreen> TrainerWorld();
+  std::unique_ptr<MenuScreen> TrainerVehicle();
+  std::unique_ptr<MenuScreen> TrainerGraphics();
+  std::unique_ptr<MenuScreen> TrainerDebug();
   std::unique_ptr<MenuScreen> ConfirmRestore(std::string slot);
   static constexpr size_t kMaxGamertag = 15;
 
@@ -418,6 +428,68 @@ std::unique_ptr<MenuScreen> SettingsPages::ModActions() {
   return std::make_unique<MenuScreen>("MOD ACTIONS", std::move(rows));
 }
 
+std::unique_ptr<MenuScreen> SettingsPages::Cheats() {
+  std::vector<MenuRow> rows;
+  rows.push_back(Toggle("TRAINER", "pinyon_shift_cheats", true));
+  return std::make_unique<MenuScreen>("CHEATS", std::move(rows), [] {
+    return std::string("F10 OPENS THE TRAINER; CHEATS PLAY THE SEPARATE MODDED PROFILE");
+  });
+}
+
+std::unique_ptr<MenuScreen> SettingsPages::Trainer() {
+  std::vector<MenuRow> rows;
+  MenuRow resume;
+  resume.label = "RESUME";
+  resume.activate = [self = shared_from_this()] { self->host_ui_.Close(); };
+  rows.push_back(std::move(resume));
+  rows.push_back(Page("WORLD", &SettingsPages::TrainerWorld));
+  rows.push_back(Page("VEHICLE", &SettingsPages::TrainerVehicle));
+  rows.push_back(Page("GRAPHICS", &SettingsPages::TrainerGraphics));
+  rows.push_back(Page("DEBUG", &SettingsPages::TrainerDebug));
+  return std::make_unique<MenuScreen>("TRAINER", std::move(rows), [] {
+    return std::string("MODDED PROFILE: YOUR OWN SAVE IS NOT TOUCHED");
+  });
+}
+
+std::unique_ptr<MenuScreen> SettingsPages::TrainerWorld() {
+  std::vector<MenuRow> rows;
+  std::vector<Choice> speeds;
+  for (const char* value : {"0.25", "0.5", "0.75", "1.0", "1.25", "1.5", "2.0"}) {
+    speeds.push_back({std::string(value) + "X", {{"cheat_time_scale", value}}});
+  }
+  rows.push_back(Setting("GAME SPEED", std::move(speeds), false));
+  return std::make_unique<MenuScreen>("WORLD", std::move(rows));
+}
+
+std::unique_ptr<MenuScreen> SettingsPages::TrainerVehicle() {
+  // The pose the project hooks is the car's presentation transform; freezing
+  // or moving the car needs the physics body, which is still to be located.
+  std::vector<MenuRow> rows(2);
+  rows[0].label = "FREEZE POSITION";
+  rows[0].value = [] { return std::string("NOT YET"); };
+  rows[0].enabled = [] { return false; };
+  rows[1].label = "TELEPORT";
+  rows[1].value = [] { return std::string("NOT YET"); };
+  rows[1].enabled = [] { return false; };
+  return std::make_unique<MenuScreen>("VEHICLE", std::move(rows), [] {
+    return std::string("NEEDS THE CAR'S PHYSICS BODY, STILL TO BE FOUND");
+  });
+}
+
+std::unique_ptr<MenuScreen> SettingsPages::TrainerGraphics() {
+  std::vector<MenuRow> rows;
+  rows.push_back(Toggle("MOTION BLUR", "disable_motion_blur", false, true));
+  rows.push_back(Toggle("DEPTH OF FIELD", "disable_depth_of_field", false, true));
+  rows.push_back(Toggle("TRILINEAR FILTERING", "force_trilinear_filtering"));
+  return std::make_unique<MenuScreen>("GRAPHICS", std::move(rows));
+}
+
+std::unique_ptr<MenuScreen> SettingsPages::TrainerDebug() {
+  std::vector<MenuRow> rows;
+  rows.push_back(Toggle("LOG FILE OPENS", "fh1_render_test_log_file_opens"));
+  return std::make_unique<MenuScreen>("DEBUG", std::move(rows));
+}
+
 std::unique_ptr<MenuScreen> SettingsPages::Controls() {
   std::vector<MenuRow> rows;
   MenuRow controller;
@@ -651,6 +723,7 @@ std::unique_ptr<MenuScreen> SettingsPages::Root() {
   rows.push_back(Page("AUDIO", &SettingsPages::Audio));
   rows.push_back(Page("CONTROLS", &SettingsPages::Controls));
   rows.push_back(Page("PROFILE", &SettingsPages::Profile));
+  rows.push_back(Page("CHEATS", &SettingsPages::Cheats));
   if (!pinyon_shift::mod::MenuActions().empty()) {
     rows.push_back(Page("MOD ACTIONS", &SettingsPages::ModActions));
   }
@@ -680,6 +753,14 @@ std::unique_ptr<hostui::MenuScreen> CreateSettingsMenu(hostui::HostUi& host_ui,
     REXLOG_ERROR("Settings: cannot read {}; changes will not be saved", config.path().string());
   }
   return std::make_shared<SettingsPages>(host_ui, config, std::move(services))->Root();
+}
+
+std::unique_ptr<hostui::MenuScreen> CreateTrainerMenu(hostui::HostUi& host_ui,
+                                                      config::HostConfig& config) {
+  if (!config.Load()) {
+    REXLOG_ERROR("Trainer: cannot read {}; changes will not be saved", config.path().string());
+  }
+  return std::make_shared<SettingsPages>(host_ui, config, SettingsServices{})->Trainer();
 }
 
 void ApplyMasterVolume() {

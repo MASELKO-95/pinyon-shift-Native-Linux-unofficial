@@ -24,6 +24,7 @@ if(WIN32)
         src/pinyon_shift_diagnostics.cpp
         src/pinyon_shift_runtime_hooks.cpp
         src/save_backups.cpp
+        src/cheats.cpp
         src/mod/mod_host.cpp
         src/mod/overlay_device.cpp
         src/ui/fh1_ui_api.cpp
@@ -52,6 +53,7 @@ else()
         src/pinyon_shift_diagnostics.cpp
         src/pinyon_shift_runtime_hooks.cpp
         src/save_backups.cpp
+        src/cheats.cpp
         src/mod/mod_host.cpp
         src/mod/overlay_device.cpp
         src/ui/fh1_ui_api.cpp

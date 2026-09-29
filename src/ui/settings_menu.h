@@ -30,6 +30,12 @@ std::unique_ptr<hostui::MenuScreen> CreateSettingsMenu(hostui::HostUi& host_ui,
                                                        config::HostConfig& config,
                                                        SettingsServices services = {});
 
+// The trainer (NP-8.2): World, Vehicle, Graphics and Debug pages, opened
+// with F10 while cheats are on. Changes apply at once and are saved; each is
+// logged as cheat.changed.
+std::unique_ptr<hostui::MenuScreen> CreateTrainerMenu(hostui::HostUi& host_ui,
+                                                      config::HostConfig& config);
+
 // Master volume, 0 to 100, applied to the output mix.
 void ApplyMasterVolume();
 

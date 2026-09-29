@@ -25,6 +25,7 @@
 #include <rex/system/xmemory.h>
 #include <rex/ui/keybinds.h>
 
+#include "cheats.h"
 #include "config/host_config.h"
 #include "pinyon_shift_diagnostics.h"
 
@@ -625,9 +626,9 @@ void RecordSave(uint32_t body_address, uint32_t body_size) {
             "}";
   }
   const std::string json = fmt::format(
-      "{{\"schema\":1,\"mods\":[{}],\"mod_set\":\"{}\",\"cheats\":[],"
+      "{{\"schema\":1,\"mods\":[{}],\"mod_set\":\"{}\",\"cheats\":{},"
       "\"body_size\":{},\"body_fnv1a64\":\"{:016X}\"}}\n",
-      mods, ModSetHash(), body_size, Fnv1a(body, body_size));
+      mods, ModSetHash(), JsonString(cheats::Active()), body_size, Fnv1a(body, body_size));
   std::error_code error;
   std::filesystem::create_directories(g_modded_user_root, error);
   const auto path = g_modded_user_root / "pinyon_shift_mods.json";

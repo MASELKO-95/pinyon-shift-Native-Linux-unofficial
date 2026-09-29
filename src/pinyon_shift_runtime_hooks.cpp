@@ -27,6 +27,7 @@
 #include "pinyon_shift_diagnostics.h"
 #include "fh1_render_test.h"
 #include "pinyon_shift_runtime_hooks.h"
+#include "cheats.h"
 #include "mod/mod_host.h"
 #include "ui/fh1_ui_api.h"
 
@@ -4017,10 +4018,15 @@ void PinyonShiftTraceFrameTelemetry(PPCRegister& r28, PPCRegister& r31) {
 }
 
 void PinyonShiftObserveSimulationDelta(PPCRegister& f31) {
-  const double seconds = f31.f64;
+  double seconds = f31.f64;
   if (!std::isfinite(seconds) || seconds < 0.0 || seconds > 0.25) {
     PROFILE_SIMULATION_DELTA_INVALID();
     return;
+  }
+  // The trainer's game speed (NP-8.1) scales the delta the title stores.
+  if (const double scale = pinyon_shift::cheats::TimeScale(); scale != 1.0) {
+    seconds *= scale;
+    f31.f64 = seconds;
   }
   PROFILE_SIMULATION_TIME_NS(
       static_cast<int64_t>(std::llround(seconds * 1'000'000'000.0)));

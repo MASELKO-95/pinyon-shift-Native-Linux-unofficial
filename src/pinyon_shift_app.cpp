@@ -33,6 +33,7 @@
 #include "config/host_config.h"
 #include "ui/host_style.h"
 #include "ui/hostui/host_ui.h"
+#include "cheats.h"
 #include "mod/mod_host.h"
 #include "mod/overlay_device.h"
 #include "save_backups.h"
@@ -374,10 +375,13 @@ void PinyonShiftApp::OnConfigurePaths(rex::PathConfig& paths) {
                                                  state_root / "backups" / "saves");
   // Mods play a separate profile (NP-7.5), started from a copy of the
   // player's own the first time, so the unmodded save is never touched.
+  // Cheats may come from the command line as well as the config file.
+  bool cheats = pinyon_shift::cheats::Requested();
   if (host_config_->Load()) {
     enabled_mods_ = host_config_->Get("enabled_mods").value_or("");
+    cheats = cheats || host_config_->Get("pinyon_shift_cheats").value_or("false") == "true";
   }
-  if (!enabled_mods_.empty()) {
+  if (!enabled_mods_.empty() || cheats) {
     const auto modded = state_root / "user-modded";
     std::error_code error;
     if (!std::filesystem::exists(modded, error) &&
@@ -388,6 +392,7 @@ void PinyonShiftApp::OnConfigurePaths(rex::PathConfig& paths) {
     }
     paths.user_data_root = modded;
     pinyon_shift::mod::SetModdedProfile(modded);
+    pinyon_shift::cheats::SetProfileIsolated();
   }
 
   bool config_created = false;
@@ -605,6 +610,17 @@ void PinyonShiftApp::OpenSettingsMenu() {
 void PinyonShiftApp::OnPostSetup() {
   rex::ui::RegisterBind("bind_game_menu", "F6", "Open the in-game settings menu",
                         [this] { ToggleGameMenu(); });
+  pinyon_shift::cheats::InstallChangeLog();
+  rex::ui::RegisterBind("bind_trainer", "F10", "Open the trainer (cheats on)", [this] {
+    if (!pinyon_shift::cheats::Enabled()) {
+      return;
+    }
+    if (host_ui_ && host_ui_->is_open()) {
+      host_ui_->Close();
+    } else if (EnsureHostUi() && host_config_) {
+      host_ui_->Open(pinyon_shift::ui::CreateTrainerMenu(*host_ui_, *host_config_));
+    }
+  });
   rex::ui::RegisterBind("bind_photo", "F8", "Save the current frame as a PNG photo", [this] {
     pinyon_shift::ui::SavePhoto(runtime() && runtime()->graphics_system()
                                     ? runtime()->graphics_system()->presenter()
@@ -776,6 +792,7 @@ void PinyonShiftApp::OnShutdown() {
   rex::ui::UnregisterBind("bind_game_menu");
   rex::ui::UnregisterBind("bind_fullscreen");
   rex::ui::UnregisterBind("bind_photo");
+  rex::ui::UnregisterBind("bind_trainer");
   pinyon_shift::ui::WaitForPhoto();
   PinyonShiftSetPauseSettingsHandler(nullptr);
   rex::cvar::UnregisterChangeCallbacks("d3d12_allow_variable_refresh_rate_and_tearing");
