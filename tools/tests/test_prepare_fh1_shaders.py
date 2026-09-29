@@ -56,7 +56,7 @@ $cache = Join-Path $work 'strict-state/cache'
 [void][IO.Directory]::CreateDirectory((Join-Path $cache 'shaders/shareable'))
 [IO.File]::WriteAllText((Join-Path $cache 'fh1-native-shaders-v2.bin'), 'analysis')
 if ($env:PINYON_TEST_FAIL -eq '1') { throw 'simulated producer interruption' }
-foreach ($file in @('fh1-gpu-prewarm-v3.txt', 'fh1-native-pipelines-v1.bin', 'shaders/shareable/test.pnsp')) {
+foreach ($file in @('fh1-gpu-prewarm-v3.txt', 'fh1-native-pipelines-v1.bin', "shaders/shareable/test-$Scale.pnsp")) {
     [IO.File]::WriteAllText((Join-Path $cache $file), 'validated artifact')
 }
 '{"result":"shaders-validated"}' | Set-Content (Join-Path $work 'production.json')
@@ -147,6 +147,17 @@ function Get-Process { return $null }
             run()
             self.assertEqual(calls()[-1], "2+misses")
             self.assertEqual(len(calls()), 8)
+            # Preparing every scale stages the other scales' packs too, once,
+            # and keeps the chosen scale's set active (NP-4.7).
+            config.write_text("draw_resolution_scale_x = 2\ndraw_resolution_scale_y = 2\n"
+                              "pinyon_shift_prepare_all_scales = true\n")
+            run()
+            self.assertEqual(calls()[8:], ["1+misses", "3+misses", "4+misses"])
+            for scale in (1, 2, 3, 4):
+                self.assertTrue((state / f"cache/shaders/shareable/test-{scale}.pnsp").is_file())
+            self.assertIn("test-2.pnsp", active.read_text())
+            run()
+            self.assertEqual(len(calls()), 11)
 
 
 

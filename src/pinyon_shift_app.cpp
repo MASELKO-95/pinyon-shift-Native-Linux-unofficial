@@ -68,6 +68,10 @@ REXCVAR_DEFINE_BOOL(pinyon_shift_host_xam_dialogs, true, "Pinyon Shift",
                     "Draw the title's message boxes and keyboard with the host UI (the game's "
                     "fonts, pad navigation) instead of the built-in ImGui dialogs")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+REXCVAR_DEFINE_BOOL(pinyon_shift_prepare_all_scales, false, "Pinyon Shift",
+                    "Graphics preparation also prepares the shader packs of the other "
+                    "resolution scales, so RESOLUTION SCALE changes in game without a restart")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 REXCVAR_DEFINE_BOOL(pinyon_shift_capture_performance, true, "Pinyon Shift",
                     "Capture lightweight per-frame performance counters to a session CSV");
 namespace {
@@ -595,6 +599,10 @@ void PinyonShiftApp::OpenSettingsMenu() {
   };
   services.save_backups = save_backups_.get();
   services.mods_root = pinyon_shift::diagnostics::StateRoot() / "mods";
+  services.draw_resolution_scale = [this]() -> uint32_t {
+    auto* graphics = runtime() ? runtime()->graphics_system() : nullptr;
+    return graphics ? graphics->draw_resolution_scale() : 0;
+  };
   host_ui_->Open(pinyon_shift::ui::CreateSettingsMenu(*host_ui_, *host_config_, services));
 }
 

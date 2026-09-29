@@ -20,8 +20,11 @@ executable.
 The FH1 native renderer is the only renderer. It executes every draw, clear,
 resolve and swap the game issues, in order, with the game's original shaders
 from an offline shader pack produced on your machine; the Xenos-emulating
-D3D12 renderer has been removed. Internal resolution scales 1x, 2x and 3x are
-supported; any other scale fails graphics setup. If the game uses a shader the
+D3D12 renderer has been removed. Internal resolution scales 1x to 4x are
+supported; any other scale fails graphics setup. SETTINGS > GRAPHICS >
+RESOLUTION SCALE changes the scale in game when that scale's shader pack is
+already prepared (PREPARE ALL SCALES prepares them all), and at the next start
+otherwise. If the game uses a shader the
 pack lacks, the draw is skipped and the shader is recorded, and the next launch
 prepares the pack again to include it. Lower hardware requirements and AMD and
 Intel GPUs remain unqualified.

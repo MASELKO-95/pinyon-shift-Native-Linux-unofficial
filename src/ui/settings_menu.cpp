@@ -290,7 +290,19 @@ std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
     scales.push_back({value + "X",
                       {{"draw_resolution_scale_x", value}, {"draw_resolution_scale_y", value}}});
   }
-  rows.push_back(Setting("RESOLUTION SCALE", std::move(scales), true));
+  if (services_.draw_resolution_scale) {
+    // D3D12 switches between frames to a scale with a prepared shader pack.
+    MenuRow row = Setting("RESOLUTION SCALE", std::move(scales), false);
+    row.restart_pending = [this] {
+      return std::to_string(services_.draw_resolution_scale()) !=
+             Unquote(Saved("draw_resolution_scale_x"));
+    };
+    rows.push_back(std::move(row));
+  } else {
+    rows.push_back(Setting("RESOLUTION SCALE", std::move(scales), true));
+  }
+  // Read by graphics preparation before the next start.
+  rows.push_back(Toggle("PREPARE ALL SCALES", "pinyon_shift_prepare_all_scales", true));
   // anisotropic_override holds the Xenos filter: 3, 4 and 5 are 4x, 8x, 16x.
   rows.push_back(Setting("ANISOTROPIC FILTERING",
                          {{"4X", {{"anisotropic_override", "3"}}},

@@ -55,8 +55,8 @@ runtime log from `.local/preview/logs`.
 
 ## Graphics setup fails with a resolution scale error
 
-The renderer supports internal resolution scales of 1x, 2x and 3x only, with
-the same value horizontally and vertically. Any other `draw_resolution_scale_x`
+The renderer supports internal resolution scales of 1x, 2x, 3x and 4x only,
+with the same value horizontally and vertically. Any other `draw_resolution_scale_x`
 or `draw_resolution_scale_y` in `.local/preview/config/pinyon_shift.toml`
 stops graphics setup with an error that names the requested scale. Choose a
 supported scale in the launcher, or remove the file to reset runtime settings.

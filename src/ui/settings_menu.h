@@ -24,6 +24,10 @@ struct SettingsServices {
   SaveBackups* save_backups = nullptr;
   // <state>/mods: the MODS page lists its folders; no page when empty.
   std::filesystem::path mods_root;
+  // The draw resolution scale the renderer uses (0 when unknown). With it,
+  // RESOLUTION SCALE applies at once and asks for a restart only when the
+  // renderer could not switch (Vulkan, or no shader pack for that scale).
+  std::function<uint32_t()> draw_resolution_scale;
 };
 
 std::unique_ptr<hostui::MenuScreen> CreateSettingsMenu(hostui::HostUi& host_ui,

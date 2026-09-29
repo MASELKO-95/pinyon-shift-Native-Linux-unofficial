@@ -111,6 +111,9 @@ can drive host-drawn screens that the scripted controller cannot reach (the
 F6 settings screen, the F8 photo). Keys are `f6`, `f8`, `enter`, `escape`,
 `up`, `down`, `left`, `right` and `space`; each press records
 `fh1.render_test.hostkey`.
+`cvar <frame> <name> <value>` sets a flag at `<frame>` on the UI thread, as a
+settings change does, and records `fh1.render_test.cvar`; `fh1-scale-switch`
+uses it to switch the resolution scale at run time.
 `hostclick <frame> <left|right> <x> <y>` moves the pointer and clicks at
 `(x, y)` in the title's 1280x720 layout space, mapped onto the painted guest
 output, which is the space the host UI lays its rows out in. The host UI
@@ -169,6 +172,8 @@ The committed scenarios cover:
 - `fh1-photo-mode.fh1test`: enter and leave FH1 photo mode; and
 - `fh1-source-60.fh1test`: sustained driving with a real distinct-frame gate;
   and
+- `fh1-scale-switch.fh1test`: free roam switched from 1x to 2x and back at
+  run time (stage both packs with two `--shader-pack` arguments); and
 - `fh1-hfr-modes-control.fh1test` / `fh1-hfr-modes-unlocked.fh1test`: paired
   wall-time free-roam, SELECT-map, pause, and resume qualification; and
 - `fh1-race.fh1test`: event entry, car/start menus, live race HUD, and motion

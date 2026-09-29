@@ -775,8 +775,10 @@ void HostUi::DrawMenu(rex::ui::UIDrawContext& context) {
     const uint32_t label_color = !enabled ? kDisabled : (focused ? kWhite : kDimWhite);
     const float label_width =
         DrawText(Face::kDisplay, kRowSize, row.label, kRowsLeft, baseline, label_color);
-    if (row.restart_required) {
-      const bool pending = row.restart_pending && row.restart_pending();
+    // Rows that usually apply at once show the badge only while a change
+    // still waits for a restart.
+    const bool pending = row.restart_pending && row.restart_pending();
+    if (row.restart_required || pending) {
       DrawText(Face::kLabel, kBadgeSize, "RESTART", kRowsLeft + label_width + 16.0f,
                baseline - 12.0f, pending ? kOrange : kDisabled);
     }

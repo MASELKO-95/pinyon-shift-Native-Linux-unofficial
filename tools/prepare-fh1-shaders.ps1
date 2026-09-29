@@ -82,6 +82,9 @@ try {
             if ($match.Success) { $settings[$name] = $match.Groups[1].Value.Trim().ToLowerInvariant() }
         }
     }
+    # Not a key input: whether the other scales are prepared as well.
+    $prepareAllScales = (Test-Path -LiteralPath $config) -and [regex]::IsMatch(
+        (Get-Content -LiteralPath $config -Raw), '(?m)^\s*pinyon_shift_prepare_all_scales\s*=\s*true\b')
     $scale = [int]$settings.draw_resolution_scale_x
     if ($scale -lt 1 -or $scale -gt 4 -or [int]$settings.draw_resolution_scale_y -ne $scale) {
         throw 'Choose a matching 1x, 2x, 3x or 4x graphics resolution before preparing shaders.'
@@ -146,58 +149,97 @@ try {
         Get-ChildItem -LiteralPath $missDirectory -Filter '*.bin' | Sort-Object Name
     })
     foreach ($miss in $misses) { $inputs.files["miss/$($miss.Name)"] = (Get-FileHash -LiteralPath $miss.FullName).Hash }
-    $sha = [Security.Cryptography.SHA256]::Create()
-    try { $key = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes(
-        ($inputs | ConvertTo-Json -Depth 6 -Compress))))).Replace('-', '') }
-    finally { $sha.Dispose() }
-    $activePath = Join-Path $cache 'fh1-artifacts.json'
-    if (Test-ArtifactSet (Read-Receipt $activePath) $cache $key) {
-        Write-PinyonEvent shaders 100 'Graphics are ready.' -JsonEvents:$JsonEvents
-        return
+    function Get-InputKey($Inputs) {
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try { return ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes(
+            ($Inputs | ConvertTo-Json -Depth 6 -Compress))))).Replace('-', '') }
+        finally { $sha.Dispose() }
     }
 
-    Write-PinyonEvent shaders 0 "Preparing graphics for ${scale}x. This only runs when needed." -JsonEvents:$JsonEvents
-    $indexPath = Join-Path $root ".local/native-renderer/managed/$key.json"
-    $ready = Read-Receipt $indexPath
-    $sourceCache = $null
-    if ($null -ne $ready) {
-        try { $sourceCache = Resolve-PinyonLocalPath -RelativePath $ready.source_cache }
-        catch { $sourceCache = $null }
-    }
-    if (-not $sourceCache -or -not (Test-ArtifactSet $ready $sourceCache $key)) {
-        $relativeWork = '.local/native-renderer/managed/run-' + [Guid]::NewGuid().ToString('N')
-        $work = Resolve-PinyonLocalPath -RelativePath $relativeWork
-        & (Join-Path $PSScriptRoot 'produce-fh1-artifacts.ps1') -WorkRoot $relativeWork `
-            -RenderTestScript (Join-Path $root 'config/render-tests/fh1-shader-preparation.fh1test') `
-            -GameRoot $GameRoot -BuildDirectory $BuildDirectory -RuntimeConfig $config -Scale $scale -Hidden -IncludeOpeningMovies `
-            -AllowPipelineDiscovery -SeedShaderCacheRoot $(if ($seedLegacyCache) { $legacyShaderCache }) `
-            -ShaderMissDir $(if ($misses.Count) { $missDirectory }) -JsonEvents:$JsonEvents |
-            ForEach-Object { if ($_ -is [string] -and $_.StartsWith('::pinyon::')) { Write-Output $_ } }
-        $report = Read-Receipt (Join-Path $work 'production.json')
-        if ($null -eq $report -or $report.result -ne 'shaders-validated') { throw 'Graphics preparation did not finish validation.' }
-        $sourceCache = Join-Path $work 'strict-state/cache'
-        $packs = @(Get-ChildItem -LiteralPath (Join-Path $sourceCache 'shaders/shareable') -Filter '*.pnsp')
-        if ($packs.Count -ne 1) { throw 'Graphics preparation did not produce exactly one shader pack.' }
-        $files = @('fh1-gpu-prewarm-v3.txt', 'fh1-native-shaders-v2.bin', 'fh1-native-pipelines-v1.bin',
-            ('shaders/shareable/' + $packs[0].Name))
-        $ready = [ordered]@{ schema_version = 1; key = $key; source_cache = "$relativeWork/strict-state/cache"; files = @(
-            foreach ($relative in $files) { [ordered]@{ path = $relative; sha256 = (Get-FileHash -LiteralPath (Join-Path $sourceCache $relative)).Hash } }
-        ) }
-        Write-AtomicJson $indexPath $ready
+    # Leaves the validated artifact set for $Scale (keyed $Key) in
+    # $script:prepared, producing it first unless the managed store has it.
+    function Invoke-Preparation($Scale, $Key) {
+        $indexPath = Join-Path $root ".local/native-renderer/managed/$Key.json"
+        $ready = Read-Receipt $indexPath
+        $sourceCache = $null
+        if ($null -ne $ready) {
+            try { $sourceCache = Resolve-PinyonLocalPath -RelativePath $ready.source_cache }
+            catch { $sourceCache = $null }
+        }
+        if (-not $sourceCache -or -not (Test-ArtifactSet $ready $sourceCache $Key)) {
+            $relativeWork = '.local/native-renderer/managed/run-' + [Guid]::NewGuid().ToString('N')
+            $work = Resolve-PinyonLocalPath -RelativePath $relativeWork
+            & (Join-Path $PSScriptRoot 'produce-fh1-artifacts.ps1') -WorkRoot $relativeWork `
+                -RenderTestScript (Join-Path $root 'config/render-tests/fh1-shader-preparation.fh1test') `
+                -GameRoot $GameRoot -BuildDirectory $BuildDirectory -RuntimeConfig $config -Scale $Scale -Hidden -IncludeOpeningMovies `
+                -AllowPipelineDiscovery -SeedShaderCacheRoot $(if ($seedLegacyCache) { $legacyShaderCache }) `
+                -ShaderMissDir $(if ($misses.Count) { $missDirectory }) -JsonEvents:$JsonEvents |
+                ForEach-Object { if ($_ -is [string] -and $_.StartsWith('::pinyon::')) { Write-Output $_ } }
+            $report = Read-Receipt (Join-Path $work 'production.json')
+            if ($null -eq $report -or $report.result -ne 'shaders-validated') { throw 'Graphics preparation did not finish validation.' }
+            $sourceCache = Join-Path $work 'strict-state/cache'
+            $packs = @(Get-ChildItem -LiteralPath (Join-Path $sourceCache 'shaders/shareable') -Filter '*.pnsp')
+            if ($packs.Count -ne 1) { throw 'Graphics preparation did not produce exactly one shader pack.' }
+            $files = @('fh1-gpu-prewarm-v3.txt', 'fh1-native-shaders-v2.bin', 'fh1-native-pipelines-v1.bin',
+                ('shaders/shareable/' + $packs[0].Name))
+            $ready = [ordered]@{ schema_version = 1; key = $Key; source_cache = "$relativeWork/strict-state/cache"; files = @(
+                foreach ($relative in $files) { [ordered]@{ path = $relative; sha256 = (Get-FileHash -LiteralPath (Join-Path $sourceCache $relative)).Hash } }
+            ) }
+            Write-AtomicJson $indexPath $ready
+        }
+        $script:prepared = @{ ready = $ready; source = $sourceCache }
     }
 
-    # Commit the receipt last. An interrupted activation is never accepted as
-    # ready; the next launch restages the already validated set automatically.
-    foreach ($file in $ready.files) {
-        $source = Join-Path $sourceCache $file.path
-        $destination = Join-Path $cache $file.path
+    # Copies a validated file into the cache; a copy that fails its hash is
+    # never moved into place.
+    function Copy-PreparedFile($SourceCache, $File) {
+        $source = Join-Path $SourceCache $File.path
+        $destination = Join-Path $cache $File.path
         [void][IO.Directory]::CreateDirectory((Split-Path $destination -Parent))
         $temporary = "$destination.$([Guid]::NewGuid().ToString('N')).tmp"
         [IO.File]::Copy($source, $temporary)
-        if ((Get-FileHash -LiteralPath $temporary).Hash -ne $file.sha256) { throw 'Prepared graphics failed the integrity check.' }
+        if ((Get-FileHash -LiteralPath $temporary).Hash -ne $File.sha256) { throw 'Prepared graphics failed the integrity check.' }
         Move-IntoPlace $temporary $destination
     }
-    if (-not (Test-ArtifactSet $ready $cache $key)) { throw 'Graphics activation failed validation.' }
-    Write-AtomicJson $activePath $ready
+
+    $key = Get-InputKey $inputs
+    $activePath = Join-Path $cache 'fh1-artifacts.json'
+    if (-not (Test-ArtifactSet (Read-Receipt $activePath) $cache $key)) {
+        Write-PinyonEvent shaders 0 "Preparing graphics for ${scale}x. This only runs when needed." -JsonEvents:$JsonEvents
+        Invoke-Preparation $scale $key
+        # Commit the receipt last. An interrupted activation is never accepted as
+        # ready; the next launch restages the already validated set automatically.
+        foreach ($file in $script:prepared.ready.files) { Copy-PreparedFile $script:prepared.source $file }
+        if (-not (Test-ArtifactSet $script:prepared.ready $cache $key)) { throw 'Graphics activation failed validation.' }
+        Write-AtomicJson $activePath $script:prepared.ready
+    }
+
+    # With pinyon_shift_prepare_all_scales, the other scales' packs are
+    # prepared too (each keyed as if it were the chosen scale) and staged next
+    # to the active one, so RESOLUTION SCALE switches in game without a
+    # restart (NP-4.7). Packs of scales prepared earlier stay in the cache.
+    if ($prepareAllScales) {
+        foreach ($extra in @(1..4 | Where-Object { $_ -ne $scale })) {
+            $inputs.scale = $extra
+            $settings.draw_resolution_scale_x = "$extra"
+            $settings.draw_resolution_scale_y = "$extra"
+            $extraKey = Get-InputKey $inputs
+            $inputs.scale = $scale
+            $settings.draw_resolution_scale_x = "$scale"
+            $settings.draw_resolution_scale_y = "$scale"
+            $staged = Read-Receipt (Join-Path $root ".local/native-renderer/managed/$extraKey.json")
+            $stagedPack = @(if ($null -ne $staged) { $staged.files | Where-Object { $_.path -like 'shaders/shareable/*.pnsp' } })
+            if ($stagedPack.Count -eq 1) {
+                $path = Join-Path $cache $stagedPack[0].path
+                if ((Test-Path -LiteralPath $path -PathType Leaf) -and
+                    (Get-FileHash -LiteralPath $path).Hash -eq $stagedPack[0].sha256) { continue }
+            }
+            Write-PinyonEvent shaders 0 "Preparing graphics for ${extra}x as well, so the scale can change in game." -JsonEvents:$JsonEvents
+            Invoke-Preparation $extra $extraKey
+            foreach ($file in @($script:prepared.ready.files | Where-Object { $_.path -like 'shaders/shareable/*.pnsp' })) {
+                Copy-PreparedFile $script:prepared.source $file
+            }
+        }
+    }
     Write-PinyonEvent shaders 100 'Graphics are ready.' -JsonEvents:$JsonEvents
 } finally { $lock.Dispose() }
