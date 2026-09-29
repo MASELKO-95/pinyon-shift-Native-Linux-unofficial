@@ -519,6 +519,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         command += ["-Configuration", args.configuration]
     if args.game_root:
         command += ["-GameRoot", str(args.game_root.resolve())]
+    if args.build_directory:
+        command += ["-BuildDirectory", str(args.build_directory.resolve())]
     if args.hidden:
         command.append("-Hidden")
     if args.collect_pass_inventory:
@@ -843,6 +845,10 @@ def main() -> int:
     parser.add_argument(
         "--game-root", type=Path,
         help="game files to run instead of .local/game/base (e.g. a link mirror)",
+    )
+    parser.add_argument(
+        "--build-directory", type=Path,
+        help="directory holding pinyon_shift.exe (e.g. a saved control build for an A/B)",
     )
     parser.add_argument("--game-argument", action="append", default=[])
     args = parser.parse_args()
