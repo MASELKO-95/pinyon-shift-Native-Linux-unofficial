@@ -28,3 +28,20 @@ jobs:
         run: dotnet build launcher/PinyonShift.Launcher/PinyonShift.Launcher.csproj -c Release
       - name: Check launcher behavior
         run: python tools/check-launcher.py
+
+  host-tests:
+    # The C++ host tests and the sample mod, built without game files
+    # (PINYON_SHIFT_HOST_TESTS_ONLY): nothing from the disc is needed.
+    if: github.event.repository.visibility == 'public'
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - name: Provision the pinned toolchain
+        shell: powershell
+        run: .\tools\provision-toolchain.ps1
+      - name: Build and run the host tests
+        shell: powershell
+        run: .\tools\ci-host-tests.ps1

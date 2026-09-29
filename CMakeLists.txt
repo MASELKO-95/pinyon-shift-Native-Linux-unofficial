@@ -16,7 +16,9 @@ endif()
 
 include(cmake/PinyonShiftRexGlue.cmake)
 
-if(WIN32)
+if(PINYON_SHIFT_HOST_TESTS_ONLY)
+    # No game target; the tests and tools below still build.
+elseif(WIN32)
     add_executable(pinyon_shift WIN32
         src/main.cpp
         src/fh1_render_test.cpp
@@ -116,6 +118,22 @@ add_executable(pinyon_shift_host_config_tests EXCLUDE_FROM_ALL
 )
 target_include_directories(pinyon_shift_host_config_tests PRIVATE src)
 
+add_executable(pinyon_shift_profile_body_tests EXCLUDE_FROM_ALL
+    tests/save/profile_body_test.cpp
+    src/save/profile_body.cpp
+)
+target_include_directories(pinyon_shift_profile_body_tests PRIVATE src)
+
+# Every host-side test, for CI (PINYON_SHIFT_HOST_TESTS_ONLY) and local runs.
+add_custom_target(pinyon_shift_host_tests)
+add_dependencies(pinyon_shift_host_tests
+    pinyon_shift_fh1_ui_api_tests
+    pinyon_shift_fh1_shader_pack_tests
+    pinyon_shift_hostui_tests
+    pinyon_shift_host_config_tests
+    pinyon_shift_profile_body_tests
+    pinyon_shift_mod_hello_telemetry)
+
 add_executable(pinyon_shift_fh1_archive_extract EXCLUDE_FROM_ALL
     tools/fh1_archive_extract.cpp
     src/ui/hostui/fh1_archive.cpp
@@ -138,6 +156,7 @@ target_include_directories(pinyon_shift_fh1_archive_extract PRIVATE
     src ${REXSDK_DIR}/include)
 target_link_libraries(pinyon_shift_fh1_archive_extract PRIVATE rex::runtime)
 
+if(NOT PINYON_SHIFT_HOST_TESTS_ONLY)
 pinyon_shift_attach_rexglue(pinyon_shift)
 
 # ReXGlue's SDL backend loads project overrides from the executable directory.
@@ -159,6 +178,7 @@ endif()
 target_include_directories(pinyon_shift PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${REXSDK_DIR}/thirdparty/tomlplusplus/include)
+endif()  # NOT PINYON_SHIFT_HOST_TESTS_ONLY
 
 # Sample mods (NP-7.6): plain C libraries against include/pinyon_mod.h. Not
 # part of the default build; tools/install-sample-mod.py copies one into a

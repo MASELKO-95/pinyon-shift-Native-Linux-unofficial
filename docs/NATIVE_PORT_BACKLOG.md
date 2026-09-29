@@ -501,11 +501,14 @@ within an agreed margin of the Windows 1x baseline on comparable hardware.
 
 ## NP-X Quality and tooling (ongoing)
 
-- **CI compiles C++.** Build `rexruntime`, `rexgpu-fh1` and the four
-  excluded test targets on Windows and, after NP-12.1, Linux; no game data is
-  needed for them. Run `pinyon_shift_fh1_ui_api_tests`,
-  `pinyon_shift_fh1_pass_tracker_tests` (or delete with NP-0.5),
-  `pinyon_shift_fh1_shader_pack_tests` and `pinyon_shift_fh1_execution_key_tests`.
+- **CI compiles C++.** **Windows done**: `PINYON_SHIFT_HOST_TESTS_ONLY`
+  configures without generated game code, and `tools/ci-host-tests.ps1` builds
+  `pinyon_shift_host_tests` (the SDK runtime, the UI API, host UI, host config
+  and profile-body tests, the shader-pack test and the sample mod) and runs
+  the tests that need no game data; the `host-tests` CI job runs it after
+  provisioning the pinned toolchain. Locally: all pass. The pass-tracker and
+  execution-key tests went with NP-0.5; Linux follows NP-12.1. The job's
+  first run on GitHub happens with the next push.
 - **Performance gate.** Keep the three-by-three A/B protocol manual on the
   baseline machine until a fixed CI machine exists; publish the baseline
   summary JSON with every train.

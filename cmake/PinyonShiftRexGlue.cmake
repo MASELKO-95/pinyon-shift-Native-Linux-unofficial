@@ -18,6 +18,10 @@ option(PINYON_SHIFT_TRACE_IMPORTS
     "Record first-use guest import reachability diagnostics" ON)
 option(PINYON_SHIFT_FROZEN_CODEGEN
     "Use an existing generated snapshot without invoking the code generator" OFF)
+# CI has no game, so no generated code: configure only the SDK runtime and
+# the host-side tests and tools, which need neither.
+option(PINYON_SHIFT_HOST_TESTS_ONLY
+    "Configure only host-side tests and tools, without generated game code" OFF)
 option(PINYON_SHIFT_RECOMP_IPO
     "Enable interprocedural optimization for generated game code and host" OFF)
 set(PINYON_SHIFT_RECOMP_PGO "OFF" CACHE STRING "Recomp PGO mode: OFF, GENERATE, USE")
@@ -88,7 +92,7 @@ if(REXSDK_DIR)
     add_subdirectory("${REXSDK_DIR}" rexglue-sdk EXCLUDE_FROM_ALL)
     set(PINYON_SHIFT_REXGLUE_CODEGEN
         "${REXSDK_DIR}/out/win-amd64/Release/rexglue.exe")
-    if(NOT EXISTS "${PINYON_SHIFT_REXGLUE_CODEGEN}")
+    if(NOT EXISTS "${PINYON_SHIFT_REXGLUE_CODEGEN}" AND NOT PINYON_SHIFT_HOST_TESTS_ONLY)
         message(FATAL_ERROR
             "The standalone ReXGlue generator is missing. Run tools/build-preview.ps1 "
             "so it can build the pinned generator before configuring the consumer.")
@@ -128,6 +132,7 @@ set(PINYON_SHIFT_CODEGEN_LOG
     "${CMAKE_CURRENT_SOURCE_DIR}/.local/logs/codegen.log"
     CACHE FILEPATH "ReXGlue code-generation log")
 
+if(NOT PINYON_SHIFT_HOST_TESTS_ONLY)
 if(NOT EXISTS "${PINYON_SHIFT_GENERATED_DIR}/sources.cmake")
     message(FATAL_ERROR
         "Local generated source is missing. Run the Pinyon Shift launcher or "
@@ -214,6 +219,7 @@ else()
     endif()
     add_custom_target(pinyon_shift_codegen)
 endif()
+endif()  # NOT PINYON_SHIFT_HOST_TESTS_ONLY
 
 function(pinyon_shift_attach_rexglue target_name)
     if(PINYON_SHIFT_RECOMP_PGO STREQUAL "GENERATE")
@@ -297,9 +303,11 @@ function(pinyon_shift_add_generated_module target_name generated_directory gener
     rexglue_configure_module_target(${target_name} HOST ${REXGLUE_HOST_TARGET})
 endfunction()
 
-pinyon_shift_add_generated_module(
-    pinyon_shift_SpeechFacade_default speech
-    "${PINYON_SHIFT_SPEECH_GENERATED_SOURCES}")
-pinyon_shift_add_generated_module(
-    pinyon_shift_XMediaFacade_default xmedia
-    "${PINYON_SHIFT_XMEDIA_GENERATED_SOURCES}")
+if(NOT PINYON_SHIFT_HOST_TESTS_ONLY)
+    pinyon_shift_add_generated_module(
+        pinyon_shift_SpeechFacade_default speech
+        "${PINYON_SHIFT_SPEECH_GENERATED_SOURCES}")
+    pinyon_shift_add_generated_module(
+        pinyon_shift_XMediaFacade_default xmedia
+        "${PINYON_SHIFT_XMEDIA_GENERATED_SOURCES}")
+endif()
