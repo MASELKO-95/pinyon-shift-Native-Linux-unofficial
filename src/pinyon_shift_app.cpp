@@ -20,11 +20,13 @@
 #include <rex/system/kernel_state.h>
 #include <rex/system/xthread.h>
 #include <rex/ui/flags.h>
+#include <rex/ui/window.h>
 
 #include "native_renderer/guest_output_renderer.h"
 #include "native_renderer/shader_capture.h"
 #include "pinyon_shift_diagnostics.h"
 #include "pinyon_shift_runtime_hooks.h"
+#include "ui/host_style.h"
 
 #include <cstdio>
 
@@ -379,6 +381,18 @@ std::optional<rex::PathConfig> PinyonShiftApp::OnFinalizePaths(
         {{"hz", std::to_string(mode.dmDisplayFrequency)}});
   }
   return defaults;
+}
+
+void PinyonShiftApp::OnConfigureFonts(ImFontAtlas* atlas) {
+  float dpi_scale = 1.0f;
+  if (const rex::ui::Window* host_window = window()) {
+    dpi_scale = float(host_window->GetDpi()) / float(host_window->GetMediumDpi());
+  }
+  pinyon_shift::ui::ConfigureHostFonts(atlas, dpi_scale);
+}
+
+void PinyonShiftApp::OnConfigureStyle(ImGuiStyle& imgui_style, rex::ui::Style& ui_style) {
+  pinyon_shift::ui::ConfigureHostStyle(imgui_style, ui_style);
 }
 
 void PinyonShiftApp::OnPostInitLogging() {

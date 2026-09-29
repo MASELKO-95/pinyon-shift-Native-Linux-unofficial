@@ -24,6 +24,7 @@ if(WIN32)
         src/pinyon_shift_diagnostics.cpp
         src/pinyon_shift_runtime_hooks.cpp
         src/ui/fh1_ui_api.cpp
+        src/ui/host_style.cpp
         src/native_renderer/graphics_hooks.cpp
         src/native_renderer/guest_output_renderer.cpp
         src/native_renderer/shader_capture.cpp
@@ -36,6 +37,7 @@ else()
         src/pinyon_shift_diagnostics.cpp
         src/pinyon_shift_runtime_hooks.cpp
         src/ui/fh1_ui_api.cpp
+        src/ui/host_style.cpp
         src/native_renderer/graphics_hooks.cpp
         src/native_renderer/guest_output_renderer.cpp
         src/native_renderer/shader_capture.cpp

@@ -18,6 +18,8 @@ class PinyonShiftApp final : public rex::ReXApp {
       const rex::PathConfig& defaults,
       std::function<void(rex::PathConfig)> resume) override;
   void OnPostInitLogging() override;
+  void OnConfigureFonts(ImFontAtlas* atlas) override;
+  void OnConfigureStyle(ImGuiStyle& imgui_style, rex::ui::Style& ui_style) override;
   void OnPreSetup(rex::RuntimeConfig& config) override;
   void OnPostLoadXexImage() override;
   void OnPostSetup() override;
