@@ -89,7 +89,13 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         include = package.split("$include = @(", 1)[1].split("\n)", 1)[0]
         paths = re.findall(r"'([^']+)'", include)
         cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
-        sources = re.findall(r"^\s*((?:src|tests|tools)/[^\s)]+)", cmake, re.MULTILINE)
+        sources = re.findall(r"^\s*((?:src|tests|tools|mods_src)/[^\s)]+)", cmake, re.MULTILINE)
+        # Include directories the build needs.
+        sources += ["include/pinyon_mod.h"]
+        # Scripts the packaged launcher runs.
+        launch = (ROOT / "tools/launch-preview.ps1").read_text(encoding="utf-8")
+        sources += ["tools/" + name for name in
+                    re.findall(r"Join-Path \$PSScriptRoot '([^'.][^']*)'", launch)]
         self.assertTrue(sources)
         for source in sources:
             self.assertTrue((ROOT / source).is_file(), source)
