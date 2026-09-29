@@ -103,7 +103,7 @@ def build(corpus: Path | list[Path], output: Path,
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("corpus", type=Path)
+    parser.add_argument("corpus", type=Path, nargs="?")
     parser.add_argument("output", type=Path)
     parser.add_argument("--merge", type=Path, action="append", default=[])
     parser.add_argument("--legacy-cache", type=Path)
@@ -114,7 +114,8 @@ def main() -> None:
     if args.all_stored_pipelines and not args.legacy_cache:
         parser.error("--all-stored-pipelines requires --legacy-cache")
     extra = stored_pipelines(args.legacy_cache) if args.all_stored_pipelines else set()
-    pipelines, draws, copies = build([args.corpus, *args.merge], args.output, extra)
+    sources = [*([args.corpus] if args.corpus else []), *args.merge]
+    pipelines, draws, copies = build(sources, args.output, extra)
     if args.legacy_cache:
         stage_native_catalog(args.legacy_cache, args.output, args.output.parent)
     print(f"pipelines={pipelines} draws={draws} copies={copies}")

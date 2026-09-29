@@ -9,7 +9,10 @@
 #include <rex/ppc/context.h>
 #include <rex/system/interfaces/graphics.h>
 
-#include "native_renderer/fh1_gpu_corpus.h"
+REXCVAR_DEFINE_BOOL(pinyon_shift_fh1_gpu_corpus, false, "Pinyon Shift",
+                    "Sample native GPU pass and texture-request timings every 60 frames "
+                    "(read by the D3D12 command processor)")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 namespace pinyon_shift::native_renderer {
 namespace {
@@ -29,21 +32,6 @@ thread_local int64_t title_first_packet_ns = 0;
 thread_local int64_t title_last_packet_ns = 0;
 
 }  // namespace
-
-void InstallGraphicsCensus(rex::system::IGraphicsSystem* graphics_system,
-                           rex::memory::Memory*) {
-  if (!graphics_system) {
-    return;
-  }
-  // The FH1 native executor produces no draw or copy observations; the
-  // corpus keeps its reset/flush lifecycle and file output.
-  ResetFh1GpuCorpus();
-}
-
-void UninstallGraphicsCensus(rex::system::IGraphicsSystem* graphics_system) {
-  (void)graphics_system;
-  FlushFh1GpuCorpus();
-}
 
 }  // namespace pinyon_shift::native_renderer
 

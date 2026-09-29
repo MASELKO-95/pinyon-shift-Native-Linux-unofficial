@@ -110,7 +110,7 @@ try {
     $graphicsSources.AddRange([string[]]@(
         "$sdk/include/rex/graphics/pipeline/render_target/psi_color_format.h",
         "$sdk/include/rex/graphics/pipeline_util.h", "$sdk/include/rex/graphics/register_table.inc",
-        'src/native_renderer/fh1_gpu_corpus.cpp', 'src/native_renderer/shader_capture.cpp'
+        'src/native_renderer/shader_capture.cpp'
     ))
     foreach ($relative in @($graphicsSources | Sort-Object -Unique -CaseSensitive)) {
         $inputs.files[$relative] = (Get-FileHash -LiteralPath (Join-Path $root $relative)).Hash

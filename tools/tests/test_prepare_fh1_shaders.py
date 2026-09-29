@@ -1,6 +1,7 @@
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import tempfile
@@ -38,7 +39,7 @@ class ShaderPreparationTests(unittest.TestCase):
                 "tools/extract-fh1-shader-corpus.py", "tools/build-fh1-gpu-prewarm.py",
                 "tools/fh1_archive_extract.cpp",
                 "tools/native-shader-pack.py",
-                "src/native_renderer/fh1_gpu_corpus.cpp", "src/native_renderer/shader_capture.cpp",
+                "src/native_renderer/shader_capture.cpp",
                 *GRAPHICS_SOURCES,
             ):
                 target = root / path
@@ -146,6 +147,25 @@ function Get-Process { return $null }
             run()
             self.assertEqual(calls()[-1], "2+misses")
             self.assertEqual(len(calls()), 8)
+
+
+
+class ShaderPreparationKeyInputTests(unittest.TestCase):
+    def test_every_hashed_repository_file_exists(self):
+        # A deleted key input would make every real preparation fail.
+        script = (ROOT / "tools/prepare-fh1-shaders.ps1").read_text(encoding="utf-8")
+        start = script.index("'config/release-toolchain.json'")
+        end = script.index("$legacyShaderCache")
+        section = script[start:end]
+        names = re.findall(r"'((?:config|tools|src)/[^'$]+)'", section)
+        names += [f"{SDK}/{name}" for name in re.findall(r'"\$sdk/([^"$]+)"', section)]
+        sdk_block = section[section.index("'d3d12/fh1_shader_pack'"):
+                            section.index("$graphicsSources.AddRange")]
+        for name in re.findall(r"'([a-z0-9_/]+)'", sdk_block):
+            names += [f"{SDK}/include/rex/graphics/{name}.h", f"{SDK}/src/graphics/{name}.cpp"]
+        missing = [name for name in names if not (ROOT / name).exists()]
+        self.assertGreater(len(names), 30)
+        self.assertEqual(missing, [])
 
 
 if __name__ == "__main__":

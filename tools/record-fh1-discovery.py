@@ -4,7 +4,6 @@ import csv
 import ctypes as ct
 from ctypes import wintypes as wt
 import datetime as dt
-import importlib.util
 import json
 import math
 import os
@@ -97,24 +96,6 @@ def summarize(rows, start, end, first_row):
                     'native_gpu_timing_drops')})
 
 
-def coverage_snapshot(data, ranking, previous_pairs):
-    ranked = ranking.rank_families(data)
-    pairs = {(r['vertex_shader'], r['pixel_shader']) for r in ranked['pairs']}
-    coverage = dict(utc=utc(), unique_keys=data['unique_keys'],
-        observation_frame_stride=data.get('observation_frame_stride', 1),
-        unique_passes=data['unique_passes'], shader_pairs=len(pairs),
-        new_pairs_since_checkpoint=sorted(pairs - previous_pairs),
-        pass_collisions=data.get('pass_collisions'),
-        detailed_inventory_status=('incomplete' if data.get('overflow') or
-                                   data.get('collisions') else 'complete_for_observed_keys'),
-        detailed_overflow=data.get('overflow'),
-        family_inventory_status=ranked['status'],
-        family_overflow=ranked.get('overflow', 0), source=ranked['source'],
-        status='latest checkpoint')
-    ranked['checkpoint_utc'] = coverage['utc']
-    return ranked, coverage, pairs
-
-
 def write_report(output, windows, markers, status, warnings, coverage):
     worst = sorted(windows, key=lambda w: (w['p95_ms'], w['p99_ms']), reverse=True)[:20]
     report = dict(updated_utc=utc(), status=status, windows=len(windows),
@@ -168,7 +149,7 @@ def record(args):
     output.mkdir(parents=True, exist_ok=True)
     warnings = {'Coverage counts are not shader cost or proof of native renderer retirement.',
                 'Coverage samples one source frame in 60; brief effects can be missed. Counts are sampled, not whole-session totals.',
-                'Periodic coverage checkpoints and marked screenshots may introduce hitches.',
+                'Marked screenshots may introduce hitches.',
                 'Raw CSV stops at 512 MiB; sampled log archive stops at 256 MiB.',
                 'Recorder stops after 12 hours; the game is never stopped by the recorder.'}
     try:
@@ -187,9 +168,6 @@ def record(args):
     atomic_json(output / 'recorder.json', dict(pid=args.pid, thread_id=kernel.GetCurrentThreadId(), started_utc=utc(),
                 hotkeys=['Ctrl+Shift+F8: slowdown', 'Ctrl+Shift+F9: visual/timing'],
                 screenshots=ImageGrab is not None))
-    spec = importlib.util.spec_from_file_location('corpus_rank', Path(__file__).with_name('rank-fh1-gpu-corpus.py'))
-    ranking = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(ranking)
     csv_tail = Tail()
     header = None
     csv_path = None
@@ -210,12 +188,11 @@ def record(args):
     window_start = 0.0
     window_first = 0
     rows, windows, markers = [], [], []
-    coverage = {'status': 'waiting for first periodic checkpoint'}
-    corpus_stamp = None
-    previous_pairs = set()
+    # The native renderer records no GPU execution corpus (6b75238).
+    coverage = {'status': 'not recorded by the native renderer'}
     status = 'recording'
     files = {name: (output / (name + '.jsonl')).open('a', encoding='utf-8', buffering=1)
-             for name in ('windows', 'markers', 'process', 'coverage')}
+             for name in ('windows', 'markers', 'process')}
     archive = (output / 'samples.log').open('ab', buffering=65536)
     try:
         while True:
@@ -250,22 +227,6 @@ def record(args):
                         files['windows'].write(json.dumps(window) + '\n')
                         rows = []
                         window_start, window_first = elapsed, row_number
-                corpus = args.state_root / 'cache/fh1-gpu-corpus' / (session + '.json')
-                if corpus.exists() and corpus.stat().st_mtime_ns != corpus_stamp:
-                    snapshot_stamp = corpus.stat().st_mtime_ns
-                    try:
-                        data = json.loads(corpus.read_text(encoding='utf-8'))
-                        ranked, coverage, previous_pairs = coverage_snapshot(data, ranking, previous_pairs)
-                        if data.get('pass_collisions'):
-                            warnings.add('Corpus reports pass collisions; pass coverage is incomplete.')
-                        atomic_json(output / 'coverage-ranking.json', ranked)
-                        files['coverage'].write(json.dumps(coverage) + '\n')
-                    except (ValueError, OSError, KeyError, TypeError) as error:
-                        coverage = dict(utc=utc(), status='latest checkpoint unavailable', error=str(error))
-                        atomic_json(output / 'coverage-ranking.json', coverage)
-                        files['coverage'].write(json.dumps(coverage) + '\n')
-                        warnings.add('A coverage checkpoint was unreadable or incomplete; see latest coverage status.')
-                    corpus_stamp = snapshot_stamp
             # Preserve sampled timing lines before the existing bounded runtime log rotates.
             for path, stat in runtime_logs(args.state_root / 'logs'):
                 identity = (stat.st_dev, stat.st_ino)

@@ -106,9 +106,7 @@ if ($pack.entry_count -ne [int]$summary[0].entries -or
     throw 'The shader pack does not match the producer evidence or requested scale.'
 }
 $strictState = Join-Path $work 'strict-state'
-$corpora = @(Get-ChildItem (Join-Path $producerState 'cache/fh1-gpu-corpus') -Filter '*.json')
-if ($corpora.Count -ne 1) { throw 'Expected one producer execution corpus.' }
-& $python (Join-Path $PSScriptRoot 'build-fh1-gpu-prewarm.py') $corpora[0].FullName `
+& $python (Join-Path $PSScriptRoot 'build-fh1-gpu-prewarm.py') `
     (Join-Path $strictState 'cache/fh1-gpu-prewarm-v3.txt') --legacy-cache (Join-Path $producerState 'cache') `
     --all-stored-pipelines *> (Join-Path $work 'catalog.log')
 if ($LASTEXITCODE) { throw 'Startup catalog construction failed.' }

@@ -105,6 +105,10 @@ semantic tiled-pass ownership or a safe replacement boundary.
 
 ## Capture and inventory workflow
 
+The census scripts named in this section were deleted in NP-0.5; see
+[retired research tools](RESEARCH.md#retired-research-tools) to recover
+them.
+
 Run the default-off census through the normal preview launcher. With the
 installed save, the explicit command is:
 

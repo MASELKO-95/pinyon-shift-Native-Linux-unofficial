@@ -381,7 +381,7 @@ void InstallShaderCapture(rex::system::IGraphicsSystem *graphics_system) {
   if (!graphics_system || !IsCaptureRoot(root)) {
     diagnostics::RecordEvent(
         "native_renderer.shader_capture.failure",
-        {{"reason", "invalid_local_root"}, {"fallback", "xenos"}});
+        {{"reason", "invalid_local_root"}});
     return;
   }
   std::error_code error;
@@ -393,7 +393,7 @@ void InstallShaderCapture(rex::system::IGraphicsSystem *graphics_system) {
   if (error || !bytecode_file) {
     diagnostics::RecordEvent(
         "native_renderer.shader_capture.failure",
-        {{"reason", "create_directory_failed"}, {"fallback", "xenos"}});
+        {{"reason", "create_directory_failed"}});
     return;
   }
   {

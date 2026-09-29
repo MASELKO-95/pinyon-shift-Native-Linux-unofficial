@@ -174,6 +174,16 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         self.assertIn("function New-DeterministicZip", package_script)
         self.assertIn("FromUnixTimeSeconds", package_script)
 
+    def test_launch_preview_forwards_arguments_and_stages_prepared_shaders(self):
+        launch = (ROOT / "tools/launch-preview.ps1").read_text(encoding="utf-8")
+        self.assertIn("[string[]]$GameArguments = @()", launch)
+        self.assertIn("$normalizedGameArguments = @($GameArguments)", launch)
+        self.assertIn("$start.ArgumentList = $normalizedGameArguments", launch)
+        self.assertNotIn("pinyon_shift_fh1_require_precompiled_shaders", launch)
+        self.assertIn("prepare-fh1-shaders.ps1", launch)
+        self.assertNotIn("fh1-native-prewarm/cache", launch)
+        self.assertIn("native_pipeline_cache = $stagedNativePipelineCache", launch)
+
     def test_rexglue_downloads_retry_and_windows_skips_optional_libusb(self):
         prepare = (ROOT / "tools/prepare-rexglue.ps1").read_text(encoding="utf-8")
         build = (ROOT / "tools/build-preview.ps1").read_text(encoding="utf-8")
@@ -464,8 +474,11 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         self.assertIn("EndNativeGuestOutputGpuTimingFrame();", command_processor)
         self.assertNotIn("fh1_world_lit_native_draw", command_processor)
         self.assertNotIn("IsFh1WorldLitNativeActive", command_processor)
-        self.assertIn('\\"index_buffer_guest_base\\":{}', (
-            ROOT / "src/native_renderer/fh1_gpu_corpus.cpp"
+        # The GPU execution corpus recorded nothing once native became the
+        # only renderer and was removed with its key ABI (NP-0.5).
+        self.assertFalse((ROOT / "src/native_renderer/fh1_gpu_corpus.cpp").exists())
+        self.assertNotIn("GraphicsFh1ExecutionKey", (
+            sdk / "include/rex/system/interfaces/graphics.h"
         ).read_text(encoding="utf-8"))
         self.assertIn("kFh1GpuPassTimingCapacity = 512", (
             sdk / "include/rex/graphics/d3d12/command_processor.h"

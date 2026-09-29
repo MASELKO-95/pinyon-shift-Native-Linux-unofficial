@@ -253,6 +253,24 @@ These described machinery removed with the Xenos renderer. They stay in
 - [Rayman Origins study](archive/RAYMAN_NATIVE_RENDERER_RESEARCH_2026-09-25.md),
   the source of the native executor's architecture.
 
+## Retired research tools
+
+NP-0.5 deleted the research scripts that read log events, runtime controls
+or safety fields no current build produces, such as the renderer census
+cvar and `output_authority == "xenos"`. The retired areas are static-world,
+track, vehicle, visibility, semantic batching, dispatch discovery, command
+and producer lineage, and the Xenos-era census, pass publication, readback,
+suppression, shadow-caster and NR-02 contract tools with their RenderDoc
+exporters. 101 scripts (90 Python, 11 PowerShell), their 81 tests under
+`tools/tests` and the three census classifiers under `config/native-renderer`
+were removed. Recover any of them from the parent of the deletion commit
+with `git show 3970a6a:tools/<name>`, for example:
+
+```powershell
+git show 3970a6a:tools/summarize-native-renderer-visibility.py
+git show 3970a6a:tools/tests/test_native_renderer_visibility.py
+```
+
 ## Recovering exact historical evidence
 
 All 83 documents consolidated at `93742f2`, their per-run hashes, schemas,

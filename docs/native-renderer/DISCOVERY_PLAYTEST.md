@@ -9,14 +9,14 @@ sampled pass/texture timings. Per-frame CSV measurement continues on all frames.
 Brief effects can fall between coverage samples; repeated visits help. Coverage
 counts are sample counts and must not be reported as whole-session totals.
 
-Since the Xenos renderer was removed (`6b75238`), nothing feeds the GPU
-corpus or the sampled pass timings: they came from the Xenos draw and copy
-observers, which the native renderer does not have. On the current build
-the coverage files and pass records stay empty and the
-`fh1_discovery_sampling` setting no longer exists. Frame windows, process
-samples, markers and screenshots are unaffected. The corpus and pass
-descriptions below document the recorder's formats and the earlier
-sessions.
+Since the Xenos renderer was removed (`6b75238`), nothing fed the GPU
+corpus or the sampled pass records: they came from the Xenos draw and copy
+observers, which the native renderer does not have. NP-0.5 removed the
+corpus writer, its coverage files and `rank-fh1-gpu-corpus.py`; recordings
+from earlier sessions keep their files, and the recovery point is in
+[the research history](RESEARCH.md). Frame windows, process samples,
+markers and screenshots are unaffected, and `pinyon_shift_fh1_gpu_corpus`
+still enables the sampled native GPU timings.
 
 - **Ctrl+Shift+F8:** mark a slowdown.
 - **Ctrl+Shift+F9:** mark a visual or animation/timing problem.
@@ -50,30 +50,7 @@ Each launch creates `.local/native-renderer/discovery/<timestamp>/` containing:
   It is not calibrated to GPU timestamps and cannot be subtracted to compute GPU
   busy time. The existing ranker reports recording totals and spans crossing
   submissions when these fields are present; older logs remain supported.
-- `coverage.jsonl`, `coverage-ranking.json`: cumulative shader-pair coverage and
-  pairs first seen since the preceding checkpoint. This is novelty within the
-  session, not a comparison against every previous playtest.
 - `recorder-stats.json`: helper CPU time and archive sizes, updated every 30 seconds.
-
-The game writes a cumulative corpus snapshot every five minutes and on normal
-shutdown. The newest snapshot replaces the same session file under
-`cache/fh1-gpu-corpus`; a crash can lose coverage since the last checkpoint.
-Periodic snapshots do not finish/split the active pass or turn observation off.
-Both draw-key and pass maps are bounded at 65,536 entries. Overflow/collision
-reports mean coverage is incomplete; never treat these as full-game qualification.
-Shader-family coverage now uses a separate map of up to 4,096 vertex/pixel shader
-pairs. It keeps counting known pairs and discovering new pairs after the detailed
-key inventory fills. If the family map itself fills, its own overflow counter
-marks that inventory incomplete. These pairs do not distinguish specialization
-variants or establish resource/pass correctness.
-
-Reports distinguish the latest family inventory from detailed-key completeness.
-An unreadable/invalid snapshot replaces the current ranking with an explicit
-unavailable status, rather than continuing to present an old ranking as current.
-Older recordings lack the independent map and still require complete detailed
-keys to derive a reliable family ranking; missing past observations cannot be
-recovered by this change. The strict detailed-key ranking is unchanged; use
-`rank-fh1-gpu-corpus.py --families <snapshot>` for the independent family view.
 
 Reports update every 30 seconds and on game exit. JSONL streams and archived
 samples flush during recording. Markers include UTC and the latest CSV row/time;
@@ -112,12 +89,11 @@ cannot establish animation speed; follow up with motion/timing comparison.
 
 `python tools/record-fh1-discovery.py --self-test` checks partial-line handling,
 rotation identity rejection, frame-window calculations and report serialization.
-The ranking tests cover detailed overflow, family overflow, duplicate
-families, legacy rejection and successive checkpoint novelty. The compiled
+The compiled
 CSV-writer and family-coverage checks (`check-fh1-discovery-csv.py`,
 `check-fh1-family-coverage.py`) were removed with the other Xenos-era source
 checks in `327be88`.
 
-The automated smoke option `-RenderTestScript <script> -CheckpointSeconds 5`
+The automated smoke option `-RenderTestScript <script>`
 is for developer validation only. It uses the existing render-test runner and
 closes the game according to that script; do not use it for manual discovery.

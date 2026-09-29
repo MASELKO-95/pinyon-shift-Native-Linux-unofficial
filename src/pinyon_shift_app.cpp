@@ -21,7 +21,6 @@
 #include <rex/system/xthread.h>
 #include <rex/ui/flags.h>
 
-#include "native_renderer/graphics_hooks.h"
 #include "native_renderer/guest_output_renderer.h"
 #include "native_renderer/shader_capture.h"
 #include "pinyon_shift_diagnostics.h"
@@ -464,9 +463,6 @@ void PinyonShiftApp::OnPostSetup() {
   rex::kernel::xboxkrnl::SetGuestFileOpenObserver(&PinyonShiftObserveGuestFileOpen);
   pinyon_shift::native_renderer::InstallGuestOutputRenderer(
       runtime() ? runtime()->graphics_system() : nullptr);
-  pinyon_shift::native_renderer::InstallGraphicsCensus(
-      runtime() ? runtime()->graphics_system() : nullptr,
-      runtime() ? runtime()->memory() : nullptr);
   pinyon_shift::native_renderer::InstallShaderCapture(
       runtime() ? runtime()->graphics_system() : nullptr);
   pinyon_shift::diagnostics::RecordEvent(
@@ -508,8 +504,6 @@ bool PinyonShiftApp::OnWindowCloseRequested() {
   // clean qualification boundary before allowing the SDK to terminate.
   pinyon_shift::native_renderer::UninstallShaderCapture(
       runtime() ? runtime()->graphics_system() : nullptr);
-  pinyon_shift::native_renderer::UninstallGraphicsCensus(
-      runtime() ? runtime()->graphics_system() : nullptr);
   RecordShutdownOnce();
 #ifdef PINYON_SHIFT_PGO_GENERATE
   // The SDK's hard exit skips the executable's profile atexit handler.
@@ -525,8 +519,6 @@ void PinyonShiftApp::OnShutdown() {
   pinyon_shift::native_renderer::UninstallShaderCapture(
       runtime() ? runtime()->graphics_system() : nullptr);
   pinyon_shift::native_renderer::UninstallGuestOutputRenderer(
-      runtime() ? runtime()->graphics_system() : nullptr);
-  pinyon_shift::native_renderer::UninstallGraphicsCensus(
       runtime() ? runtime()->graphics_system() : nullptr);
   RecordShutdownOnce();
 }

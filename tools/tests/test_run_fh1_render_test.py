@@ -224,25 +224,6 @@ class Fh1RenderTestRunnerTests(unittest.TestCase):
                 30.0, MODULE.compare_capture_mae(output, "before", "after")
             )
 
-    def test_requires_complete_execution_corpus(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "corpus.json"
-            path.write_text(
-                json.dumps({
-                    "schema": "pinyon-shift.fh1-gpu-corpus.v3",
-                    "unique_keys": 3,
-                    "unique_passes": 2,
-                    "overflow": 0,
-                    "collisions": 0,
-                    "pass_collisions": 1,
-                }),
-                encoding="utf-8",
-            )
-            self.assertEqual(3, MODULE.load_corpus_summary(path)["unique_keys"])
-            path.write_text("{}", encoding="utf-8")
-            with self.assertRaisesRegex(RuntimeError, "invalid FH1 execution corpus"):
-                MODULE.load_corpus_summary(path)
-
     def test_rejects_nonzero_initial_input(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "test.fh1test"

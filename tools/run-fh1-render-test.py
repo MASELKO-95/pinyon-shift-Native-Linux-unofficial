@@ -397,29 +397,6 @@ def shader_capture_summary(
     return summary
 
 
-def load_corpus_summary(path: Path) -> dict[str, object]:
-    if not path.is_file():
-        raise RuntimeError(f"FH1 execution corpus was not written: {path}")
-    corpus = json.loads(path.read_text(encoding="utf-8"))
-    if corpus.get("schema") != "pinyon-shift.fh1-gpu-corpus.v3":
-        raise RuntimeError(f"invalid FH1 execution corpus: {path}")
-    if corpus.get("overflow") or corpus.get("collisions"):
-        raise RuntimeError(f"incomplete FH1 execution corpus: {path}")
-    return {
-        "path": str(path),
-        **{
-            name: corpus[name]
-            for name in (
-                "unique_keys",
-                "unique_passes",
-                "overflow",
-                "collisions",
-                "pass_collisions",
-            )
-        },
-    }
-
-
 def run(args: argparse.Namespace) -> dict[str, object]:
     scenario = args.scenario.resolve()
     state_root = args.state_root.resolve()
@@ -620,12 +597,6 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         key=lambda family: family["total_ns"],
         reverse=True,
     )
-    corpus = None
-    if args.collect_pass_inventory:
-        session = str(events[0].get("session"))
-        corpus = load_corpus_summary(
-            run_state_root / "cache" / "fh1-gpu-corpus" / f"{session}.json"
-        )
 
     image_results = []
     captured_by_key = {
@@ -787,7 +758,6 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "performance_log": str(perf_csv),
         "captures": image_results,
         "fh1_pass_families": pass_families,
-        "fh1_execution_corpus": corpus,
         "pass_inventory_enabled": args.collect_pass_inventory,
         "shader_capture_dir": (
             str(args.shader_capture_dir.resolve()) if args.shader_capture_dir else None
