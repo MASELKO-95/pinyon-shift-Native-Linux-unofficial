@@ -1,6 +1,8 @@
 #include "ui/settings_menu.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <optional>
 #include <memory>
 #include <cctype>
 #include <string>
@@ -35,7 +37,23 @@ std::string Unquote(std::string_view literal) {
   return std::string(literal);
 }
 
+// Whole-string number, so "-0.5" and "-0.500000" compare equal.
+std::optional<double> Number(std::string_view text) {
+  const std::string copy(text);
+  char* end = nullptr;
+  const double value = std::strtod(copy.c_str(), &end);
+  if (copy.empty() || end != copy.c_str() + copy.size()) {
+    return std::nullopt;
+  }
+  return value;
+}
+
 bool SameValue(std::string_view a, std::string_view b) {
+  const auto number_a = Number(a);
+  const auto number_b = Number(b);
+  if (number_a && number_b) {
+    return *number_a == *number_b;
+  }
   return a.size() == b.size() &&
          std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
            return std::tolower(static_cast<unsigned char>(x)) ==
@@ -91,6 +109,8 @@ class SettingsPages : public std::enable_shared_from_this<SettingsPages> {
   std::unique_ptr<MenuScreen> Audio();
   std::unique_ptr<MenuScreen> Controls();
   std::unique_ptr<MenuScreen> Profile();
+  std::unique_ptr<MenuScreen> Gamertag();
+  static constexpr size_t kMaxGamertag = 15;
 
   hostui::HostUi& host_ui_;
   config::HostConfig& config_;
@@ -171,6 +191,31 @@ void SettingsPages::Save() {
 std::unique_ptr<MenuScreen> SettingsPages::Display() {
   std::vector<MenuRow> rows;
   rows.push_back(Toggle("FULLSCREEN", "fullscreen"));
+  rows.push_back(Setting("MONITOR",
+                         {{"DEFAULT", {{"monitor", "0"}}},
+                          {"1", {{"monitor", "1"}}},
+                          {"2", {{"monitor", "2"}}},
+                          {"3", {{"monitor", "3"}}}},
+                         true));
+  std::vector<Choice> sizes = {{"DEFAULT", {{"window_width", "0"}, {"window_height", "0"}}}};
+  for (const auto& [width, height] : {std::pair{1280, 720}, std::pair{1600, 900},
+                                      std::pair{1920, 1080}, std::pair{2560, 1440},
+                                      std::pair{3840, 2160}}) {
+    sizes.push_back({std::to_string(width) + "X" + std::to_string(height),
+                     {{"window_width", std::to_string(width)},
+                      {"window_height", std::to_string(height)}}});
+  }
+  rows.push_back(Setting("WINDOW SIZE", std::move(sizes), true));
+  // Letterbox keeps the guest's aspect with bars, crop fills the window by
+  // cutting into the title's overscan margin, stretch fills it by scaling.
+  rows.push_back(Setting("ASPECT RATIO",
+                         {{"LETTERBOX", {{"present_letterbox", "true"},
+                                         {"present_allow_overscan_cutoff", "false"}}},
+                          {"CROP", {{"present_letterbox", "true"},
+                                    {"present_allow_overscan_cutoff", "true"}}},
+                          {"STRETCH", {{"present_letterbox", "false"},
+                                       {"present_allow_overscan_cutoff", "false"}}}},
+                         true));
   rows.push_back(Toggle("VSYNC", "vsync"));
   rows.push_back(Setting("FRAME RATE LIMIT",
                          {{"OFF", {{"host_present_fps_limit", "0"}}},
@@ -180,6 +225,13 @@ std::unique_ptr<MenuScreen> SettingsPages::Display() {
                           {"240", {{"host_present_fps_limit", "240"}}}},
                          false));
   rows.push_back(Toggle("VARIABLE REFRESH RATE", "d3d12_allow_variable_refresh_rate_and_tearing"));
+  // How the rendered image is scaled to the window: FSR 1 and CAS keep 2x
+  // on a 4K display and 3x on 1440p sharp where bilinear blurs.
+  rows.push_back(Setting("OUTPUT SCALING",
+                         {{"BILINEAR", {{"present_effect", "\"bilinear\""}}},
+                          {"CAS", {{"present_effect", "\"cas\""}}},
+                          {"FSR 1", {{"present_effect", "\"fsr\""}}}},
+                         true));
   rows.push_back(Setting("GAME FRAME RATE LIMIT",
                          {{"OFF", {{"pinyon_shift_fh1_render_fps_limit", "0"}}},
                           {"30", {{"pinyon_shift_fh1_render_fps_limit", "30"}}},
@@ -205,6 +257,13 @@ std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
                           {"8X", {{"anisotropic_override", "4"}}},
                           {"16X", {{"anisotropic_override", "5"}}}},
                          false));
+  rows.push_back(Toggle("TRILINEAR FILTERING", "force_trilinear_filtering"));
+  rows.push_back(Setting("TEXTURE DETAIL",
+                         {{"SOFT", {{"texture_mip_lod_bias", "0.5"}}},
+                          {"DEFAULT", {{"texture_mip_lod_bias", "0.0"}}},
+                          {"SHARP", {{"texture_mip_lod_bias", "-0.5"}}},
+                          {"SHARPEST", {{"texture_mip_lod_bias", "-1.0"}}}},
+                         true));
   rows.push_back(Setting("ANTI-ALIASING",
                          {{"OFF", {{"swap_post_effect", "\"none\""}}},
                           {"FXAA", {{"swap_post_effect", "\"fxaa\""}}},
@@ -231,6 +290,16 @@ std::unique_ptr<MenuScreen> SettingsPages::Audio() {
 std::unique_ptr<MenuScreen> SettingsPages::Controls() {
   std::vector<MenuRow> rows;
   rows.push_back(Toggle("MOUSE AND KEYBOARD", "mnk_mode"));
+  rows.push_back(Setting("MOUSE",
+                         {{"OFF", {{"mnk_mouse", "false"}, {"mnk_mouse_steering", "false"}}},
+                          {"CAMERA", {{"mnk_mouse", "true"}, {"mnk_mouse_steering", "false"}}},
+                          {"STEERING", {{"mnk_mouse", "false"}, {"mnk_mouse_steering", "true"}}}},
+                         false));
+  std::vector<Choice> sensitivities;
+  for (const char* value : {"0.25", "0.5", "0.75", "1.0", "1.5", "2.0", "3.0"}) {
+    sensitivities.push_back({value, {{"mnk_sensitivity", value}}});
+  }
+  rows.push_back(Setting("MOUSE SENSITIVITY", std::move(sensitivities), false));
   // The keys each pad control maps to in mouse-and-keyboard mode. Editing
   // them is NP-6.1.
   const std::pair<const char*, const char*> binds[] = {
@@ -262,17 +331,86 @@ std::unique_ptr<MenuScreen> SettingsPages::Controls() {
   return std::make_unique<MenuScreen>("CONTROLS", std::move(rows));
 }
 
+std::unique_ptr<MenuScreen> SettingsPages::Gamertag() {
+  // Edited one character at a time so the pad works as well as the
+  // keyboard: LETTER cycles the character at POSITION, SAVE writes it.
+  struct Draft {
+    std::string name;
+    size_t cursor = 0;
+  };
+  auto draft = std::make_shared<Draft>();
+  draft->name = Unquote(Saved("user_name"));
+  draft->cursor = draft->name.size() < kMaxGamertag ? draft->name.size() : kMaxGamertag - 1;
+  static constexpr std::string_view kCharacters =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 ";
+  std::vector<MenuRow> rows(5);
+  rows[0].label = "NAME";
+  rows[0].value = [draft] { return draft->name.empty() ? std::string("-") : draft->name; };
+  rows[0].enabled = [] { return false; };
+  rows[1].label = "LETTER";
+  rows[1].value = [draft] {
+    return draft->cursor < draft->name.size() ? std::string(1, draft->name[draft->cursor])
+                                              : std::string("+");
+  };
+  rows[1].adjust = [draft](int direction) {
+    const size_t count = kCharacters.size();
+    if (draft->cursor >= draft->name.size()) {
+      draft->name.push_back(direction > 0 ? kCharacters.front() : kCharacters.back());
+      return;
+    }
+    const size_t index = kCharacters.find(draft->name[draft->cursor]);
+    const size_t next = index == std::string_view::npos
+                            ? 0
+                            : (index + count + size_t(direction > 0 ? 1 : count - 1)) % count;
+    draft->name[draft->cursor] = kCharacters[next];
+  };
+  rows[2].label = "POSITION";
+  rows[2].value = [draft] {
+    return std::to_string(draft->cursor + 1) + " OF " + std::to_string(kMaxGamertag);
+  };
+  rows[2].adjust = [draft](int direction) {
+    const size_t last = std::min(draft->name.size(), kMaxGamertag - 1);
+    draft->cursor = direction > 0 ? std::min(draft->cursor + 1, last)
+                                  : (draft->cursor ? draft->cursor - 1 : 0);
+  };
+  rows[3].label = "DELETE LETTER";
+  rows[3].activate = [draft] {
+    if (draft->cursor < draft->name.size()) {
+      draft->name.erase(draft->cursor, 1);
+    } else if (!draft->name.empty()) {
+      draft->name.pop_back();
+      draft->cursor = draft->name.size();
+    }
+  };
+  rows[4].label = "SAVE";
+  rows[4].restart_required = true;
+  rows[4].restart_pending = [this] {
+    return !SameValue(Unquote(Saved("user_name")), Live("user_name"));
+  };
+  rows[4].activate = [this, draft] {
+    config_.Set("user_name", config::Quote(draft->name));
+    Save();
+  };
+  return std::make_unique<MenuScreen>("GAMERTAG", std::move(rows), [this] {
+    return SameValue(Unquote(Saved("user_name")), Live("user_name"))
+               ? std::string("LETTERS, DIGITS AND SPACES, UP TO 15")
+               : std::string("RESTART THE GAME TO USE THE NEW GAMERTAG");
+  });
+}
+
 std::unique_ptr<MenuScreen> SettingsPages::Profile() {
-  // Placeholders until NP-5 brings the gamertag, picture and language.
   std::vector<MenuRow> rows(2);
   rows[0].label = "GAMERTAG";
-  rows[0].value = [] { return std::string("USER"); };
-  rows[0].enabled = [] { return false; };
+  rows[0].value = [this] { return Unquote(Saved("user_name")); };
+  rows[0].activate = [this] { host_ui_.Push(Gamertag()); };
+  rows[0].restart_required = true;
+  rows[0].restart_pending = [this] {
+    return !SameValue(Unquote(Saved("user_name")), Live("user_name"));
+  };
   rows[1].label = "LANGUAGE";
   rows[1].value = [] { return std::string("ENGLISH"); };
   rows[1].enabled = [] { return false; };
-  return std::make_unique<MenuScreen>("PROFILE", std::move(rows),
-                                      [] { return std::string("PROFILE SETTINGS ARRIVE IN A LATER UPDATE"); });
+  return std::make_unique<MenuScreen>("PROFILE", std::move(rows));
 }
 
 std::unique_ptr<MenuScreen> SettingsPages::Root() {
