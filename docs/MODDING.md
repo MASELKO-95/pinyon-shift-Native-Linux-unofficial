@@ -91,6 +91,22 @@ replace. Only existing members can be replaced, and archives whose end
 record disagrees with the manifest (the largest track archive) must still be
 replaced whole. `zz-archive-patches/archives.json` lists what was rebuilt.
 
+### Textures
+
+A mod may replace textures without touching the archives that hold them:
+
+```text
+<state>/mods/<name>/textures/<hash>.dds
+```
+
+`<hash>` is 16 hex digits naming the texture's content. To find it, run the
+game with `--texture_dump_dir=<folder>`: every BC3 (DXT5) texture it loads
+is written there as `<hash>.dds`, untiled and with its mip levels. Edit a
+dump and ship it under the same name; the replacement must keep the size, the
+DXT5 format and at least as many mip levels, otherwise it is logged and
+ignored. Earlier mods win. Only BC3 textures are supported so far, at their
+original resolution.
+
 ## Database patches
 
 The game's data (cars, prices, events) is the SQLite database

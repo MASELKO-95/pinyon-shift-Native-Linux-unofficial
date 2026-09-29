@@ -659,6 +659,16 @@ std::vector<std::filesystem::path> OverlayRoots() {
   return roots;
 }
 
+std::vector<std::filesystem::path> TextureRoots() {
+  std::vector<std::filesystem::path> roots;
+  std::error_code error;
+  for (const auto& mod : g_loaded) {
+    const auto root = mod->info.directory / "textures";
+    if (std::filesystem::is_directory(root, error)) roots.push_back(root);
+  }
+  return roots;
+}
+
 void NotifyCreateDialogs() {
   for (const auto& mod : g_loaded) {
     if (mod->mod.on_create_dialogs) mod->mod.on_create_dialogs(mod->mod.self);

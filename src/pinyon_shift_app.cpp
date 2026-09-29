@@ -690,6 +690,18 @@ void PinyonShiftApp::OnPostSetup() {
         REXLOG_ERROR("Mods: could not mount the mods' game files");
       }
     }
+    // Mods' texture replacements, ahead of any folders already configured.
+    if (auto textures = pinyon_shift::mod::TextureRoots(); !textures.empty()) {
+      std::string dirs;
+      for (const auto& root : textures) dirs += (dirs.empty() ? "" : ";") + root.string();
+      // Defined in the GPU module, so read by name.
+      if (const std::string configured = rex::cvar::GetFlagByName("texture_replacement_dirs");
+          !configured.empty()) {
+        dirs += ";" + configured;
+      }
+      rex::cvar::SetFlagByName("texture_replacement_dirs", dirs);
+      pinyon_shift::diagnostics::RecordEvent("mod.textures", {{"dirs", dirs}});
+    }
   }
   if (REXCVAR_GET(pinyon_shift_save_backups)) {
     save_backups_ = std::make_unique<pinyon_shift::SaveBackups>(

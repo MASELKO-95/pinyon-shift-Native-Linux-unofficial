@@ -46,6 +46,9 @@ const std::vector<ModInfo>& Mods();
 bool AnyModLoaded();
 // Directories of loaded mods' game/ overrides, in priority order.
 std::vector<std::filesystem::path> OverlayRoots();
+// Directories of loaded mods' textures/ replacements (<hash>.dds, NP-10.3),
+// in priority order.
+std::vector<std::filesystem::path> TextureRoots();
 
 // Profile isolation (NP-7.5). With mods enabled the title plays the separate
 // `user_root` profile (<state>/user-modded); each save then writes
