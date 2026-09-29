@@ -540,8 +540,8 @@ registers = ["r3", "r29", "r31"]
 
 # Capture the title's plaintext profile/database body immediately before the
 # secure stream wrapper encrypts and writes it. The runtime hook is gated by
-# PINYON_SHIFT_M5_SAVE_TRACE=1 and accepts only the two established save-body
-# sizes, so normal preview runs remain unchanged.
+# PINYON_SHIFT_M5_SAVE_TRACE=1 (the encrypted and stream writers keep only the
+# two established save-body sizes), so normal preview runs remain unchanged.
 [[midasm_hook]]
 address = 0x82C79D2C
 name = "PinyonShiftTraceSavePayload"
@@ -562,6 +562,15 @@ after_instruction = true
 address = 0x82C666D0
 name = "PinyonShiftTraceSavePreEncryption"
 registers = ["r4", "r5"]
+
+# sub_82C66308 has decrypted a secure file in place with
+# XeKeysAesCbcUsingKey (r8 = 0) and cleared its padding: the plaintext is
+# [r30+0] for r24 bytes, and the title has not parsed it yet. The save
+# editor (NP-8.3) and the save.after_decrypt mod hook run here.
+[[midasm_hook]]
+address = 0x82C66594
+name = "PinyonShiftObserveSaveDecrypted"
+registers = ["r24", "r30"]
 
 # sub_828E2898 is about to read the non-durable per-profile career eligibility
 # byte through sub_8252AA48. Repair the actual byte for a valid durable

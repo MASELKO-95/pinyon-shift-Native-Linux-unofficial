@@ -74,7 +74,7 @@ struct Subscriber {
   PinyonHookCallback callback;
   void* user;
 };
-constexpr size_t kHookSlots = 6;  // PinyonHook values 1-5
+constexpr size_t kHookSlots = 7;  // PinyonHook values 1-6
 std::mutex g_subscribers_mutex;
 std::array<std::vector<Subscriber>, kHookSlots> g_subscribers;
 std::array<std::atomic<uint32_t>, kHookSlots> g_subscriber_counts{};

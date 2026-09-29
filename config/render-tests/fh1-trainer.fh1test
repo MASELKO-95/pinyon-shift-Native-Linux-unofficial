@@ -15,7 +15,8 @@ input 720 1000 0 0 0 0 0 0
 input 726 0000 0 0 0 0 0 0
 capture 1200 free-roam
 hostkey 1300 f10
-hostkey 1330 down
+hostkey 1320 down
+hostkey 1335 down
 hostkey 1350 enter
 capture 1380 world
 hostkey 1400 right

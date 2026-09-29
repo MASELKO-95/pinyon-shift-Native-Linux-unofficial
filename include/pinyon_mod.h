@@ -52,6 +52,11 @@ typedef enum PinyonHook {
   PINYON_HOOK_FILE_OPEN = 4,
   /* The pause menu built a button: args[0] = guest address of the button. */
   PINYON_HOOK_PAUSE_BUTTON_CONSTRUCTED = 5,
+  /* A saved file was just decrypted, before the title parses it:
+     args[0] = guest address of the plaintext body, args[1] = its size. The
+     body may be edited in place (keep its size); the profile's first
+     section is described in docs/MODDING.md. */
+  PINYON_HOOK_SAVE_AFTER_DECRYPT = 6,
 } PinyonHook;
 
 typedef struct PinyonHookEvent {

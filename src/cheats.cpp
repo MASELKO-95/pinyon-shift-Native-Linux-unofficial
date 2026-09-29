@@ -3,12 +3,14 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <mutex>
 
 #include <fmt/format.h>
 
 #include <rex/cvar.h>
 
 #include "pinyon_shift_diagnostics.h"
+#include "save/profile_body.h"
 
 REXCVAR_DEFINE_BOOL(pinyon_shift_cheats, false, "Cheats",
                     "Enable the trainer (F10). The title then plays the separate modded profile "
@@ -18,11 +20,26 @@ REXCVAR_DEFINE_DOUBLE(cheat_time_scale, 1.0, "Cheats",
                       "Game speed: the title's gameplay delta is multiplied by this (0.25 to 2)")
     .range(0.25, 2.0)
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+REXCVAR_DEFINE_INT32(cheat_set_credits, -1, "Cheats",
+                     "Set the profile's credits to this when it next loads, once; -1 leaves them")
+    .range(-1, 999999999)
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 namespace pinyon_shift::cheats {
 
 namespace {
 std::atomic<bool> g_profile_isolated{false};
+std::atomic<bool> g_credits_applied{false};
+std::atomic<int32_t> g_set_credits_value{-1};
+std::mutex g_applied_mutex;
+std::function<void(std::string_view)> g_applied;
+
+void StoreBe32(uint8_t* bytes, uint32_t value) {
+  bytes[0] = uint8_t(value >> 24);
+  bytes[1] = uint8_t(value >> 16);
+  bytes[2] = uint8_t(value >> 8);
+  bytes[3] = uint8_t(value);
+}
 }  // namespace
 
 bool Requested() { return REXCVAR_GET(pinyon_shift_cheats); }
@@ -42,7 +59,45 @@ std::string Active() {
   if (TimeScale() != 1.0) {
     active += fmt::format("time_scale={:.2f}", TimeScale());
   }
+  if (g_credits_applied.load(std::memory_order_acquire)) {
+    active += fmt::format("{}set_credits={}", active.empty() ? "" : ",",
+                          g_set_credits_value.load(std::memory_order_acquire));
+  }
   return active;
+}
+
+void EditLoadedProfile(uint8_t* body, size_t size) {
+  const int32_t credits = REXCVAR_GET(cheat_set_credits);
+  if (!Enabled() || credits < 0 || g_credits_applied.load(std::memory_order_acquire)) {
+    return;
+  }
+  // Other secure files pass through here too; only the profile has the field.
+  const auto field = save::FindProfileField(body, size, "Main/Credits");
+  if (!field || field->type != save::FieldType::kUInt32) {
+    return;
+  }
+  if (g_credits_applied.exchange(true, std::memory_order_acq_rel)) {
+    return;
+  }
+  uint8_t* value = body + field->offset;
+  const uint32_t previous = (uint32_t(value[0]) << 24) | (uint32_t(value[1]) << 16) |
+                            (uint32_t(value[2]) << 8) | uint32_t(value[3]);
+  StoreBe32(value, static_cast<uint32_t>(credits));
+  g_set_credits_value.store(credits, std::memory_order_release);
+  diagnostics::RecordEvent("cheat.applied", {{"name", "cheat_set_credits"},
+                                             {"previous", fmt::format("{}", previous)},
+                                             {"value", fmt::format("{}", credits)}});
+  std::function<void(std::string_view)> applied;
+  {
+    std::lock_guard lock(g_applied_mutex);
+    applied = g_applied;
+  }
+  if (applied) applied("cheat_set_credits");
+}
+
+void SetAppliedCallback(std::function<void(std::string_view setting)> callback) {
+  std::lock_guard lock(g_applied_mutex);
+  g_applied = std::move(callback);
 }
 
 void InstallChangeLog() {

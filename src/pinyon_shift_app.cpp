@@ -611,6 +611,19 @@ void PinyonShiftApp::OnPostSetup() {
   rex::ui::RegisterBind("bind_game_menu", "F6", "Open the in-game settings menu",
                         [this] { ToggleGameMenu(); });
   pinyon_shift::cheats::InstallChangeLog();
+  // A one-shot save edit applied: clear its setting so the next start keeps
+  // the player's own progress.
+  pinyon_shift::cheats::SetAppliedCallback([this](std::string_view setting) {
+    if (!window()) return;
+    window()->app_context().CallInUIThreadDeferred([this, name = std::string(setting)] {
+      if (host_config_ && host_config_->Load()) {
+        host_config_->Set(name, "-1");
+        if (!host_config_->Save()) {
+          REXLOG_ERROR("Cheats: could not clear {} in {}", name, host_config_->path().string());
+        }
+      }
+    });
+  });
   rex::ui::RegisterBind("bind_trainer", "F10", "Open the trainer (cheats on)", [this] {
     if (!pinyon_shift::cheats::Enabled()) {
       return;
@@ -793,6 +806,7 @@ void PinyonShiftApp::OnShutdown() {
   rex::ui::UnregisterBind("bind_fullscreen");
   rex::ui::UnregisterBind("bind_photo");
   rex::ui::UnregisterBind("bind_trainer");
+  pinyon_shift::cheats::SetAppliedCallback(nullptr);
   pinyon_shift::ui::WaitForPhoto();
   PinyonShiftSetPauseSettingsHandler(nullptr);
   rex::cvar::UnregisterChangeCallbacks("d3d12_allow_variable_refresh_rate_and_tearing");

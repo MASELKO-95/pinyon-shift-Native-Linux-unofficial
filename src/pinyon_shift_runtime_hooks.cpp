@@ -29,6 +29,8 @@
 #include "pinyon_shift_runtime_hooks.h"
 #include "cheats.h"
 #include "mod/mod_host.h"
+#include "save/live_profile.h"
+#include "save/profile_body.h"
 #include "ui/fh1_ui_api.h"
 
 REXCVAR_DEFINE_BOOL(pinyon_shift_skip_opening_movies, false, "Pinyon Shift",
@@ -446,11 +448,13 @@ uint64_t HashGuestBytes(uint32_t address, uint32_t size) {
 
 void SnapshotSavePayload(std::string_view kind, uint32_t address, uint32_t size,
                          uint32_t caller_lr) {
-  // These are the two known plaintext secure-save payload sizes. Limiting the
-  // hook to them keeps diagnostics narrow and avoids copying unrelated stream
-  // traffic through this generic title writer.
-  if (!SaveTraceEnabled() || address == 0 ||
-      (size != 19472 && size != 2928)) {
+  // The encrypted and stream writers only snapshot the two known secure-save
+  // payload sizes, which keeps unrelated stream traffic out of the trace; the
+  // plaintext body grows with the profile (cars, events), so any size is kept.
+  const bool known_size = size == 19472 || size == 2928;
+  const bool plaintext = kind == "plaintext" || kind == "loaded";
+  if (!SaveTraceEnabled() || address == 0 || size == 0 ||
+      (plaintext ? size > (16u << 20) : !known_size)) {
     return;
   }
 
@@ -494,6 +498,53 @@ void SnapshotSavePayload(std::string_view kind, uint32_t address, uint32_t size,
        {"hash", fmt::format("{:016X}", hash)},
        {"snapshot", path.string()},
        {"created", created ? "1" : "0"}});
+}
+
+// Discovery for the save editor (NP-8.3), with PINYON_SHIFT_PROFILE_SCAN=1:
+// at each profile save, reads Credits, XP and TotalWinnings from the body and
+// logs guest words holding Credits next to the other two, else every word
+// holding Credits. Neither Credits nor TotalWinnings is stored plainly (the
+// title encodes money in memory; after a purchase only transient copies of
+// the new balance show up), which is why the editor works at load time.
+void ScanLiveProfile(uint32_t address, uint32_t size) {
+  static const bool enabled = [] {
+    const char* value = std::getenv("PINYON_SHIFT_PROFILE_SCAN");
+    return value && std::string_view(value) == "1";
+  }();
+  // The title has just written the body here, so the range is mapped.
+  if (!enabled || address == 0 || size == 0) {
+    return;
+  }
+  auto* kernel_state = rex::system::kernel_state();
+  const auto* body = kernel_state->memory()->TranslateVirtual<const uint8_t*>(address);
+  const auto credits = pinyon_shift::save::ReadProfileU32(body, size, "Main/Credits");
+  const auto xp = pinyon_shift::save::ReadProfileU32(body, size, "Main/XP");
+  const auto winnings = pinyon_shift::save::ReadProfileU32(body, size, "Main/TotalWinnings");
+  if (!credits || !xp || !winnings) {
+    pinyon_shift::diagnostics::RecordEvent(
+        "save.profile.live_scan", {{"body", Hex32(address)}, {"size", fmt::format("{}", size)},
+                                   {"result", "no_fields"}});
+    return;
+  }
+  const auto start = std::chrono::steady_clock::now();
+  auto candidates = pinyon_shift::save::FindLiveProfileValue(*credits, *xp, *winnings, 0x4000);
+  if (candidates.empty()) {
+    candidates = pinyon_shift::save::FindLiveProfileValue(*credits, 0, 0, 0, 256);
+  }
+  const auto elapsed = std::chrono::duration<double, std::milli>(
+                           std::chrono::steady_clock::now() - start)
+                           .count();
+  std::string list;
+  for (const auto& candidate : candidates) {
+    list += fmt::format("{}{:08X}:{}:{}", list.empty() ? "" : ",", candidate.address,
+                        candidate.neighbour_a_delta, candidate.neighbour_b_delta);
+  }
+  pinyon_shift::diagnostics::RecordEvent(
+      "save.profile.live_scan",
+      {{"body", Hex32(address)}, {"size", fmt::format("{}", size)},
+       {"credits", fmt::format("{}", *credits)}, {"xp", fmt::format("{}", *xp)},
+       {"winnings", fmt::format("{}", *winnings)}, {"ms", fmt::format("{:.1f}", elapsed)},
+       {"candidates", list}});
 }
 
 void SeedCareerCheckpointInSavePayload(uint32_t address, uint32_t size) {
@@ -4215,6 +4266,26 @@ void PinyonShiftTraceSavePreEncryption(PPCRegister& r4, PPCRegister& r5) {
   }
   pinyon_shift::mod::RecordSave(r4.u32, r5.u32);
   SnapshotSavePayload("plaintext", r4.u32, r5.u32, 0x82C666D4u);
+  ScanLiveProfile(r4.u32, r5.u32);
+}
+
+void PinyonShiftObserveSaveDecrypted(PPCRegister& r24, PPCRegister& r30) {
+  const uint32_t address = LoadGuestU32(r30.u32);
+  const uint32_t size = r24.u32;
+  if (address == 0 || size == 0 || size > (16u << 20)) {
+    return;
+  }
+  SnapshotSavePayload("loaded", address, size, 0x82C66594u);
+  if (pinyon_shift::mod::HasSubscribers(PINYON_HOOK_SAVE_AFTER_DECRYPT)) {
+    PinyonHookEvent event{};
+    event.hook = PINYON_HOOK_SAVE_AFTER_DECRYPT;
+    event.args[0] = address;
+    event.args[1] = size;
+    pinyon_shift::mod::Dispatch(event);
+  }
+  auto* kernel_state = rex::system::kernel_state();
+  pinyon_shift::cheats::EditLoadedProfile(
+      kernel_state->memory()->TranslateVirtual<uint8_t*>(address), size);
 }
 
 void PinyonShiftRestoreCareerEligibility(PPCRegister& r3, PPCRegister& r4,

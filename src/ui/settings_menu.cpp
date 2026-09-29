@@ -125,6 +125,7 @@ class SettingsPages : public std::enable_shared_from_this<SettingsPages> {
   std::unique_ptr<MenuScreen> Trainer();
 
  private:
+  std::unique_ptr<MenuScreen> TrainerPlayer();
   std::unique_ptr<MenuScreen> TrainerWorld();
   std::unique_ptr<MenuScreen> TrainerVehicle();
   std::unique_ptr<MenuScreen> TrainerGraphics();
@@ -442,12 +443,30 @@ std::unique_ptr<MenuScreen> SettingsPages::Trainer() {
   resume.label = "RESUME";
   resume.activate = [self = shared_from_this()] { self->host_ui_.Close(); };
   rows.push_back(std::move(resume));
+  rows.push_back(Page("PLAYER", &SettingsPages::TrainerPlayer));
   rows.push_back(Page("WORLD", &SettingsPages::TrainerWorld));
   rows.push_back(Page("VEHICLE", &SettingsPages::TrainerVehicle));
   rows.push_back(Page("GRAPHICS", &SettingsPages::TrainerGraphics));
   rows.push_back(Page("DEBUG", &SettingsPages::TrainerDebug));
   return std::make_unique<MenuScreen>("TRAINER", std::move(rows), [] {
     return std::string("MODDED PROFILE: YOUR OWN SAVE IS NOT TOUCHED");
+  });
+}
+
+std::unique_ptr<MenuScreen> SettingsPages::TrainerPlayer() {
+  // The save editor (NP-8.3): written into the profile when it next loads,
+  // once, since the running title keeps its money encoded in memory.
+  std::vector<MenuRow> rows;
+  std::vector<Choice> credits;
+  credits.push_back({"UNCHANGED", {{"cheat_set_credits", "-1"}}});
+  for (const auto& [label, value] : std::initializer_list<std::pair<const char*, const char*>>{
+           {"250,000", "250000"}, {"1,000,000", "1000000"}, {"5,000,000", "5000000"},
+           {"20,000,000", "20000000"}}) {
+    credits.push_back({label, {{"cheat_set_credits", value}}});
+  }
+  rows.push_back(Setting("SET CREDITS", std::move(credits), true));
+  return std::make_unique<MenuScreen>("PLAYER", std::move(rows), [] {
+    return std::string("APPLIED ONCE WHEN THE PROFILE NEXT LOADS: RESTART THE GAME");
   });
 }
 

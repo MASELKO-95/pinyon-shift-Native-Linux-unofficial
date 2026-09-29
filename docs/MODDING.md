@@ -93,9 +93,25 @@ whose `size` tells a mod which exist.
 | `PINYON_HOOK_SAVE_BEFORE_ENCRYPT` | the save body is about to be encrypted | `args[0]` body address, `args[1]` size |
 | `PINYON_HOOK_FILE_OPEN` | the title opened a file | `text` lower-case guest path |
 | `PINYON_HOOK_PAUSE_BUTTON_CONSTRUCTED` | the pause menu built a button | `args[0]` button address |
+| `PINYON_HOOK_SAVE_AFTER_DECRYPT` | a saved file was decrypted, before the title reads it | `args[0]` body address, `args[1]` size |
 
 Callbacks run on the guest thread that reached the hook, synchronously: keep
 them short. `subscribe` returns a handle for `unsubscribe`.
+
+### The profile body
+
+The two save hooks see the plaintext of the title's secure files. The
+profile (`ForzaProfile`) begins with a self-describing section: a
+big-endian field count, then for each field `[u32 name length][name][u32
+0x20][u32 0][u8 type][value]`. Types are 0x00 bool and 0x01 byte (1 byte),
+0x03 UInt32, 0x07 Int32 and 0x09 float (4 bytes), 0x04 UInt64 (8 bytes), and
+0x0F a struct, whose value is its own field count and fields. The player's
+values are under `Main` (`Main/Credits`, `Main/XP`, `Main/Level`,
+`Main/WristbandLevel`). Class-serialised challenge states and padding follow
+the section. `tools/fh1-profile.py` decodes a body and edits a field. Edit a
+save after it is decrypted, not before it is encrypted: the running title
+keeps its money encoded in memory, so a value written into an outgoing save
+only lasts until the next save.
 
 ### Guest memory, symbols and calls
 
