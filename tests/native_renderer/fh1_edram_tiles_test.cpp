@@ -1,5 +1,6 @@
 #include <cstdio>
 
+#include <rex/graphics/fh1_edram_surfaces.h>
 #include <rex/graphics/fh1_edram_tiles.h>
 
 using rex::graphics::Fh1EdramTiles;
@@ -92,6 +93,26 @@ void TestSplitByOwner() {
   CHECK(unowned.size() == 1 && unowned[0].owner == Fh1EdramTiles::kNoOwner);
 }
 
+void TestSurfaceKeys() {
+  using rex::graphics::Fh1SurfaceKey;
+  namespace xenos = rex::graphics::xenos;
+  // 1280 pixels at 1x are 16 tiles of 80 samples; at 4x MSAA, 32.
+  CHECK(rex::graphics::Fh1PitchTiles(1280, uint32_t(xenos::MsaaSamples::k1X)) == 16);
+  CHECK(rex::graphics::Fh1PitchTiles(1280, uint32_t(xenos::MsaaSamples::k4X)) == 32);
+  // 2048 tiles at pitch 16 are 128 tile rows of 16 pixels.
+  CHECK(rex::graphics::Fh1SurfaceHeight(16, uint32_t(xenos::MsaaSamples::k1X), 16384, 1) == 2048);
+  CHECK(rex::graphics::Fh1SurfaceHeight(0, 0, 16384, 1) == 0);
+  // Gamma shares 8_8_8_8 storage unless kept in 16-bit unorm; the base wraps.
+  const auto gamma = Fh1SurfaceKey::Color(xenos::kEdramTileCount + 5, 16, 0,
+                                          xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA, false);
+  CHECK(gamma.base_tiles == 5 &&
+        gamma.format == uint32_t(xenos::ColorRenderTargetFormat::k_8_8_8_8));
+  const auto depth =
+      Fh1SurfaceKey::Depth(0, 16, 0, xenos::DepthRenderTargetFormat::kD24S8);
+  CHECK(depth.is_depth && !depth.Is64bpp() && depth.Pack() != gamma.Pack());
+  CHECK(depth.Describe() == "0/16/1x/d0");
+}
+
 void TestStencil() {
   Fh1EdramTiles tiles;
   tiles.Reset();
@@ -108,6 +129,7 @@ int main() {
   TestClaimWithoutTransferAndWrapping();
   TestRectClaims();
   TestSplitByOwner();
+  TestSurfaceKeys();
   TestStencil();
   if (failures) {
     std::fprintf(stderr, "%d check(s) failed\n", failures);
