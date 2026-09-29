@@ -557,6 +557,22 @@ bool PinyonShiftApp::EnsureHostUi() {
   host_ui_ = std::make_unique<pinyon_shift::hostui::HostUi>(
       *this, *presenter, *immediate_drawer(), *window(),
       static_cast<rex::input::InputSystem*>(runtime()->input_system()), game_data_root());
+  // Mods' HUD labels (NP-11), drawn by the host UI over the title.
+  host_ui_->SetHudSource([] {
+    std::vector<pinyon_shift::hostui::HostUi::HudText> texts;
+    for (const auto& label : pinyon_shift::mod::HudLabels()) {
+      texts.push_back({label.text, label.x, label.y, label.size});
+    }
+    return texts;
+  });
+  pinyon_shift::mod::SetHudChangedCallback([this] {
+    if (window()) {
+      window()->app_context().CallInUIThreadDeferred([this] {
+        if (host_ui_) host_ui_->HudChanged();
+      });
+    }
+  });
+  host_ui_->HudChanged();
   if (REXCVAR_GET(pinyon_shift_host_xam_dialogs)) {
     xam_dialogs_ = pinyon_shift::ui::CreateXamDialogs(*host_ui_, [this] {
       return pinyon_shift::ui::CreateAchievementsScreen(achievements());
@@ -769,6 +785,7 @@ void PinyonShiftApp::OnShutdown() {
     achievement_listener_ = 0;
   }
   rex::kernel::xam::SetXamUiProvider(nullptr);
+  pinyon_shift::mod::SetHudChangedCallback(nullptr);
   xam_dialogs_.reset();
   host_ui_.reset();
   achievement_icons_.reset();

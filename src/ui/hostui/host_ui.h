@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -73,6 +74,16 @@ class HostUi final : public rex::ui::UIDrawer, public rex::ui::WindowInputListen
   // `icon` must outlive the notification.
   void ShowToast(std::string heading, std::string title, std::string detail,
                  rex::ui::ImmediateTexture* icon);
+
+  // Persistent text over the title (mods' HUD labels, NP-11), in the
+  // title's 1280x720 layout. The source is read on every draw; call
+  // HudChanged (UI thread) when it goes from empty to not or back.
+  struct HudText {
+    std::string text;
+    float x = 0.0f, y = 0.0f, size = 24.0f;
+  };
+  void SetHudSource(std::function<std::vector<HudText>()> source) { hud_source_ = std::move(source); }
+  void HudChanged();
   // Closes every screen. Safe to call from a row's action. The guest gets its
   // input back only once no pad button or key is held, so the press that
   // closed the menu does not also reach the title (B would leave its pause
@@ -113,6 +124,8 @@ class HostUi final : public rex::ui::UIDrawer, public rex::ui::WindowInputListen
   bool LoadAssets();
   void DrawMenu(rex::ui::UIDrawContext& context);
   void DrawToasts(rex::ui::UIDrawContext& context);
+  void DrawHud(rex::ui::UIDrawContext& context);
+  bool HasHud() const;
   // Sets the canvas for this draw; false while there is nothing to draw to.
   bool PrepareCanvas(rex::ui::UIDrawContext& context);
   void EnsureDrawer();
@@ -163,6 +176,7 @@ class HostUi final : public rex::ui::UIDrawer, public rex::ui::WindowInputListen
     std::chrono::steady_clock::time_point shown{};  // set when it first draws
   };
   std::vector<Toast> toasts_;
+  std::function<std::vector<HudText>()> hud_source_;
   // Closed, waiting for held buttons and keys to be released.
   bool draining_ = false;
   std::chrono::steady_clock::time_point drain_started_;

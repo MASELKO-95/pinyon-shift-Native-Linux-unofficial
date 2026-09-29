@@ -100,6 +100,11 @@ HostServices g_services;
 std::map<std::string, std::unique_ptr<std::string>, std::less<>> g_mod_cvars;
 std::filesystem::path g_modded_user_root;
 
+std::mutex g_ui_mutex;
+std::map<uint32_t, HudLabel> g_hud_labels;
+std::vector<MenuAction> g_menu_actions;
+std::function<void()> g_hud_changed;
+
 uint64_t Fnv1a(const uint8_t* data, size_t size, uint64_t hash = 0xCBF29CE484222325ull) {
   for (size_t i = 0; i < size; ++i) {
     hash = (hash ^ data[i]) * 0x100000001B3ull;
@@ -310,6 +315,29 @@ void ApiShowDialog(const char* title, const char* text, const char* const* butto
       if (callback) callback(user, button);
     });
   });
+}
+
+void ApiSetHudText(uint32_t id, const char* text, float x, float y, float size) {
+  std::function<void()> changed;
+  {
+    std::lock_guard lock(g_ui_mutex);
+    const uint32_t key = id;
+    if (!text || !*text) {
+      g_hud_labels.erase(key);
+    } else {
+      g_hud_labels[key] = HudLabel{text, std::clamp(x, 0.0f, 1280.0f),
+                                   std::clamp(y, 0.0f, 720.0f), std::clamp(size, 8.0f, 96.0f)};
+    }
+    changed = g_hud_changed;
+  }
+  if (changed) changed();
+}
+
+int ApiAddMenuAction(const char* label, PinyonBindCallback callback, void* user) {
+  if (!label || !callback) return -1;
+  std::lock_guard lock(g_ui_mutex);
+  g_menu_actions.push_back(MenuAction{label, callback, user});
+  return 0;
 }
 
 // ---- Discovery ----------------------------------------------------------------
@@ -531,6 +559,8 @@ void LoadMods(const std::filesystem::path& state_root, const std::string& enable
     api.set_cvar = ApiSetCvar;
     api.register_bind = ApiRegisterBind;
     api.show_dialog = ApiShowDialog;
+    api.set_hud_text = ApiSetHudText;
+    api.add_menu_action = ApiAddMenuAction;
     if (create(&loaded->api, &loaded->mod) != 0) {
       info_it->problem = "rex_mod_create failed";
       continue;
@@ -552,6 +582,23 @@ void LoadMods(const std::filesystem::path& state_root, const std::string& enable
 }
 
 const std::vector<ModInfo>& Mods() { return g_mods; }
+
+std::vector<HudLabel> HudLabels() {
+  std::lock_guard lock(g_ui_mutex);
+  std::vector<HudLabel> labels;
+  for (const auto& [key, label] : g_hud_labels) labels.push_back(label);
+  return labels;
+}
+
+std::vector<MenuAction> MenuActions() {
+  std::lock_guard lock(g_ui_mutex);
+  return g_menu_actions;
+}
+
+void SetHudChangedCallback(std::function<void()> callback) {
+  std::lock_guard lock(g_ui_mutex);
+  g_hud_changed = std::move(callback);
+}
 
 void SetModdedProfile(std::filesystem::path user_root) { g_modded_user_root = std::move(user_root); }
 

@@ -130,11 +130,28 @@ call functions.
 - `log(level, text)` writes the runtime log; `log_event(event, keys, values,
   count)` writes a `mod.<event>` diagnostics event.
 
+### HUD labels and menu actions
+
+The host draws a mod's UI over the title in the game's own fonts, without
+touching guest addresses (NP-11):
+
+- `set_hud_text(id, text, x, y, size)` shows, moves or (with empty text)
+  removes a label. Positions are in the title's 1280x720 layout; keep to the
+  90 % safe area, x 64 to 1216 and y 36 to 684, so the label stays on screen
+  at every output size. Ids are shared by all mods: derive yours from your
+  mod's name. It may be called from any thread, including hooks.
+- `add_menu_action(label, callback, user)` adds a row to SETTINGS > MOD
+  ACTIONS, reached from the pause menu's SETTINGS, and runs `callback` on the
+  UI thread when the player picks it.
+
+Adding rows to the title's own menus (native UI4 insertion) is still
+research, tracked as NP-11.3 in the backlog.
+
 ## Samples
 
 | Sample | Shows |
 | --- | --- |
-| [`hello_telemetry`](../mods_src/samples/hello_telemetry/hello_telemetry.c) | a setting, an F9 bind, `frame.tick` and vehicle-pose hooks, a guest call through the task queue (`kernel.get_av_pack`), a host dialog and shutdown |
+| [`hello_telemetry`](../mods_src/samples/hello_telemetry/hello_telemetry.c) | a setting, an F9 bind, `frame.tick` and vehicle-pose hooks, a guest call through the task queue (`kernel.get_av_pack`), a host dialog, a HUD label, a menu action and shutdown |
 | [`english_strings`](../mods_src/samples/english_strings/mod.toml) | an asset-only mod replacing `media/StringTables/EN.zip` |
 
 Build and install them into a private state copy (never the AppData save):

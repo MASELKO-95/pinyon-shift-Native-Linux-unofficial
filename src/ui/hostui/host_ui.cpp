@@ -626,15 +626,43 @@ void HostUi::Draw(rex::ui::UIDrawContext& context) {
       RequestPaint();
     }
   } else if (is_open()) {
+    DrawHud(context);
     PollPad();
     if (is_open()) {
       DrawMenu(context);
     }
+  } else {
+    DrawHud(context);
   }
   DrawToasts(context);
-  if (!registered_ && toasts_.empty()) {
+  if (!registered_ && toasts_.empty() && !HasHud()) {
     ReleaseDrawer();
   }
+}
+
+bool HostUi::HasHud() const { return hud_source_ && !hud_source_().empty(); }
+
+void HostUi::HudChanged() {
+  if (HasHud() && LoadAssets()) {
+    EnsureDrawer();
+  }
+  RequestPaint();
+}
+
+void HostUi::DrawHud(rex::ui::UIDrawContext& context) {
+  if (!hud_source_) return;
+  const auto labels = hud_source_();
+  if (labels.empty() || !PrepareCanvas(context)) return;
+  drawer_.Begin(context, float(context.render_target_width()),
+                float(context.render_target_height()));
+  for (const auto& label : labels) {
+    // A one-pixel shadow keeps light text readable over the sky.
+    DrawText(Face::kLabel, label.size, label.text, label.x + 1.5f, label.y + 1.5f,
+             Rgba(0, 0, 0, 200));
+    DrawText(Face::kLabel, label.size, label.text, label.x, label.y, kWhite);
+  }
+  Flush();
+  drawer_.End();
 }
 
 bool HostUi::PrepareCanvas(rex::ui::UIDrawContext& context) {

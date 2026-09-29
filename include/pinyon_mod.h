@@ -120,6 +120,17 @@ typedef struct PinyonModApi {
   /* A host message box over the title; the result arrives on the UI thread. */
   void (*show_dialog)(const char* title, const char* text, const char* const* buttons,
                       uint32_t button_count, PinyonDialogCallback callback, void* user);
+
+  /* UI extensions (NP-11), drawn by the host over the title in its fonts.
+     A HUD label: `id` names it (ids are shared by all mods: use a range
+     derived from your mod, such as a hash of its name); x and y are in the
+     title's 1280x720 layout (inside the 90 % safe area is 64..1216 by
+     36..684); `size` is the text height in the same units. NULL or empty
+     `text` removes it. Callable from any thread. */
+  void (*set_hud_text)(uint32_t id, const char* text, float x, float y, float size);
+  /* An action row in SETTINGS > MOD ACTIONS (the pause menu's SETTINGS);
+     `callback` runs on the UI thread when the player picks it. Returns 0. */
+  int (*add_menu_action)(const char* label, PinyonBindCallback callback, void* user);
 } PinyonModApi;
 
 /* What a mod provides. Any callback may be NULL. */

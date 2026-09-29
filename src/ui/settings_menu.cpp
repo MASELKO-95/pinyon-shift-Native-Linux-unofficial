@@ -14,6 +14,7 @@
 #include <rex/input/pad_remap.h>
 
 #include "mod/mod_host.h"
+#include "pinyon_shift_diagnostics.h"
 #include <rex/cvar.h>
 #include <rex/logging.h>
 
@@ -117,6 +118,7 @@ class SettingsPages : public std::enable_shared_from_this<SettingsPages> {
   std::unique_ptr<MenuScreen> Backups();
   std::unique_ptr<MenuScreen> ControllerButtons();
   std::unique_ptr<MenuScreen> Mods();
+  std::unique_ptr<MenuScreen> ModActions();
   std::unique_ptr<MenuScreen> ConfirmRestore(std::string slot);
   static constexpr size_t kMaxGamertag = 15;
 
@@ -401,6 +403,21 @@ std::unique_ptr<MenuScreen> SettingsPages::Mods() {
   return screen;
 }
 
+std::unique_ptr<MenuScreen> SettingsPages::ModActions() {
+  // Actions mods added through the UI extension API (NP-11).
+  std::vector<MenuRow> rows;
+  for (const auto& action : pinyon_shift::mod::MenuActions()) {
+    MenuRow row;
+    row.label = Upper(action.label);
+    row.activate = [action] {
+      diagnostics::RecordEvent("mod.menu_action", {{"label", action.label}});
+      action.callback(action.user);
+    };
+    rows.push_back(std::move(row));
+  }
+  return std::make_unique<MenuScreen>("MOD ACTIONS", std::move(rows));
+}
+
 std::unique_ptr<MenuScreen> SettingsPages::Controls() {
   std::vector<MenuRow> rows;
   MenuRow controller;
@@ -634,6 +651,9 @@ std::unique_ptr<MenuScreen> SettingsPages::Root() {
   rows.push_back(Page("AUDIO", &SettingsPages::Audio));
   rows.push_back(Page("CONTROLS", &SettingsPages::Controls));
   rows.push_back(Page("PROFILE", &SettingsPages::Profile));
+  if (!pinyon_shift::mod::MenuActions().empty()) {
+    rows.push_back(Page("MOD ACTIONS", &SettingsPages::ModActions));
+  }
   if (!services_.mods_root.empty()) {
     MenuRow row;
     row.label = "MODS";

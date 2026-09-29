@@ -6,8 +6,10 @@
  *   vehicle.pose_written;
  * - calls a guest function through the guest task queue: the title's
  *   XGetAVPack import (kernel.get_av_pack), which only returns a number;
- * - F9 shows a host dialog with what it saw; with hello_telemetry_self_test
- *   on it also shows it once by itself after 10 seconds, for scripted tests;
+ * - F9, and SETTINGS > MOD ACTIONS > SHOW TELEMETRY, show a host dialog
+ *   with what it saw; with hello_telemetry_self_test on it also shows it
+ *   once by itself after 10 seconds, for scripted tests;
+ * - a HUD label in the top-left corner shows the frame count and position;
  * - logs mod.hello_telemetry.* diagnostics events, including at shutdown.
  *
  * It never writes guest memory, so it is safe on any profile.
@@ -75,11 +77,20 @@ static void ReadAvPack(void* user) {
   LogEvent("hello_telemetry.av_pack", "value", text);
 }
 
+/* Its HUD label id: any number the mod owns. */
+#define HELLO_TELEMETRY_HUD 0x48454C4Cu /* "HELL" */
+
 static void OnFrame(void* user, const PinyonHookEvent* event) {
   char self_test[8];
+  char hud[96];
   (void)user;
   (void)event;
   ++g_telemetry.frames;
+  if (g_telemetry.frames % 30 == 0) {
+    snprintf(hud, sizeof(hud), "FRAME %llu  X %.0f  Z %.0f", (unsigned long long)g_telemetry.frames,
+             g_telemetry.position[0], g_telemetry.position[2]);
+    g_telemetry.api->set_hud_text(HELLO_TELEMETRY_HUD, hud, 80.0f, 70.0f, 22.0f);
+  }
   if (g_telemetry.frames == 60) {
     g_telemetry.api->enqueue_guest_task(ReadAvPack, NULL);
   }
@@ -103,6 +114,7 @@ static void OnCreateDialogs(void* self) {
   (void)self;
   g_telemetry.api->register_bind("hello_telemetry_show", "F9",
                                  "hello_telemetry: show what the mod saw", ShowTelemetry, NULL);
+  g_telemetry.api->add_menu_action("Show telemetry", ShowTelemetry, NULL);
 }
 
 static void OnModuleLaunched(void* self) {

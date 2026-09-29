@@ -58,6 +58,21 @@ void RecordSave(uint32_t body_address, uint32_t body_size);
 // A stable hash of the loaded mods' names and versions.
 std::string ModSetHash();
 
+// UI extensions (NP-11): HUD labels and menu actions mods registered.
+struct HudLabel {
+  std::string text;
+  float x = 0.0f, y = 0.0f, size = 24.0f;
+};
+std::vector<HudLabel> HudLabels();
+struct MenuAction {
+  std::string label;
+  PinyonBindCallback callback = nullptr;
+  void* user = nullptr;
+};
+std::vector<MenuAction> MenuActions();
+// Called (on any thread) when HUD labels change, so the host can draw them.
+void SetHudChangedCallback(std::function<void()> callback);
+
 void NotifyCreateDialogs();
 void NotifyModuleLaunched();
 void NotifyShutdown();
