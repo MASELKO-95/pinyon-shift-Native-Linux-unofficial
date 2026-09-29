@@ -99,10 +99,16 @@ if (Test-Path -LiteralPath (Join-Path $resolvedStateRoot 'mods') -PathType Conta
     & (Get-PinyonPython) (Join-Path $PSScriptRoot 'build-mod-patches.py') $resolvedStateRoot `
         --game-root $resolvedGameRoot | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Could not build the mods'' database patches.' }
-    # Mods' single archive members (NP-10.1), rebuilt into copies of the
-    # player's archives with zipmanifest.xml to match.
+    # Mods' single archive members (NP-10.1) and key merges (NP-10.2), rebuilt
+    # into copies of the player's archives with zipmanifest.xml to match; the
+    # archive extractor decompresses members that merges edit.
+    $archiveArguments = @('--game-root', $resolvedGameRoot)
+    $archiveExtractor = Join-Path $resolvedBuildDirectory 'pinyon_shift_fh1_archive_extract.exe'
+    if (Test-Path -LiteralPath $archiveExtractor -PathType Leaf) {
+        $archiveArguments += @('--archive-extractor', $archiveExtractor)
+    }
     & (Get-PinyonPython) (Join-Path $PSScriptRoot 'build-mod-archives.py') $resolvedStateRoot `
-        --game-root $resolvedGameRoot | Out-Null
+        @archiveArguments | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Could not build the mods'' archive members.' }
 }
 

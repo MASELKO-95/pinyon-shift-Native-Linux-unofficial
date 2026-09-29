@@ -1,4 +1,5 @@
 import importlib.util
+import shutil
 import struct
 import sys
 import tempfile
@@ -108,6 +109,73 @@ class BuildModArchivesTests(unittest.TestCase):
             manifest.write_bytes(manifest.read_bytes().replace(b'direntries="3"', b'direntries="9"', 1))
             with self.assertRaises(MODULE.ArchiveError):
                 MODULE.build(state, game)
+
+    def test_merges_ini_keys_with_the_earlier_mod_winning(self):
+        base = (b"Collision\\PlayerTorqueScale 0.0\r\n"
+                b"Collision\\RaceCarTorqueScaleInRace = 0.2\r\n"
+                b"Replay\\ReplayPosSpringK 30\r\n")
+        merged = MODULE.merge_ini(base, b"collision\\playertorquescale 0.5\nNew\\Key 7\n")
+        merged = MODULE.merge_ini(merged, b"Collision\\RaceCarTorqueScaleInRace 0.4\n")
+        self.assertEqual(b"Collision\\PlayerTorqueScale 0.5\r\n"
+                         b"Collision\\RaceCarTorqueScaleInRace = 0.4\r\n"
+                         b"Replay\\ReplayPosSpringK 30\r\n"
+                         b"New\\Key 7\r\n", merged)
+
+    def test_merges_xml_elements_by_key_attribute_and_position(self):
+        base = (b'<?xml version="1.0"?>\r\n<AIOpenWorld>\r\n'
+                b'    <Settings name="freeroam">\r\n'
+                b'        <CarList numInitialTrafficCars="4">\r\n'
+                b'            <Car model="282"/>  <!-- VW Beetle -->\r\n'
+                b'            <Car model="1241"/>\r\n'
+                b'        </CarList>\r\n'
+                b'        <Density>0.5</Density>\r\n'
+                b'    </Settings>\r\n'
+                b'    <Settings name="race"><Density>1</Density></Settings>\r\n'
+                b'</AIOpenWorld>\r\n')
+        patch = (b'<AIOpenWorld><Settings name="freeroam">'
+                 b'<CarList numInitialTrafficCars="8"><Car model="1241" pinyon-remove="true"/>'
+                 b'<Car model="1529" maxactive="1"/></CarList>'
+                 b'<Density>0.9</Density></Settings></AIOpenWorld>')
+        merged = MODULE.merge_xml(base, patch)
+        text = merged.decode("utf-8")
+        self.assertTrue(text.startswith('<?xml version="1.0"?>\r\n<AIOpenWorld>'))
+        self.assertNotIn("\n", text.replace("\r\n", ""))
+        self.assertIn('numInitialTrafficCars="8"', text)
+        self.assertIn("<!-- VW Beetle -->", text)
+        self.assertNotIn('model="1241"', text)
+        self.assertIn('<Car model="1529" maxactive="1" />', text)
+        self.assertIn("<Density>0.9</Density>", text)
+        self.assertIn('<Settings name="race"><Density>1</Density></Settings>', text)
+        with self.assertRaises(MODULE.ArchiveError):
+            MODULE.merge_xml(base, b"<Other/>")
+
+    def test_builds_merged_members_over_the_players_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            game, state = self.make(Path(directory))
+            for mod in ("first", "second"):
+                shutil.rmtree(state / "mods" / mod / "members")
+            archive = game / "media" / "StringTables" / "EN.zip"
+            with zipfile.ZipFile(archive, "a", zipfile.ZIP_DEFLATED) as zipped:
+                info = zipfile.ZipInfo("Settings.ini")
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.extra = struct.pack("<HHI", MODULE.DATA_OFFSET_EXTRA, 4, 0)
+                zipped.writestr(info, b"A\\One 1\r\nA\\Two 2\r\n")
+            manifest = game / "media" / "zipmanifest.xml"
+            text = manifest.read_bytes().decode("utf-8-sig")
+            text = text[:text.index("<Zip")] + manifest_line(
+                archive, "game:\\media\\stringtables\\en.zip") + text[text.index("\r\n<Zip"):]
+            manifest.write_bytes(b"\xef\xbb\xbf" + text.encode("utf-8"))
+            for mod, lines in (("first", b"A\\Two 20\n"), ("second", b"A\\One 10\nA\\Two 99\n")):
+                merge = state / "mods" / mod / "merge" / "media" / "StringTables" / "EN.zip"
+                merge.mkdir(parents=True)
+                (merge / "Settings.ini").write_bytes(lines)
+            result = MODULE.build(state, game)
+            self.assertEqual({"settings.ini": ["first", "second"]},
+                             result["archives"][0]["merged"])
+            rebuilt = state / "mods" / MODULE.GENERATED / "game" / "media" / "StringTables" / "EN.zip"
+            with zipfile.ZipFile(rebuilt) as zipped:
+                self.assertEqual(b"A\\One 10\r\nA\\Two 20\r\n", zipped.read("Settings.ini"))
+                self.assertEqual(b"pause menu", zipped.read("PauseMenu.str"))
 
 
 if __name__ == "__main__":

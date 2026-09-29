@@ -91,6 +91,38 @@ replace. Only existing members can be replaced, and archives whose end
 record disagrees with the manifest (the largest track archive) must still be
 replaced whole. `zz-archive-patches/archives.json` lists what was rebuilt.
 
+### Settings merged by key
+
+Several mods can change the same settings file when each ships only the
+settings it changes, under `merge/` instead of `members/`:
+
+```text
+<state>/mods/<name>/merge/<archive path>/<member path>
+e.g. mods/my_mod/merge/media/physics.zip/PhysicsSettings.ini
+```
+
+A merged `.ini` (such as `PhysicsSettings.ini` or `GameTunableSettings.ini`)
+lists `Section\Key value` lines: those keys take the new values (keeping the
+file's own `=` or space), other keys keep the player's, and unknown keys are
+added. A merged `.xml` (such as `AIOpenWorld.xml`) mirrors the file's
+structure with only the elements to change: an element matches the file's
+element of the same tag with the same `id`, `name`, `model`, `key` or `type`
+attribute, or, without one, the one at the same position among its tag; its
+attributes and text replace the file's, unmatched elements are added, and
+`pinyon-remove="true"` removes the matched one. For example, no free-roam
+traffic:
+
+```xml
+<AIOpenWorld><Settings name="freeroam">
+  <CarList numInitialTrafficCars="0" numInitialFestivalCars="0"/>
+</Settings></AIOpenWorld>
+```
+
+Merges apply on top of a member another mod replaces (or the player's own,
+decompressed with the build's `pinyon_shift_fh1_archive_extract`), and for a
+key two mods set, the earlier mod in the load order wins. `archives.json`
+lists the mods merged into each member.
+
 ### Textures
 
 A mod may replace textures without touching the archives that hold them:
