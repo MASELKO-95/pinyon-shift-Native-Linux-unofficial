@@ -29,6 +29,9 @@ def main() -> int:
     parser.add_argument("--state-root", type=Path, required=True)
     parser.add_argument("--shader-pack", type=Path)
     parser.add_argument("--configuration")
+    parser.add_argument("--build-directory", type=Path)
+    parser.add_argument("--game-argument", action="append",
+                        help="passed to the game, such as --gpu_backend=vulkan")
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--write-golden", action="store_true")
     args = parser.parse_args()
@@ -42,8 +45,9 @@ def main() -> int:
         options = argparse.Namespace(
             dump=dump, state_root=args.state_root, work=Path(".local/replay/state"),
             shader_pack=args.shader_pack,
-            configuration=args.configuration, hidden=True, timeout=args.timeout,
-            max_differing_words=None, write_golden=args.write_golden, game_argument=None)
+            configuration=args.configuration, build_directory=args.build_directory,
+            hidden=True, timeout=args.timeout, max_differing_words=None,
+            write_golden=args.write_golden, game_argument=args.game_argument)
         try:
             result = replay.replay(options)
         except (OSError, ValueError, RuntimeError) as error:

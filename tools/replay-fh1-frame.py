@@ -66,6 +66,8 @@ def replay(args: argparse.Namespace) -> dict[str, object]:
     ]
     if args.configuration:
         command += ["-Configuration", args.configuration]
+    if getattr(args, "build_directory", None):
+        command += ["-BuildDirectory", str(args.build_directory.resolve())]
     if args.hidden:
         command.append("-Hidden")
     process = subprocess.run(command, capture_output=True, text=True,
@@ -104,6 +106,8 @@ def main() -> int:
                         help="private state directory, replaced on every run")
     parser.add_argument("--shader-pack", type=Path)
     parser.add_argument("--configuration")
+    parser.add_argument("--build-directory", type=Path,
+                        help="the build to run, such as out/build/win-amd64-vulkan")
     parser.add_argument("--hidden", action="store_true")
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--max-differing-words", type=int,
