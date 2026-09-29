@@ -118,7 +118,9 @@ records `hostui.open`, `hostui.screen`, `hostui.closed` (drawer, input
 listener and guest input capture released) and, once per screen and output
 size, `hostui.layout` with its drawn extent against the 90 % safe area;
 `tools/check-fh1-settings-gate.py` checks the `fh1-settings-gate` route with
-them.
+them. `xamdialog <frame> message|keyboard` opens a sample XAM message box or
+keyboard through the host dialogs and records how it closed
+(`fh1.render_test.xam_dialog`); `fh1-xam-dialogs` drives both with keys.
 
 There is no renderer to choose: `fh1_renderer` was removed with the Xenos
 and `native-shadow` renderers (`a5b28e1`, `bccf126`). Every

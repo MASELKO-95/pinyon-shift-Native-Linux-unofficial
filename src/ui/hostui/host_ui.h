@@ -61,6 +61,13 @@ class HostUi final : public rex::ui::UIDrawer, public rex::ui::WindowInputListen
   // assets cannot be loaded.
   bool Open(std::unique_ptr<MenuScreen> screen);
   void Push(std::unique_ptr<MenuScreen> screen);
+  // Shows a XAM system dialog: on top of an open menu, or on its own. On its
+  // own it captures input like a menu but does not signal system UI itself;
+  // the XAM dispatcher already does.
+  bool OpenDialog(std::unique_ptr<MenuScreen> screen);
+  // Removes `screen` (after its action finished it); closes the UI when it
+  // was the only one. Safe to call from the screen's own row action.
+  void Finish(const MenuScreen* screen);
   // Closes every screen. Safe to call from a row's action. The guest gets its
   // input back only once no pad button or key is held, so the press that
   // closed the menu does not also reach the title (B would leave its pause
@@ -118,6 +125,11 @@ class HostUi final : public rex::ui::UIDrawer, public rex::ui::WindowInputListen
                     uint32_t right_color, rex::ui::ImmediateTexture* texture = nullptr,
                     float skew = 0.0f, UvRect uv = {});
   void Flush();
+  // Draws `text` word-wrapped to `width` title pixels from `top`; returns
+  // the height used.
+  float DrawWrapped(Face face, float title_pixels, std::string_view text, float x, float top,
+                    float width, uint32_t color);
+  void RemoveScreen(const MenuScreen* screen);
   void RecordLayout(const std::string& title, size_t first_batch, size_t first_vertex);
 
   rex::ReXApp& app_;
@@ -139,7 +151,11 @@ class HostUi final : public rex::ui::UIDrawer, public rex::ui::WindowInputListen
   std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
   bool applying_ = false;
   bool close_pending_ = false;
+  const MenuScreen* finish_pending_ = nullptr;
   bool guest_ui_active_ = false;
+  // Opened by OpenDialog: capture input without signalling system UI.
+  bool dialog_mode_ = false;
+  bool signalled_system_ui_ = false;
   std::chrono::steady_clock::time_point start_time_ = std::chrono::steady_clock::now();
 
   // Assets, loaded on first open.

@@ -153,6 +153,40 @@ bool HostUi::LoadAssets() {
   return true;
 }
 
+bool HostUi::OpenDialog(std::unique_ptr<MenuScreen> screen) {
+  if (is_open()) {
+    Push(std::move(screen));
+    return true;
+  }
+  dialog_mode_ = true;
+  const bool opened = Open(std::move(screen));
+  dialog_mode_ = opened;
+  return opened;
+}
+
+void HostUi::Finish(const MenuScreen* screen) {
+  if (applying_) {
+    // The screen's own action is running; remove it once it returns.
+    finish_pending_ = screen;
+    return;
+  }
+  RemoveScreen(screen);
+}
+
+void HostUi::RemoveScreen(const MenuScreen* screen) {
+  const auto it = std::find_if(screens_.begin(), screens_.end(),
+                               [screen](const auto& entry) { return entry.get() == screen; });
+  if (it == screens_.end()) {
+    return;
+  }
+  screens_.erase(it);
+  if (screens_.empty()) {
+    Close();
+  } else {
+    RequestPaint();
+  }
+}
+
 bool HostUi::Open(std::unique_ptr<MenuScreen> screen) {
   if (!screen || !LoadAssets()) {
     return false;
@@ -188,7 +222,12 @@ void HostUi::Close() {
     close_pending_ = true;
     return;
   }
-  screens_.clear();
+  // Screens left without finishing (a dialog closed with Start) cancel.
+  while (!screens_.empty()) {
+    auto screen = std::move(screens_.back());
+    screens_.pop_back();
+    screen->NotifyBack();
+  }
   row_rects_.clear();
   if (!registered_) {
     return;
@@ -201,6 +240,7 @@ void HostUi::Close() {
 
 void HostUi::FinishClose() {
   draining_ = false;
+  dialog_mode_ = false;
   held_keys_.clear();
   if (!registered_) {
     return;
@@ -238,10 +278,18 @@ void HostUi::SetGuestUiActive(bool active) {
   guest_ui_active_ = active;
   if (active) {
     app_.AcquireGuestInputCapture();
+    // XAM dialogs arrive with XN_SYS_UI already signalled by the dispatcher.
+    signalled_system_ui_ = !dialog_mode_;
+    if (signalled_system_ui_) {
+      rex::kernel::xam::xeXamSetHostUIActive(true);
+    }
   } else {
     app_.ReleaseGuestInputCapture();
+    if (signalled_system_ui_) {
+      rex::kernel::xam::xeXamSetHostUIActive(false);
+    }
+    signalled_system_ui_ = false;
   }
-  rex::kernel::xam::xeXamSetHostUIActive(active);
 }
 
 void HostUi::RequestPaint() { presenter_.RequestUIPaintFromUIThread(); }
@@ -259,11 +307,18 @@ void HostUi::Apply(NavCommand command) {
   applying_ = false;
   if (close_pending_) {
     close_pending_ = false;
+    finish_pending_ = nullptr;
     Close();
     return;
   }
+  if (const MenuScreen* finished = std::exchange(finish_pending_, nullptr)) {
+    RemoveScreen(finished);
+    return;
+  }
   if (result == MenuScreen::Result::kBack) {
+    auto left = std::move(screens_.back());
     screens_.pop_back();
+    left->NotifyBack();
     if (screens_.empty()) {
       Close();
       return;
@@ -403,6 +458,49 @@ float HostUi::DrawText(Face face, float title_pixels, std::string_view string, f
   return width / canvas_.scale;
 }
 
+float HostUi::DrawWrapped(Face face, float title_pixels, std::string_view text, float x,
+                          float top, float width, uint32_t color) {
+  Text& measure = TextFor(face, title_pixels);
+  const float line_height = title_pixels * 1.25f;
+  float y = top;
+  size_t start = 0;
+  while (start < text.size()) {
+    // The longest run of whole words that fits; a hard break ends a line.
+    size_t end = start, fitted = start;
+    while (end < text.size()) {
+      size_t next = end;
+      while (next < text.size() && text[next] != ' ' && text[next] != '\n') {
+        ++next;
+      }
+      const std::u32string candidate = DecodeUtf8(text.substr(start, next - start));
+      PrepareText(measure, candidate);
+      if (fitted != start && measure.atlas->Measure(candidate) / canvas_.scale > width) {
+        break;
+      }
+      fitted = next;
+      end = next;
+      if (end < text.size() && text[end] == '\n') {
+        break;
+      }
+      ++end;
+    }
+    if (fitted == start) {
+      fitted = std::min(text.size(), start + 1);
+    }
+    y += line_height;
+    DrawText(face, title_pixels, text.substr(start, fitted - start), x, y, color);
+    start = fitted;
+    while (start < text.size() && (text[start] == ' ' || text[start] == '\n')) {
+      const bool hard_break = text[start] == '\n';
+      ++start;
+      if (hard_break) {
+        break;
+      }
+    }
+  }
+  return y - top + line_height * 0.35f;
+}
+
 void HostUi::DrawRect(float x, float y, float width, float height, uint32_t color,
                       ImmediateTexture* texture, float skew, UvRect uv) {
   DrawGradient(x, y, width, height, color, color, texture, skew, uv);
@@ -537,6 +635,13 @@ void HostUi::Draw(rex::ui::UIDrawContext& context) {
   const size_t content_vertex = batches_.back().vertices.size();
 
   DrawText(Face::kDisplay, kTitleSize, screen.title(), kRowsLeft - 16.0f, kTitleBaseline, kWhite);
+  // A dialog's text sits between the title and its rows.
+  float rows_top = kRowsTop;
+  if (!screen.body().empty()) {
+    rows_top += DrawWrapped(Face::kLabel, kValueSize, screen.body(), kRowsLeft, kRowsTop,
+                            kSafeRight - kRowsLeft - 64.0f, kDimWhite) +
+                16.0f;
+  }
 
   const auto& rows = screen.rows();
   size_t first = 0;
@@ -548,7 +653,7 @@ void HostUi::Draw(rex::ui::UIDrawContext& context) {
     const MenuRow& row = rows[i];
     const bool focused = i == screen.focus();
     const bool enabled = row.is_enabled();
-    const float top = kRowsTop + float(i - first) * kRowPitch;
+    const float top = rows_top + float(i - first) * kRowPitch;
     const float baseline = top + kRowPitch * 0.72f;
     const float row_right = row.value ? kValueRight + 40.0f : kRowsLeft + 560.0f;
     if (focused) {
@@ -582,7 +687,7 @@ void HostUi::Draw(rex::ui::UIDrawContext& context) {
 
   const std::string note = screen.note();
   if (!note.empty()) {
-    const float note_top = kRowsTop + float(std::min(rows.size(), kVisibleRows)) * kRowPitch;
+    const float note_top = rows_top + float(std::min(rows.size(), kVisibleRows)) * kRowPitch;
     DrawText(Face::kLabel, kValueSize, note, kRowsLeft, note_top + 44.0f, kOrange);
   }
 
@@ -635,14 +740,25 @@ void HostUi::OnKeyDown(rex::ui::KeyEvent& e) {
     case VirtualKey::kNumpad6:
       Apply(NavCommand::kRight);
       break;
-    case VirtualKey::kReturn:
     case VirtualKey::kSpace:
+      // Typed as a character (OnKeyChar) on text-entry screens.
+      if (!e.prev_state() && !screens_.back()->accepts_text()) {
+        Apply(NavCommand::kAccept);
+      }
+      break;
+    case VirtualKey::kReturn:
       if (!e.prev_state()) {
         Apply(NavCommand::kAccept);
       }
       break;
-    case VirtualKey::kEscape:
     case VirtualKey::kBack:
+      if (screens_.back()->accepts_text()) {
+        screens_.back()->InputText(U'\b');
+        RequestPaint();
+        break;
+      }
+      [[fallthrough]];
+    case VirtualKey::kEscape:
       if (!e.prev_state()) {
         Apply(NavCommand::kBack);
       }
@@ -661,8 +777,15 @@ void HostUi::OnKeyUp(rex::ui::KeyEvent& e) {
 }
 
 void HostUi::OnKeyChar(rex::ui::KeyEvent& e) {
-  if (is_open()) {
-    e.set_handled(true);
+  if (!is_open()) {
+    return;
+  }
+  e.set_handled(true);
+  // The virtual key slot holds the typed code point.
+  const auto code_point = char32_t(e.virtual_key());
+  if (screens_.back()->accepts_text() && code_point >= 0x20 && code_point != 0x7F) {
+    screens_.back()->InputText(code_point);
+    RequestPaint();
   }
 }
 

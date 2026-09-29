@@ -41,6 +41,28 @@ class MenuScreen {
              std::function<std::string()> note = nullptr);
 
   const std::string& title() const { return title_; }
+  // Paragraph drawn wrapped under the title (dialog text), or empty.
+  const std::string& body() const { return body_; }
+  void set_body(std::string body) { body_ = std::move(body); }
+  // Called when the screen is left with back or close, not when an action
+  // finishes it (dialogs report a cancel here).
+  void set_on_back(std::function<void()> on_back) { on_back_ = std::move(on_back); }
+  void NotifyBack() {
+    if (auto on_back = std::move(on_back_)) {
+      on_back();
+    }
+  }
+  // Typed characters for text entry: printable code points, and '\b' for
+  // backspace (which then does not leave the screen).
+  void set_text_input(std::function<void(char32_t)> text_input) {
+    text_input_ = std::move(text_input);
+  }
+  bool accepts_text() const { return bool(text_input_); }
+  void InputText(char32_t code_point) {
+    if (text_input_) {
+      text_input_(code_point);
+    }
+  }
   // A line shown under the rows, or empty.
   std::string note() const { return note_ ? note_() : std::string(); }
   const std::vector<MenuRow>& rows() const { return rows_; }
@@ -56,8 +78,11 @@ class MenuScreen {
 
  private:
   std::string title_;
+  std::string body_;
   std::vector<MenuRow> rows_;
   std::function<std::string()> note_;
+  std::function<void()> on_back_;
+  std::function<void(char32_t)> text_input_;
   size_t focus_ = 0;
 };
 

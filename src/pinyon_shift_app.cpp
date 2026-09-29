@@ -34,6 +34,7 @@
 #include "ui/host_style.h"
 #include "ui/hostui/host_ui.h"
 #include "ui/photo_export.h"
+#include "ui/xam_dialogs.h"
 #include "ui/settings_menu.h"
 
 #include <cstdio>
@@ -44,6 +45,10 @@ extern "C" int __llvm_profile_dump(void);
 
 REXCVAR_DEFINE_UINT32(pinyon_shift_config_schema, 26, "Pinyon Shift",
                       "Pinyon Shift host configuration schema version");
+REXCVAR_DEFINE_BOOL(pinyon_shift_host_xam_dialogs, true, "Pinyon Shift",
+                    "Draw the title's message boxes and keyboard with the host UI (the game's "
+                    "fonts, pad navigation) instead of the built-in ImGui dialogs")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 REXCVAR_DEFINE_BOOL(pinyon_shift_capture_performance, true, "Pinyon Shift",
                     "Capture lightweight per-frame performance counters to a session CSV");
 namespace {
@@ -501,21 +506,33 @@ void PinyonShiftApp::ToggleGameMenu() {
   OpenSettingsMenu();
 }
 
+bool PinyonShiftApp::EnsureHostUi() {
+  if (host_ui_) {
+    return true;
+  }
+  rex::ui::Presenter* presenter =
+      runtime() && runtime()->graphics_system() ? runtime()->graphics_system()->presenter()
+                                                : nullptr;
+  if (!presenter || !immediate_drawer() || !window()) {
+    REXLOG_WARN("Host UI: presentation is not ready");
+    return false;
+  }
+  host_ui_ = std::make_unique<pinyon_shift::hostui::HostUi>(
+      *this, *presenter, *immediate_drawer(), *window(),
+      static_cast<rex::input::InputSystem*>(runtime()->input_system()), game_data_root());
+  if (REXCVAR_GET(pinyon_shift_host_xam_dialogs)) {
+    xam_dialogs_ = pinyon_shift::ui::CreateXamDialogs(*host_ui_);
+    rex::kernel::xam::SetXamUiProvider(xam_dialogs_.get());
+  }
+  return true;
+}
+
 void PinyonShiftApp::OpenSettingsMenu() {
   if (host_ui_ && host_ui_->is_open()) {
     return;
   }
-  if (!host_ui_) {
-    rex::ui::Presenter* presenter =
-        runtime() && runtime()->graphics_system() ? runtime()->graphics_system()->presenter()
-                                                  : nullptr;
-    if (!presenter || !immediate_drawer() || !window()) {
-      REXLOG_WARN("Host UI: presentation is not ready");
-      return;
-    }
-    host_ui_ = std::make_unique<pinyon_shift::hostui::HostUi>(
-        *this, *presenter, *immediate_drawer(), *window(),
-        static_cast<rex::input::InputSystem*>(runtime()->input_system()), game_data_root());
+  if (!EnsureHostUi()) {
+    return;
   }
   if (!host_config_) {
     REXLOG_WARN("Host UI: the settings file is not known yet");
@@ -561,6 +578,11 @@ void PinyonShiftApp::OnPostSetup() {
       window()->app_context().CallInUIThreadDeferred([this] { OpenSettingsMenu(); });
     }
   });
+  // Now, not on first use, so the title's first message box already gets
+  // the host dialogs.
+  if (window()) {
+    window()->app_context().CallInUIThreadDeferred([this] { EnsureHostUi(); });
+  }
   pinyon_shift::ui::ApplyMasterVolume();
   rex::cvar::RegisterChangeCallback(
       "pinyon_shift_master_volume",
@@ -628,6 +650,8 @@ void PinyonShiftApp::OnShutdown() {
   PinyonShiftSetPauseSettingsHandler(nullptr);
   rex::cvar::UnregisterChangeCallbacks("d3d12_allow_variable_refresh_rate_and_tearing");
   // Before the presenter, drawer and kernel it uses are torn down.
+  rex::kernel::xam::SetXamUiProvider(nullptr);
+  xam_dialogs_.reset();
   host_ui_.reset();
   pinyon_shift::fh1_render_test::Stop();
   pinyon_shift::native_renderer::UninstallShaderCapture(

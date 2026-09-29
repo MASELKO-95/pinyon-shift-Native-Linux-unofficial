@@ -22,6 +22,7 @@
 #include <rex/input/input.h>
 #include <rex/input/input_driver.h>
 #include <rex/input/input_system.h>
+#include <rex/kernel/xam/ui_provider.h>
 #include <rex/perf/counter.h>
 #include <rex/runtime.h>
 #include <rex/system/interfaces/graphics.h>
@@ -68,12 +69,16 @@ struct WaitStep {
 // screens (F6 settings) that the scripted controller cannot reach.
 // `hostclick <frame> <left|right> <x> <y>` clicks at (x, y) in the title's
 // 1280x720 space, mapped onto the painted guest output.
+// `xamdialog <frame> message|keyboard` opens a sample XAM message box or
+// keyboard through the installed host provider and records how it closed
+// (fh1.render_test.xam_dialog), to drive the dialogs with hostkey steps.
 struct HostKeyStep {
   uint64_t frame = 0;
   rex::ui::VirtualKey key = rex::ui::VirtualKey::kNone;
   rex::ui::MouseEvent::Button button = rex::ui::MouseEvent::Button::kNone;
   uint32_t x = 0;
   uint32_t y = 0;
+  std::string xam_dialog;
 };
 
 rex::ui::VirtualKey ParseHostKey(const std::string& name) {
@@ -308,6 +313,17 @@ void LoadScript(const std::filesystem::path& path) {
       if (!(row >> frame >> name) || row >> extra) Fail("script_hostkey_columns");
       HostKeyStep step{ParseUnsigned(frame, 10, "hostkey_frame"), ParseHostKey(name)};
       if (step.key == rex::ui::VirtualKey::kNone) Fail("script_hostkey_name");
+      if (!g_test.host_keys.empty() && step.frame <= g_test.host_keys.back().frame) {
+        Fail("script_hostkey_order");
+      }
+      g_test.host_keys.push_back(step);
+    } else if (command == "xamdialog") {
+      std::string frame, kind, extra;
+      if (!(row >> frame >> kind) || row >> extra || (kind != "message" && kind != "keyboard")) {
+        Fail("script_xamdialog_columns");
+      }
+      HostKeyStep step{ParseUnsigned(frame, 10, "xamdialog_frame")};
+      step.xam_dialog = kind;
       if (!g_test.host_keys.empty() && step.frame <= g_test.host_keys.back().frame) {
         Fail("script_hostkey_order");
       }
@@ -724,6 +740,30 @@ bool ObserveOutput(
     auto* window = g_test.window;
     auto* presenter = g_test.presenter;
     g_test.app_context->CallInUIThread([window, presenter, step] {
+      if (!step.xam_dialog.empty()) {
+        auto* provider = rex::kernel::xam::GetXamUiProvider();
+        if (!provider) {
+          diagnostics::RecordEvent("fh1.render_test.xam_dialog", {{"result", "no_provider"}});
+        } else if (step.xam_dialog == "message") {
+          provider->ShowMessageBox(
+              "Storage device", "The selected storage device is full. Choose another device "
+              "or free some space, then try saving again.",
+              {"Try again", "Continue without saving"}, 0, [](uint32_t button) {
+                diagnostics::RecordEvent("fh1.render_test.xam_dialog",
+                                         {{"kind", "message"},
+                                          {"result", std::to_string(int32_t(button))}});
+              });
+        } else {
+          provider->ShowKeyboard("Name", "Enter a name for this design.", "Pinyon", 15,
+                                 [](bool accepted, std::string text) {
+                                   diagnostics::RecordEvent("fh1.render_test.xam_dialog",
+                                                            {{"kind", "keyboard"},
+                                                             {"accepted", accepted ? "1" : "0"},
+                                                             {"result", text}});
+                                 });
+        }
+        return;
+      }
       if (step.button == rex::ui::MouseEvent::Button::kNone) {
         window->InjectKey(step.key, true);
         window->InjectKey(step.key, false);

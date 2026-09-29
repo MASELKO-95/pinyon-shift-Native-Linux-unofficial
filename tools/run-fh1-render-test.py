@@ -241,6 +241,13 @@ def parse_scenario(
             if int(fields[1]) <= previous_hostkey:
                 raise ValueError(f"line {number}: host keys must be in increasing frame order")
             previous_hostkey = int(fields[1])
+        elif fields[0] == "xamdialog" and len(fields) == 3:
+            # xamdialog <frame> message|keyboard: a sample host XAM dialog.
+            if fields[2] not in ("message", "keyboard"):
+                raise ValueError(f"line {number}: unknown XAM dialog {fields[2]}")
+            if int(fields[1]) <= previous_hostkey:
+                raise ValueError(f"line {number}: host keys must be in increasing frame order")
+            previous_hostkey = int(fields[1])
         elif fields[0] == "hostclick" and len(fields) == 5:
             # hostclick <frame> <left|right> <x> <y>, in 1280x720 title space.
             if fields[2] not in ("left", "right"):

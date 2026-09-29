@@ -34,6 +34,7 @@ if(WIN32)
         src/ui/settings_menu.cpp
         src/ui/photo_export.cpp
         src/ui/png_writer.cpp
+        src/ui/xam_dialogs.cpp
         src/config/host_config.cpp
         src/native_renderer/graphics_hooks.cpp
         src/native_renderer/guest_output_renderer.cpp
@@ -57,6 +58,7 @@ else()
         src/ui/settings_menu.cpp
         src/ui/photo_export.cpp
         src/ui/png_writer.cpp
+        src/ui/xam_dialogs.cpp
         src/config/host_config.cpp
         src/native_renderer/graphics_hooks.cpp
         src/native_renderer/guest_output_renderer.cpp

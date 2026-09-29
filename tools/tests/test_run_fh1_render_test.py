@@ -57,7 +57,7 @@ class Fh1RenderTestRunnerTests(unittest.TestCase):
         scenarios = Path(__file__).parents[2] / "config" / "render-tests"
         for name in (
             "fh1-race-sync", "fh1-modes-sync", "fh1-opening-sync", "fh1-long-drive", "fh1-buy-car",
-            "fh1-rewind-sync", "fh1-settings-gate",
+            "fh1-rewind-sync", "fh1-settings-gate", "fh1-xam-dialogs",
         ):
             self.assertTrue(MODULE.parse_scenario(scenarios / f"{name}.fh1test")[0])
 
