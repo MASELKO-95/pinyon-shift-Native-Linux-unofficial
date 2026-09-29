@@ -114,6 +114,15 @@ F6 settings screen, the F8 photo). Keys are `f6`, `f8`, `enter`, `escape`,
 `cvar <frame> <name> <value>` sets a flag at `<frame>` on the UI thread, as a
 settings change does, and records `fh1.render_test.cvar`; `fh1-scale-switch`
 uses it to switch the resolution scale at run time.
+`snapshot <frame> <name>` writes the guest's 512 MB of physical memory (the
+title's physical allocations, not the virtual heaps) to `<output>/<name>.mem`,
+and `poke <frame> <hex physical address> <float>` stores a big-endian float
+there, both from the frame-clock thread while the title runs (a snapshot may
+tear). `tools/scan-guest-snapshots.py s0.mem s1.mem s2.mem --min 0 --max 1
+--increasing` lists the words that step by the same amount between snapshots
+taken at equal spacing, such as game clocks. Heap layouts differ between
+runs, so confirm a candidate with `poke` in a run that found it; delete the
+snapshots afterwards (1.5 GB for three).
 `hostclick <frame> <left|right> <x> <y>` moves the pointer and clicks at
 `(x, y)` in the title's 1280x720 layout space, mapped onto the painted guest
 output, which is the space the host UI lays its rows out in. The host UI

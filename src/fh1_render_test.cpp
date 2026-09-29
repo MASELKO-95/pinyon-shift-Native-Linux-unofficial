@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -84,6 +85,13 @@ struct HostKeyStep {
   // cvar: set this flag to this value, as a settings change would.
   std::string cvar_name;
   std::string cvar_value;
+  // snapshot: write the guest's physical memory to <output>/<name>.mem, for
+  // offline scans (tools/scan-guest-snapshots.py).
+  std::string snapshot;
+  // poke: store a big-endian float at a guest physical address.
+  bool poke = false;
+  uint32_t poke_address = 0;
+  float poke_value = 0.0f;
 };
 
 rex::ui::VirtualKey ParseHostKey(const std::string& name) {
@@ -342,6 +350,24 @@ void LoadScript(const std::filesystem::path& path) {
       HostKeyStep step{ParseUnsigned(frame, 10, "cvar_frame")};
       step.cvar_name = name;
       step.cvar_value = value;
+      if (!g_test.host_keys.empty() && step.frame <= g_test.host_keys.back().frame) {
+        Fail("script_hostkey_order");
+      }
+      g_test.host_keys.push_back(step);
+    } else if (command == "snapshot" || command == "poke") {
+      std::string frame, first, second, extra;
+      HostKeyStep step;
+      if (command == "snapshot") {
+        if (!(row >> frame >> first) || row >> extra) Fail("script_snapshot_columns");
+        step.frame = ParseUnsigned(frame, 10, "snapshot_frame");
+        step.snapshot = first;
+      } else {
+        if (!(row >> frame >> first >> second) || row >> extra) Fail("script_poke_columns");
+        step.frame = ParseUnsigned(frame, 10, "poke_frame");
+        step.poke = true;
+        step.poke_address = uint32_t(ParseUnsigned(first, 16, "poke_address"));
+        step.poke_value = std::strtof(second.c_str(), nullptr);
+      }
       if (!g_test.host_keys.empty() && step.frame <= g_test.host_keys.back().frame) {
         Fail("script_hostkey_order");
       }
@@ -757,6 +783,28 @@ bool ObserveOutput(
                               {"output_frame", std::to_string(context.frame_sequence)}});
     auto* window = g_test.window;
     auto* presenter = g_test.presenter;
+    if (!step.snapshot.empty() || step.poke) {
+      // Guest memory is touched from this thread, as the title runs: a
+      // snapshot may tear, which scans for slowly changing values tolerate.
+      auto* memory = REX_KERNEL_MEMORY();
+      if (step.poke) {
+        uint32_t bits;
+        std::memcpy(&bits, &step.poke_value, sizeof(bits));
+        bits = (bits >> 24) | ((bits >> 8) & 0xFF00) | ((bits << 8) & 0xFF0000) | (bits << 24);
+        std::memcpy(memory->TranslatePhysical(step.poke_address), &bits, sizeof(bits));
+        diagnostics::RecordEvent("fh1.render_test.poke",
+                                 {{"address", std::to_string(step.poke_address)},
+                                  {"value", std::to_string(step.poke_value)}});
+      } else {
+        const auto path = g_test.output / (step.snapshot + ".mem");
+        std::ofstream(path, std::ios::binary)
+            .write(reinterpret_cast<const char*>(memory->TranslatePhysical(0)), 0x20000000);
+        diagnostics::RecordEvent("fh1.render_test.snapshot",
+                                 {{"name", step.snapshot},
+                                  {"output_frame", std::to_string(context.frame_sequence)}});
+      }
+      continue;
+    }
     g_test.app_context->CallInUIThread([window, presenter, step] {
       if (!step.cvar_name.empty()) {
         const bool set = rex::cvar::SetFlagByName(step.cvar_name, step.cvar_value);

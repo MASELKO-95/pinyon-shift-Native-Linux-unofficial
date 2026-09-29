@@ -254,6 +254,20 @@ def parse_scenario(
             if int(fields[1]) <= previous_hostkey:
                 raise ValueError(f"line {number}: host keys must be in increasing frame order")
             previous_hostkey = int(fields[1])
+        elif (fields[0] == "snapshot" and len(fields) == 3) or (
+            fields[0] == "poke" and len(fields) == 4
+        ):
+            # snapshot <frame> <name>: guest physical memory to <name>.mem;
+            # poke <frame> <hex physical address> <float>: a big-endian store.
+            if fields[0] == "snapshot" and not re.fullmatch(r"[A-Za-z0-9_-]+", fields[2]):
+                raise ValueError(f"line {number}: invalid snapshot name")
+            if fields[0] == "poke":
+                if int(fields[2], 16) >= 0x20000000:
+                    raise ValueError(f"line {number}: poke outside physical memory")
+                float(fields[3])
+            if int(fields[1]) <= previous_hostkey:
+                raise ValueError(f"line {number}: host keys must be in increasing frame order")
+            previous_hostkey = int(fields[1])
         elif fields[0] == "hostclick" and len(fields) == 5:
             # hostclick <frame> <left|right> <x> <y>, in 1280x720 title space.
             if fields[2] not in ("left", "right"):

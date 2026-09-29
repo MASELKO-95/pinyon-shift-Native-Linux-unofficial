@@ -48,6 +48,20 @@ class Fh1RenderTestRunnerTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     MODULE.parse_scenario(script)
 
+    def test_accepts_memory_snapshots_and_pokes(self):
+        header = MODULE.HEADER + "\ninput 0 0000 0 0 0 0 0 0\n"
+        tail = "capture 20 shot\nstop 30\n"
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "route.fh1test"
+            script.write_text(header + "snapshot 5 s0\npoke 6 0C19DCAC 0.5\nsnapshot 7 s1\n"
+                              + tail, encoding="utf-8")
+            self.assertEqual([(20, "shot")], MODULE.parse_scenario(script)[0])
+            for lines in ("snapshot 5 ../s0\n", "poke 5 20000000 1\n", "poke 5 0C19DCAC x\n",
+                          "snapshot 6 a\nsnapshot 5 b\n", "poke 5 0C19DCAC\n"):
+                script.write_text(header + lines + tail, encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    MODULE.parse_scenario(script)
+
     def test_race_start_wait_route_parses(self):
         scenarios = Path(__file__).parents[2] / "config" / "render-tests"
         captures = MODULE.parse_scenario(scenarios / "fh1-race-start-wait.fh1test")[0]
