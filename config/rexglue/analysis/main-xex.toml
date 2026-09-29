@@ -33,6 +33,13 @@ registers = ["r3", "r11", "r31"]
 address = 0x82410620
 name = "PinyonShiftObserveTitleDrawEmitterEnd"
 
+# NP-3.2: block the title's GPU fence polling predicate until the command
+# processor writes guest memory (src/native_renderer/graphics_hooks.cpp).
+[[midasm_hook]]
+address = 0x829F04A8
+name = "PinyonShiftGpuFenceWait"
+registers = ["r3"]
+
 # Observe the native UI4 scene-registry construction after the title's
 # constructor returns. This is default-off and records registers only.
 [[midasm_hook]]

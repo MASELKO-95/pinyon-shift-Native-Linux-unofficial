@@ -131,8 +131,8 @@ Status on 2026-09-28: NP-0.1 to NP-0.5 and NP-0.8 are done, and NP-1.1 to
 NP-1 is done except its gate runs. NP-0.6's repair of cards saved by older
 builds waits on a product decision, because it would change player save files.
 NP-2.1, NP-2.2 and NP-2.8 are done; NP-2.3 to NP-2.5 were measured and not
-built (NP-2.4 waits for AMD or Intel hardware). NP-3.6 is done; next in NP-3
-are NP-3.2 and NP-3.1.
+built (NP-2.4 waits for AMD or Intel hardware). NP-3.6 and NP-3.2 are done;
+next in NP-3 is NP-3.1.
 
 ## NP-0 Clean native baseline
 
@@ -234,7 +234,7 @@ hash, because gameplay integrates a variable delta.
 | --- | --- | --- |
 | NP-3.0 | Prerequisites: instruction-level attribution for generated code (extend `tools/profile-etl-export` to emit `file:line` per sample and map generated lines back to guest addresses, which unblocks every "defer until instruction-level evidence" decision); name guest threads by start address and log `ExCreateThread` parameters; add ready-time (scheduler delay) and waker analysis to `tools/summarize-cpu-hotspots.py`; add kernel-side counters (watch faults, `VirtualProtect` calls and pages, global-lock acquisitions and contentions, critical-section spins, clock-mutex contention, timer-queue wakeups); include Microsoft symbols so kernel and CRT time can be attributed. | M |
 | NP-3.1 | Thread placement: opt-in cvars to honour guest priorities and affinities (`ignore_thread_priorities` and `ignore_thread_affinities` default to true), prefer performance cores for the main guest thread, GPU Commands and GPU VSync on hybrid CPUs, and raise their priority; measure p95 and p99 on a hybrid machine and a four-core machine. | S |
-| NP-3.2 | Replace the title busy-poll (`sub_829F04A8` polling the word written by `EVENT_WRITE_SHD`) with a targeted wake: the command processor signals a host event when it stores to the polled address and the hook blocks with a bounded timeout. This is a CPU, power and lower-core-count win more than a frame-time win; the naive one-millisecond sleep trial regressed and is the documented control. | M |
+| NP-3.2 | **Done** (SDK `96c24ce`). `sub_829F04A8` is the predicate seven D3D fence-wait loops (`sub_823E91F0` among them) call while the fence word, at `0xFFCA4000` in the 0xE0000000 physical view, has not reached their target; it ran about a billion times per `fh1-race-sync` run. The runtime now counts the command processor's CPU-visible write packets and wakes waiters (`rex::system::WaitForGpuWrite`); the midasm hook `PinyonShiftGpuFenceWait` at the predicate's entry spins 20 us and then blocks until the next write, bounded to 1 ms so the predicate's own timeout and kick logic keep running. About 100,000 waits per run, 88 % ended by the signal. Three interleaved pairs: process CPU over the route 186 to 159 CPU seconds (-15 %), race window 3.40 to 2.88 cores; race-window median 16.89 vs 16.80 ms, p95 21.38 vs 21.23 ms; `fh1-modes-sync` passes. Control: `--pinyon_shift_block_on_gpu_fence=false`. | M |
 | NP-3.3 | Write-watch churn: batch the per-page `VirtualProtect` restores into runs, re-arm watches less often, and test 64 KiB watch granularity (`sdk/src/system/xmemory.cpp:2112-2293`, `sdk/src/graphics/shared_memory.cpp:366-399`); gate with `tools/check-fh1-texture-watch.py` and golden replays. | M |
 | NP-3.4 | Lock diet: cache a direct object pointer with a generation in the guest dispatch header so `GetNativeObject`, `KeSetEvent` and waits skip the recursive global mutex and handle table; add a pause instruction and a spin cap to `RtlEnterCriticalSection`; replace the timer queue's spin-wait strategy; run with `clock_no_scaling=true` or make `UpdateGuestClock` lock-free. | S each |
 | NP-3.5 | FMA3 build variant: measure a `-mfma` (x86-64-v3) build against the SSE4.1 baseline, then ship a dual baseline with runtime dispatch if it wins. Hardware FMA is bit-identical to `std::fma`; never substitute `a*b+c`. | S to test, M to ship |
