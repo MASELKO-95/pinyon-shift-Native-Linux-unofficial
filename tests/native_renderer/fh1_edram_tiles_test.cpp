@@ -71,6 +71,27 @@ void TestRectClaims() {
   CHECK(!claim.per_row && claim.previous_owner == Fh1EdramTiles::kNoOwner);
 }
 
+void TestSplitByOwner() {
+  Fh1EdramTiles tiles;
+  tiles.Reset();
+  // Pitch 4 tiles of 80x16 pixels: rows 0-1 columns 0-1 are A, the rest B.
+  tiles.Claim(0, 8, kB, true);
+  tiles.ClaimRect(0, 4, kA, 0, 0, 2, 2);
+  const auto rects = tiles.SplitByOwner(0, 4, 80, 16, 10, 4, 300, 30);
+  CHECK(rects.size() == 2);
+  if (rects.size() == 2) {
+    // One rectangle per owner, merged over both tile rows and clipped to
+    // the requested pixels.
+    CHECK(rects[0].owner == kA && rects[0].left == 10 && rects[0].right == 160 &&
+          rects[0].top == 4 && rects[0].bottom == 30);
+    CHECK(rects[1].owner == kB && rects[1].left == 160 && rects[1].right == 300 &&
+          rects[1].top == 4 && rects[1].bottom == 30);
+  }
+  // Tiles nobody owns come back as kNoOwner.
+  const auto unowned = tiles.SplitByOwner(16, 4, 80, 16, 0, 0, 80, 16);
+  CHECK(unowned.size() == 1 && unowned[0].owner == Fh1EdramTiles::kNoOwner);
+}
+
 void TestStencil() {
   Fh1EdramTiles tiles;
   tiles.Reset();
@@ -86,6 +107,7 @@ int main() {
   TestClaimReturnsPreviousOwnersRuns();
   TestClaimWithoutTransferAndWrapping();
   TestRectClaims();
+  TestSplitByOwner();
   TestStencil();
   if (failures) {
     std::fprintf(stderr, "%d check(s) failed\n", failures);
