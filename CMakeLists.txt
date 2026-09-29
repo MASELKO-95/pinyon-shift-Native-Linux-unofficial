@@ -21,6 +21,7 @@ if(PINYON_SHIFT_HOST_TESTS_ONLY)
 elseif(WIN32)
     add_executable(pinyon_shift WIN32
         src/main.cpp
+        src/cpu_baseline_guard.cpp
         src/fh1_render_test.cpp
         src/pinyon_shift_app.cpp
         src/pinyon_shift_diagnostics.cpp
@@ -53,6 +54,7 @@ elseif(WIN32)
 else()
     add_executable(pinyon_shift
         src/main.cpp
+        src/cpu_baseline_guard.cpp
         src/fh1_render_test.cpp
         src/pinyon_shift_app.cpp
         src/pinyon_shift_diagnostics.cpp

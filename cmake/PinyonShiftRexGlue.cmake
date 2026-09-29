@@ -4,7 +4,7 @@ set(REXSDK_VERSION "" CACHE STRING "Override the pinned ReXGlue SDK version")
 set(REXSDK_DIR "" CACHE PATH "Path to the ReXGlue SDK source tree")
 set(PINYON_SHIFT_CPU_BASELINE "sse4.1" CACHE STRING
     "Minimum AMD64 CPU feature baseline used by the host and source-built SDK")
-set_property(CACHE PINYON_SHIFT_CPU_BASELINE PROPERTY STRINGS "sse4.1")
+set_property(CACHE PINYON_SHIFT_CPU_BASELINE PROPERTY STRINGS "sse4.1" "fma")
 
 # Tracy opens a network listener in non-Release configurations. Private M3
 # qualification uses the structured event log and lightweight counters instead,
@@ -64,15 +64,32 @@ if(PINYON_SHIFT_CAPTURE_PERFORMANCE)
 endif()
 
 if(WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
-    if(NOT PINYON_SHIFT_CPU_BASELINE STREQUAL "sse4.1")
+    if(NOT PINYON_SHIFT_CPU_BASELINE MATCHES "^(sse4\\.1|fma)$")
         message(FATAL_ERROR
-            "Pinyon Shift currently supports only the audited SSE4.1 AMD64 baseline")
+            "Pinyon Shift supports the audited SSE4.1 AMD64 baseline and its FMA3 "
+            "variant (PINYON_SHIFT_CPU_BASELINE sse4.1 or fma)")
     endif()
     if(NOT CMAKE_C_FLAGS MATCHES "(^| )-msse4\\.1($| )" OR
        NOT CMAKE_CXX_FLAGS MATCHES "(^| )-msse4\\.1($| )")
         message(FATAL_ERROR
             "The Windows AMD64 source build must explicitly compile C and C++ "
             "with -msse4.1; use the checked-in CMake presets")
+    endif()
+    # NP-3.5: the FMA3 baseline lowers the std::fma the generated code uses for
+    # the Xenon's fused multiply-adds to one instruction instead of a CRT call;
+    # the result is bit-identical. Contraction stays off so no separate
+    # multiply and add is ever fused, which would change results.
+    if(PINYON_SHIFT_CPU_BASELINE STREQUAL "fma")
+        foreach(_flags IN ITEMS CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
+            if(NOT ${_flags} MATCHES "(^| )-mfma($| )" OR
+               NOT ${_flags} MATCHES "(^| )-ffp-contract=off($| )")
+                message(FATAL_ERROR
+                    "The fma baseline must compile with -msse4.1 -mfma -ffp-contract=off")
+            endif()
+        endforeach()
+        add_compile_definitions(PINYON_SHIFT_CPU_BASELINE_FMA=1)
+    elseif(CMAKE_C_FLAGS MATCHES "(^| )-mfma($| )" OR CMAKE_CXX_FLAGS MATCHES "(^| )-mfma($| )")
+        message(FATAL_ERROR "-mfma needs PINYON_SHIFT_CPU_BASELINE=fma")
     endif()
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         # LLD otherwise writes the wall clock into each PE/COFF image. Combined

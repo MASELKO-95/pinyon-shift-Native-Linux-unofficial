@@ -4,6 +4,10 @@ param(
     [string]$Configuration = 'Release',
     [ValidateRange(1, 32)] [int]$Parallel = [Math]::Max(2, [Math]::Min(16, [Environment]::ProcessorCount - 1)),
     [switch]$CleanGenerated,
+    # NP-3.5: 'auto' builds with FMA3 when this CPU has it (a faster build of
+    # the same results); the build only runs on CPUs with the chosen baseline.
+    [ValidateSet('auto', 'sse4.1', 'fma')]
+    [string]$CpuBaseline = 'auto',
     [switch]$JsonEvents
 )
 
@@ -25,6 +29,20 @@ $logs = Resolve-PinyonLocalPath -RelativePath '.local/logs'
 [void](New-Item -ItemType Directory -Force -Path $logs)
 $env:SOURCE_DATE_EPOCH = '1784764800'
 $previewPreset = 'win-amd64-' + $Configuration.ToLowerInvariant()
+function Test-PinyonCpuFma {
+    # Windows reports AVX2 only when it also saves the AVX register state, and
+    # every CPU with AVX2 has FMA3.
+    if (-not ('PinyonShift.CpuFeatures' -as [type])) {
+        Add-Type -Namespace PinyonShift -Name CpuFeatures -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("kernel32.dll")]
+public static extern bool IsProcessorFeaturePresent(uint feature);
+'@
+    }
+    return [PinyonShift.CpuFeatures]::IsProcessorFeaturePresent(40)
+}
+$cpuBaseline = if ($CpuBaseline -ne 'auto') { $CpuBaseline }
+    elseif (Test-PinyonCpuFma) { 'fma' } else { 'sse4.1' }
+$cpuFlags = if ($cpuBaseline -eq 'fma') { '-msse4.1 -mfma -ffp-contract=off' } else { '-msse4.1' }
 
 $supportedDumps = Get-Content -LiteralPath (Join-Path $root 'config/supported-dumps.json') -Raw |
     ConvertFrom-Json
@@ -110,7 +128,10 @@ if (-not (Test-Path -LiteralPath (Join-Path $generatedRoot 'default/codegen.buil
 Write-PinyonEvent build 82 'Compiling the playable preview. This is the longest step.' -JsonEvents:$JsonEvents
 Push-Location $root
 try {
-    Invoke-PinyonBuildCommand $environment.CMake @('--preset', $previewPreset, "-DREXSDK_DIR=$sdkRoot") `
+    Write-PinyonEvent build 83 "CPU baseline: $cpuBaseline." -JsonEvents:$JsonEvents
+    Invoke-PinyonBuildCommand $environment.CMake @('--preset', $previewPreset, "-DREXSDK_DIR=$sdkRoot",
+        "-DPINYON_SHIFT_CPU_BASELINE=$cpuBaseline", "-DCMAKE_C_FLAGS=$cpuFlags",
+        "-DCMAKE_CXX_FLAGS=$cpuFlags") `
         (Join-Path $logs 'preview-configure.log') 'Preview configuration failed.'
     Invoke-PinyonBuildCommand $environment.CMake @('--build', '--preset', $previewPreset, '--parallel', "$Parallel") `
         (Join-Path $logs 'preview-build.log') 'Preview compilation failed.'
@@ -143,6 +164,7 @@ $executableSha256 = (Get-FileHash -LiteralPath $executable -Algorithm SHA256).Ha
 $result = [ordered]@{
     schema_version = 3
     configuration = $Configuration
+    cpu_baseline = $cpuBaseline
     created_utc = [DateTime]::UtcNow.ToString('o')
     executable = "out/build/$previewPreset/pinyon_shift.exe"
     executable_sha256 = $executableSha256
