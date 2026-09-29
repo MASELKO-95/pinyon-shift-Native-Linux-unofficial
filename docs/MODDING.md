@@ -183,6 +183,22 @@ touching guest addresses (NP-11):
   ACTIONS, reached from the pause menu's SETTINGS, and runs `callback` on the
   UI thread when the player picks it.
 
+- `set_ui_string(table, key, text)` replaces the text of one entry of the
+  title's string tables, such as a menu row's label, with UTF-8 text of any
+  length; the title's own layout then fits it. It applies when the title
+  next loads the table, so call it from `rex_mod_create`. `table` is the
+  table's file name and `key` its 16-bit entry key, which
+  `tools/fh1-strings.py` lists:
+
+  ```text
+  python tools/fh1-strings.py --archive <game>/media/StringTables/EN.zip --table PauseMenu.str --grep photo
+  0xDED7  PHOTO MODE
+  ```
+
+  Each replacement is logged as `ui.string.override` (in place when it
+  fits, otherwise appended to the table). The host renames the pause menu's
+  offline MULTIPLAYER row (`0xDD6B`) to SETTINGS unless a mod sets it.
+
 Adding rows to the title's own menus (native UI4 insertion) is still
 research, tracked as NP-11.3 in the backlog.
 
@@ -190,7 +206,7 @@ research, tracked as NP-11.3 in the backlog.
 
 | Sample | Shows |
 | --- | --- |
-| [`hello_telemetry`](../mods_src/samples/hello_telemetry/hello_telemetry.c) | a setting, an F9 bind, `frame.tick` and vehicle-pose hooks, a guest call through the task queue (`kernel.get_av_pack`), a host dialog, a HUD label, a menu action and shutdown |
+| [`hello_telemetry`](../mods_src/samples/hello_telemetry/hello_telemetry.c) | a setting, an F9 bind, `frame.tick` and vehicle-pose hooks, a guest call through the task queue (`kernel.get_av_pack`), a host dialog, a HUD label, a menu action, a longer pause-menu label and shutdown |
 | [`english_strings`](../mods_src/samples/english_strings/mod.toml) | an asset-only mod replacing `media/StringTables/EN.zip` |
 
 Build and install them into a private state copy (never the AppData save):

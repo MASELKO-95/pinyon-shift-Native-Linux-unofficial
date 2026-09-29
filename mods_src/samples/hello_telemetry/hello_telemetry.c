@@ -10,6 +10,8 @@
  *   with what it saw; with hello_telemetry_self_test on it also shows it
  *   once by itself after 10 seconds, for scripted tests;
  * - a HUD label in the top-left corner shows the frame count and position;
+ * - the pause menu's PHOTO MODE row reads PHOTO MODE (F8 SAVES A PNG): a
+ *   string-table entry (PauseMenu.str, key 0xDED7) replaced by a longer text;
  * - logs mod.hello_telemetry.* diagnostics events, including at shutdown.
  *
  * It never writes guest memory, so it is safe on any profile.
@@ -141,6 +143,8 @@ PINYON_MOD_EXPORT int rex_mod_create(const PinyonModApi* api, PinyonMod* mod) {
                      "hello_telemetry: the first words of its dialog");
   api->register_cvar("hello_telemetry_self_test", "false",
                      "hello_telemetry: show the dialog once by itself (scripted tests)");
+  /* Before the title starts, so the first load of the table has it. */
+  api->set_ui_string("PauseMenu.str", 0xDED7, "PHOTO MODE (F8 SAVES A PNG)");
   if (!api->subscribe(PINYON_HOOK_FRAME_TICK, OnFrame, NULL) ||
       !api->subscribe(PINYON_HOOK_VEHICLE_POSE, OnPose, NULL)) {
     return 1;

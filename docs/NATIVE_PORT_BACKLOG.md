@@ -448,7 +448,7 @@ at 1080p and ultrawide.
 | Item | Work | Size |
 | --- | --- | --- |
 | NP-11.1 | **Partly done**: the host-layer backend for additive widgets is in the ABI: `set_hud_text` labels drawn over the title in its fonts (1280x720 layout, safe area) and `add_menu_action` rows in SETTINGS > MOD ACTIONS, logged as `mod.menu_action`; `fh1-mods-ui` drives both. The semantic component registry and scene lifecycle of the UI API plan wait on NP-11.3 for anything that edits the title's own scenes | M |
-| NP-11.2 | Variable-length string tables so labels are not limited to same-byte-length rewrites. | M |
+| NP-11.2 | **Done**: string overrides keyed by table and 16-bit entry key (`pinyon_shift::ui::SetUiString`, the mods' `set_ui_string`). A hook on the LSB2 reader's allocation (`0x82CAC704` in `sub_82CAC5B8`) gives tables with overrides room after the pool; the chunk hook writes a replacement in place when it fits, otherwise appends it, points the entry at it and moves the sentinel. The pause SETTINGS label now uses it. `tools/fh1-strings.py` lists a table's keys and text. `fh1-pause` with `hello_telemetry`: PHOTO MODE (10 characters) reads "PHOTO MODE (F8 SAVES A PNG)" (27, appended) and the row art stretches to fit; SETTINGS still replaces MULTIPLAYER | M |
 | NP-11.3 | Native insertion research: recover how the animation loader registers a cloned owner's scaler bindings in `sub_8281BBA8`; only connect `AddMenuItem` to the native backend after the eight-row acceptance test passes. Runs in parallel and may never converge; nothing else depends on it. | L |
 
 **Gates.** The plan's production-adapter checklist is green;

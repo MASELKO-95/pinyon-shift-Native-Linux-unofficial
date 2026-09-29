@@ -15,6 +15,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <fmt/format.h>
@@ -34,6 +35,7 @@
 #include "save/live_profile.h"
 #include "save/profile_body.h"
 #include "ui/fh1_ui_api.h"
+#include "ui/ui_strings.h"
 
 REXCVAR_DEFINE_BOOL(pinyon_shift_skip_opening_movies, false, "Pinyon Shift",
                     "Complete the opening splash movies immediately");
@@ -1794,16 +1796,14 @@ namespace {
 
 // NP-1.5: the offline pause menu's MULTIPLAYER row becomes SETTINGS and opens
 // the in-game settings screen. The row's label is entry 0xDD6B
-// (IDS_Multiplayer) of the pausemenu.str LSB2 table. The loader reads the
+// (IDS_Multiplayer) of the pausemenu.str LSB2 table, replaced through the
+// string overrides below unless a mod already set it. The loader reads the
 // table's header separately; the chunk seen here starts with the entries:
 // (u16 key hash, u32 character offset) in ascending hash order, closed by a
-// 0xFFFF sentinel whose offset is the pool's length, then the pool of
-// NUL-terminated UTF-16BE strings. Only that entry is rewritten, and only
-// where the replacement fits: the title reads strings up to the NUL, so a
-// shorter label needs no other change. IDS_MultiplayerOption, which also
-// reads MULTIPLAYER, is left alone.
+// 0xFFFF sentinel holding the offset of the pool's last terminator, then the
+// pool of NUL-terminated UTF-16BE strings (tools/fh1-strings.py lists them).
+// IDS_MultiplayerOption, which also reads MULTIPLAYER, is left alone.
 constexpr uint16_t kPauseMultiplayerLabelHash = 0xDD6Bu;
-constexpr std::u16string_view kPauseSettingsLabel = u"SETTINGS";
 constexpr uint32_t kPauseMenuVtable = 0x8205109Cu;
 std::function<void()> g_pause_settings_handler;
 
@@ -1815,21 +1815,29 @@ uint32_t LoadGuestU32Unaligned(uint32_t address) {
   return uint32_t(LoadGuestU16Unaligned(address)) << 16 | LoadGuestU16Unaligned(address + 2u);
 }
 
-bool IsPauseMenuTable(std::string_view path) {
-  constexpr std::string_view kName = "pausemenu.str";
-  if (path.size() < kName.size()) {
-    return false;
-  }
-  const std::string_view tail = path.substr(path.size() - kName.size());
-  return std::equal(tail.begin(), tail.end(), kName.begin(), [](char a, char b) {
-    return char(std::tolower(static_cast<unsigned char>(a))) == b;
-  });
+// Extra bytes the loader allocated after the chunk being read on this thread
+// (PinyonShiftSizeUiStringChunk), for replacements longer than the stock text.
+thread_local uint32_t g_ui_string_chunk_slack = 0;
+
+void StoreGuestU16Unaligned(uint32_t address, uint16_t value) {
+  StoreGuestU8(address, uint8_t(value >> 8));
+  StoreGuestU8(address + 1u, uint8_t(value));
 }
 
-void PatchPauseSettingsLabel(uint32_t buffer, uint32_t size) {
+void StoreGuestU32Unaligned(uint32_t address, uint32_t value) {
+  StoreGuestU16Unaligned(address, uint16_t(value >> 16));
+  StoreGuestU16Unaligned(address + 2u, uint16_t(value));
+}
+
+// NP-11.2: writes the registered replacements (pinyon_shift::ui::SetUiString)
+// into a verbatim chunk the loader has just read. A replacement that fits
+// overwrites the stock string; a longer one is appended in the slack after
+// the pool and its entry pointed at it, and the sentinel moves to the new end.
+void ApplyUiStringOverrides(uint32_t buffer, uint32_t size, uint32_t slack) {
   constexpr uint32_t kMaximumEntries = 4096u;
-  if (!IsPauseMenuTable(g_ui_string_current_path) || buffer == 0u || size < 12u ||
-      size > kUiStringChunkMaximumBytes || !PinyonShiftGuestRangeReadable(buffer, size)) {
+  const auto overrides = pinyon_shift::ui::UiStringsFor(g_ui_string_current_path);
+  if (overrides.empty() || buffer == 0u || size < 12u || size > kUiStringChunkMaximumBytes ||
+      !PinyonShiftGuestRangeReadable(buffer, size + slack)) {
     return;
   }
   // Find the sentinel; anything that does not look like the entry table
@@ -1849,38 +1857,54 @@ void PatchPauseSettingsLabel(uint32_t buffer, uint32_t size) {
     }
     previous_hash = hash;
   }
-  const uint64_t pool = 6ull * (uint64_t(count) + 1ull);
-  if (pool + 2ull * LoadGuestU32Unaligned(buffer + 6u * count + 2u) > size) {
+  const uint32_t sentinel = buffer + 6u * count;
+  const uint32_t pool = buffer + 6u * (count + 1u);
+  if (pool - buffer + 2ull * LoadGuestU32Unaligned(sentinel + 2u) > size) {
     return;
   }
-  for (uint32_t index = 0; index < count; ++index) {
-    const uint32_t entry = buffer + 6u * index;
-    if (LoadGuestU16Unaligned(entry) != kPauseMultiplayerLabelHash) {
+  // Appended strings start on a character boundary after the stock pool.
+  uint32_t append = buffer + size + ((buffer + size - pool) & 1u);
+  const uint32_t limit = buffer + size + slack;
+  for (const auto& entry : overrides) {
+    uint32_t index = 0;
+    while (index < count && LoadGuestU16Unaligned(buffer + 6u * index) != entry.key) ++index;
+    if (index == count) {
       continue;
     }
-    const uint64_t start = pool + 2ull * LoadGuestU32Unaligned(entry + 2u);
-    uint64_t length = 0;
-    while (start + 2ull * length + 2ull <= size &&
-           LoadGuestU16Unaligned(buffer + uint32_t(start + 2ull * length)) != 0u) {
+    const uint32_t start = pool + 2u * LoadGuestU32Unaligned(buffer + 6u * index + 2u);
+    uint32_t length = 0;
+    while (start + 2u * length + 2u <= buffer + size &&
+           LoadGuestU16Unaligned(start + 2u * length) != 0u) {
       ++length;
     }
-    const bool fits = start + 2ull * length + 2ull <= size &&
-                      length >= kPauseSettingsLabel.size();
-    if (fits) {
-      uint32_t at = buffer + uint32_t(start);
-      for (char16_t character : kPauseSettingsLabel) {
-        StoreGuestU8(at++, uint8_t(character >> 8));
-        StoreGuestU8(at++, uint8_t(character));
+    const uint32_t needed = 2u * uint32_t(entry.text.size() + 1u);
+    const char* mode = "no_room";
+    uint32_t at = 0;
+    if (entry.text.size() <= length && start + 2u * length + 2u <= buffer + size) {
+      at = start;
+      mode = "in_place";
+    } else if (append + needed <= limit) {
+      at = append;
+      append += needed;
+      StoreGuestU32Unaligned(buffer + 6u * index + 2u, (at - pool) / 2u);
+      // The sentinel holds the offset of the pool's last terminator.
+      StoreGuestU32Unaligned(sentinel + 2u, (append - pool) / 2u - 1u);
+      mode = "appended";
+    }
+    if (at) {
+      for (char16_t character : entry.text) {
+        StoreGuestU16Unaligned(at, uint16_t(character));
+        at += 2u;
       }
-      StoreGuestU8(at++, 0u);
-      StoreGuestU8(at, 0u);
+      StoreGuestU16Unaligned(at, 0u);
     }
     pinyon_shift::diagnostics::RecordEvent(
-        "ui.pause_settings.label",
+        "ui.string.override",
         {{"table", g_ui_string_current_path},
+         {"key", fmt::format("{:04X}", entry.key)},
          {"stock_length", std::to_string(length)},
-         {"patched", fits ? "1" : "0"}});
-    return;
+         {"length", std::to_string(entry.text.size())},
+         {"mode", mode}});
   }
 }
 
@@ -1906,13 +1930,35 @@ bool PinyonShiftPauseSettingsActivate(PPCRegister& r31) {
   return true;
 }
 
+// 0x82CAC704 calls the allocator for a verbatim chunk (r3 = its size, r26 set):
+// tables with replacements get room after the pool for longer strings.
+void PinyonShiftSizeUiStringChunk(PPCRegister& r3, PPCRegister& r26) {
+  g_ui_string_chunk_slack = 0;
+  if (r26.u32 == 0u) {
+    return;
+  }
+  const uint32_t slack = pinyon_shift::ui::StringTableSlack(g_ui_string_current_path);
+  if (slack && r3.u32 <= kUiStringChunkMaximumBytes) {
+    r3.u64 = r3.u32 + slack;
+    g_ui_string_chunk_slack = slack;
+  }
+}
+
 // 0x82CAC740 is the instruction after the payload read inside sub_82CAC5B8:
 // r30 is the payload start, r29 its length, r26 the ownership/verbatim flag.
 void PinyonShiftTraceUiStringTableChunk(PPCRegister& r3, PPCRegister& r26,
                                         PPCRegister& r29, PPCRegister& r30,
                                         PPCRegister& r31) {
+  static std::once_flag pause_label;
   if (REXCVAR_GET(pinyon_shift_pause_settings)) {
-    PatchPauseSettingsLabel(r30.u32, r29.u32);
+    std::call_once(pause_label, [] {
+      pinyon_shift::ui::SetUiString("pausemenu.str", kPauseMultiplayerLabelHash, u"SETTINGS",
+                                    /*replace=*/false);
+    });
+  }
+  const uint32_t slack = std::exchange(g_ui_string_chunk_slack, 0u);
+  if (r26.u32 != 0u && r3.u32 == r29.u32) {
+    ApplyUiStringOverrides(r30.u32, r29.u32, slack);
   }
   if (UiExperimentModeValue() != UiExperimentMode::kLabelPatch) {
     return;

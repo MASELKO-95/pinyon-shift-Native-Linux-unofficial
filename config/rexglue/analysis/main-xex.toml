@@ -383,6 +383,15 @@ name = "PinyonShiftTraceUiStringTableChunk"
 registers = ["r3", "r26", "r29", "r30", "r31"]
 after_instruction = true
 
+# 0x82CAC704 calls the allocator for the chunk (r3 = size, r26 = verbatim
+# flag). Tables with string overrides (NP-11.2) get room after the pool so a
+# replacement may be longer than the stock text; the chunk hook above writes
+# the replacements.
+[[midasm_hook]]
+address = 0x82CAC704
+name = "PinyonShiftSizeUiStringChunk"
+registers = ["r3", "r26"]
+
 [[midasm_hook]]
 address = 0x82CB00AC
 name = "PinyonShiftTraceUiStringTableParsed"

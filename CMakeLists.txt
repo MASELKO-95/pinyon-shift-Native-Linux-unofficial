@@ -30,6 +30,7 @@ if(WIN32)
         src/mod/mod_host.cpp
         src/mod/overlay_device.cpp
         src/ui/fh1_ui_api.cpp
+        src/ui/ui_strings.cpp
         src/ui/host_style.cpp
         src/ui/hostui/fh1_archive.cpp
         src/ui/hostui/glyph_atlas.cpp
@@ -61,6 +62,7 @@ else()
         src/mod/mod_host.cpp
         src/mod/overlay_device.cpp
         src/ui/fh1_ui_api.cpp
+        src/ui/ui_strings.cpp
         src/ui/host_style.cpp
         src/ui/hostui/fh1_archive.cpp
         src/ui/hostui/glyph_atlas.cpp

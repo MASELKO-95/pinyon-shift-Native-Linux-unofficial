@@ -136,6 +136,12 @@ typedef struct PinyonModApi {
   /* An action row in SETTINGS > MOD ACTIONS (the pause menu's SETTINGS);
      `callback` runs on the UI thread when the player picks it. Returns 0. */
   int (*add_menu_action)(const char* label, PinyonBindCallback callback, void* user);
+  /* Replaces the text of one entry of a title string table (NP-11.2), from
+     the next time the title loads the table (call it from rex_mod_create to
+     catch the first load). `table` is the table's file name
+     ("PauseMenu.str"), `key` its 16-bit entry key (tools/fh1-strings.py lists
+     both), `text` UTF-8 and of any length. Returns 0, or -1 for a bad key. */
+  int (*set_ui_string)(const char* table, uint32_t key, const char* text);
 } PinyonModApi;
 
 /* What a mod provides. Any callback may be NULL. */

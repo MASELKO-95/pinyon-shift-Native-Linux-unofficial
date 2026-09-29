@@ -28,6 +28,7 @@
 #include "cheats.h"
 #include "config/host_config.h"
 #include "pinyon_shift_diagnostics.h"
+#include "ui/ui_strings.h"
 
 namespace pinyon_shift::mod {
 namespace {
@@ -341,6 +342,14 @@ int ApiAddMenuAction(const char* label, PinyonBindCallback callback, void* user)
   return 0;
 }
 
+int ApiSetUiString(const char* table, uint32_t key, const char* text) {
+  if (!table || !*table || !text || key > 0xFFFEu) return -1;
+  ui::SetUiString(table, static_cast<uint16_t>(key), ui::Utf8ToUtf16(text));
+  diagnostics::RecordEvent("mod.ui_string",
+                           {{"table", table}, {"key", fmt::format("{:04X}", key)}});
+  return 0;
+}
+
 // ---- Discovery ----------------------------------------------------------------
 
 std::vector<std::string> SplitList(const std::string& text) {
@@ -562,6 +571,7 @@ void LoadMods(const std::filesystem::path& state_root, const std::string& enable
     api.show_dialog = ApiShowDialog;
     api.set_hud_text = ApiSetHudText;
     api.add_menu_action = ApiAddMenuAction;
+    api.set_ui_string = ApiSetUiString;
     if (create(&loaded->api, &loaded->mod) != 0) {
       info_it->problem = "rex_mod_create failed";
       continue;
