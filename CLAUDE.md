@@ -19,6 +19,9 @@ Use Conventional Commits for every commit subject:
 - End the body with `Tests: <commands or result>` when validation was run.
 - Mark breaking changes with `!` before the colon and add a
   `BREAKING CHANGE: <description>` footer.
+- Never credit an AI assistant: no `Co-Authored-By` trailer, "Generated
+  with" line or other assistant attribution in commit messages, pull
+  requests or release notes. Commits are authored by the maintainer only.
 
 Examples:
 
