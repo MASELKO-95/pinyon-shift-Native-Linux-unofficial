@@ -17,7 +17,7 @@ from pathlib import Path
 SCHEMA = "pinyon-shift.fh1-render-test-result.v1"
 HEADER = "pinyon-shift-fh1-render-test-v1"
 # Keys a `hostkey` step may press (src/fh1_render_test.cpp ParseHostKey).
-HOST_KEYS = {"f6", "f8", "enter", "escape", "up", "down", "left", "right", "space"}
+HOST_KEYS = {"f6", "f7", "f8", "enter", "escape", "up", "down", "left", "right", "space"}
 PASS_FAMILY = re.compile(
     r"FH1 V5 pass family (?P<family>[0-9A-F]{16}): attachment "
     r"(?P<attachment>[0-9A-F]{16}), first family (?P<first_family>[0-9A-F]{16}), "
@@ -243,7 +243,7 @@ def parse_scenario(
             previous_hostkey = int(fields[1])
         elif fields[0] == "xamdialog" and len(fields) == 3:
             # xamdialog <frame> message|keyboard: a sample host XAM dialog.
-            if fields[2] not in ("message", "keyboard"):
+            if fields[2] not in ("message", "keyboard", "achievements", "toast"):
                 raise ValueError(f"line {number}: unknown XAM dialog {fields[2]}")
             if int(fields[1]) <= previous_hostkey:
                 raise ValueError(f"line {number}: host keys must be in increasing frame order")

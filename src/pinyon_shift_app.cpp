@@ -33,6 +33,8 @@
 #include "config/host_config.h"
 #include "ui/host_style.h"
 #include "ui/hostui/host_ui.h"
+#include "save_backups.h"
+#include "ui/achievements_menu.h"
 #include "ui/photo_export.h"
 #include "ui/xam_dialogs.h"
 #include "ui/settings_menu.h"
@@ -45,6 +47,14 @@ extern "C" int __llvm_profile_dump(void);
 
 REXCVAR_DEFINE_UINT32(pinyon_shift_config_schema, 26, "Pinyon Shift",
                       "Pinyon Shift host configuration schema version");
+REXCVAR_DEFINE_BOOL(pinyon_shift_save_backups, true, "Pinyon Shift",
+                    "Copy the save files to <state>/backups/saves after the title writes them "
+                    "(restore from SETTINGS > PROFILE > SAVE BACKUPS)")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+REXCVAR_DEFINE_INT32(pinyon_shift_save_backup_slots, 10, "Pinyon Shift",
+                     "Save backups to keep; older ones are deleted")
+    .range(1, 100)
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 REXCVAR_DEFINE_BOOL(pinyon_shift_host_xam_dialogs, true, "Pinyon Shift",
                     "Draw the title's message boxes and keyboard with the host UI (the game's "
                     "fonts, pad navigation) instead of the built-in ImGui dialogs")
@@ -352,6 +362,10 @@ void PinyonShiftApp::OnConfigurePaths(rex::PathConfig& paths) {
   paths.cache_root = state_root / "cache";
   paths.config_path = state_root / "config" / "pinyon_shift.toml";
   host_config_ = std::make_unique<pinyon_shift::config::HostConfig>(paths.config_path);
+  // A restore the player scheduled in the settings screen, before the title
+  // can open the files.
+  pinyon_shift::SaveBackups::ApplyPendingRestore(paths.user_data_root,
+                                                 state_root / "backups" / "saves");
 
   bool config_created = false;
   bool config_migrated = false;
@@ -521,7 +535,9 @@ bool PinyonShiftApp::EnsureHostUi() {
       *this, *presenter, *immediate_drawer(), *window(),
       static_cast<rex::input::InputSystem*>(runtime()->input_system()), game_data_root());
   if (REXCVAR_GET(pinyon_shift_host_xam_dialogs)) {
-    xam_dialogs_ = pinyon_shift::ui::CreateXamDialogs(*host_ui_);
+    xam_dialogs_ = pinyon_shift::ui::CreateXamDialogs(*host_ui_, [this] {
+      return pinyon_shift::ui::CreateAchievementsScreen(achievements());
+    });
     rex::kernel::xam::SetXamUiProvider(xam_dialogs_.get());
   }
   return true;
@@ -538,7 +554,12 @@ void PinyonShiftApp::OpenSettingsMenu() {
     REXLOG_WARN("Host UI: the settings file is not known yet");
     return;
   }
-  host_ui_->Open(pinyon_shift::ui::CreateSettingsMenu(*host_ui_, *host_config_));
+  pinyon_shift::ui::SettingsServices services;
+  services.achievements = [this] {
+    return pinyon_shift::ui::CreateAchievementsScreen(achievements());
+  };
+  services.save_backups = save_backups_.get();
+  host_ui_->Open(pinyon_shift::ui::CreateSettingsMenu(*host_ui_, *host_config_, services));
 }
 
 void PinyonShiftApp::OnPostSetup() {
@@ -578,6 +599,13 @@ void PinyonShiftApp::OnPostSetup() {
       window()->app_context().CallInUIThreadDeferred([this] { OpenSettingsMenu(); });
     }
   });
+  if (REXCVAR_GET(pinyon_shift_save_backups)) {
+    save_backups_ = std::make_unique<pinyon_shift::SaveBackups>(
+        pinyon_shift::diagnostics::StateRoot() / "user",
+        pinyon_shift::diagnostics::StateRoot() / "backups" / "saves",
+        size_t(std::max(1, REXCVAR_GET(pinyon_shift_save_backup_slots))));
+    save_backups_->Start();
+  }
   // Now, not on first use, so the title's first message box already gets
   // the host dialogs.
   if (window()) {
@@ -603,9 +631,38 @@ void PinyonShiftApp::OnPostSetup() {
        {"input", runtime() && runtime()->input_system() ? "1" : "0"}});
 }
 
+std::unique_ptr<rex::ui::ImGuiDialog> PinyonShiftApp::CreateAchievementsOverlay() {
+  if (host_ui_ && host_ui_->is_open()) {
+    host_ui_->Close();
+  } else if (EnsureHostUi()) {
+    host_ui_->Open(pinyon_shift::ui::CreateAchievementsScreen(achievements()));
+  }
+  return nullptr;
+}
+
 void PinyonShiftApp::OnPreLaunchModule() {
   pinyon_shift::diagnostics::RefreshCrashReporter();
   pinyon_shift::diagnostics::RecordEvent("guest.launch.begin");
+  // Unlocks arrive on guest threads; the toast is drawn on the UI thread.
+  achievement_listener_ = achievements().RegisterNotificationCallback(
+      [this](const rex::system::AchievementEvent& event) {
+        if (!window()) {
+          return;
+        }
+        window()->app_context().CallInUIThreadDeferred([this, achievement = event.achievement] {
+          if (!EnsureHostUi()) {
+            return;
+          }
+          if (!achievement_icons_ && immediate_drawer()) {
+            achievement_icons_ =
+                std::make_unique<rex::ui::AchievementIconCache>(immediate_drawer(), runtime());
+          }
+          host_ui_->ShowToast("ACHIEVEMENT UNLOCKED", achievement.label,
+                              std::to_string(achievement.gamerscore) + "G",
+                              achievement_icons_ ? achievement_icons_->GetIcon(achievement)
+                                                 : nullptr);
+        });
+      });
 }
 
 void PinyonShiftApp::OnPostLaunchModule(rex::system::XThread* thread) {
@@ -650,9 +707,15 @@ void PinyonShiftApp::OnShutdown() {
   PinyonShiftSetPauseSettingsHandler(nullptr);
   rex::cvar::UnregisterChangeCallbacks("d3d12_allow_variable_refresh_rate_and_tearing");
   // Before the presenter, drawer and kernel it uses are torn down.
+  if (achievement_listener_ && runtime() && runtime()->kernel_state()) {
+    achievements().UnregisterCallback(achievement_listener_);
+    achievement_listener_ = 0;
+  }
   rex::kernel::xam::SetXamUiProvider(nullptr);
   xam_dialogs_.reset();
   host_ui_.reset();
+  achievement_icons_.reset();
+  save_backups_.reset();
   pinyon_shift::fh1_render_test::Stop();
   pinyon_shift::native_renderer::UninstallShaderCapture(
       runtime() ? runtime()->graphics_system() : nullptr);

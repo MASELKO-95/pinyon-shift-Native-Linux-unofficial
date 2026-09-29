@@ -68,6 +68,11 @@ class HostUi final : public rex::ui::UIDrawer, public rex::ui::WindowInputListen
   // Removes `screen` (after its action finished it); closes the UI when it
   // was the only one. Safe to call from the screen's own row action.
   void Finish(const MenuScreen* screen);
+  // Shows a notification in the top of the safe area for a few seconds,
+  // over the running title (no input capture), queued behind earlier ones.
+  // `icon` must outlive the notification.
+  void ShowToast(std::string heading, std::string title, std::string detail,
+                 rex::ui::ImmediateTexture* icon);
   // Closes every screen. Safe to call from a row's action. The guest gets its
   // input back only once no pad button or key is held, so the press that
   // closed the menu does not also reach the title (B would leave its pause
@@ -106,6 +111,12 @@ class HostUi final : public rex::ui::UIDrawer, public rex::ui::WindowInputListen
   };
 
   bool LoadAssets();
+  void DrawMenu(rex::ui::UIDrawContext& context);
+  void DrawToasts(rex::ui::UIDrawContext& context);
+  // Sets the canvas for this draw; false while there is nothing to draw to.
+  bool PrepareCanvas(rex::ui::UIDrawContext& context);
+  void EnsureDrawer();
+  void ReleaseDrawer();
   void Apply(NavCommand command);
   void PollPad();
   void RequestPaint();
@@ -141,8 +152,17 @@ class HostUi final : public rex::ui::UIDrawer, public rex::ui::WindowInputListen
 
   std::vector<std::unique_ptr<MenuScreen>> screens_;
   PadNavigator pad_;
-  // Whether the drawer and input listener are registered (open).
+  // Whether the input listener and guest input capture are registered (a
+  // menu is open), and whether this is registered as a presenter drawer
+  // (menus or notifications on screen).
   bool registered_ = false;
+  bool drawer_registered_ = false;
+  struct Toast {
+    std::string heading, title, detail;
+    rex::ui::ImmediateTexture* icon = nullptr;
+    std::chrono::steady_clock::time_point shown{};  // set when it first draws
+  };
+  std::vector<Toast> toasts_;
   // Closed, waiting for held buttons and keys to be released.
   bool draining_ = false;
   std::chrono::steady_clock::time_point drain_started_;

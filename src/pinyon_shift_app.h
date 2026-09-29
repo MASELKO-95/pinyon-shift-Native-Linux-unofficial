@@ -4,10 +4,14 @@
 #include <memory>
 
 #include <rex/kernel/xam/ui_provider.h>
+#include <rex/ui/overlay/achievement_icon_cache.h>
 #include <rex/rex_app.h>
 
 namespace pinyon_shift::config {
 class HostConfig;
+}
+namespace pinyon_shift {
+class SaveBackups;
 }
 namespace pinyon_shift::hostui {
 class HostUi;
@@ -38,6 +42,13 @@ class PinyonShiftApp final : public rex::ReXApp {
   void OnGuestThreadExit(rex::system::XThread* thread) override;
   bool OnWindowCloseRequested() override;
   void OnShutdown() override;
+  // Achievements use the host UI: F7 toggles its list, unlocks show its
+  // toast, so the ImGui overlay and toast are not created.
+  std::unique_ptr<rex::ui::ImGuiDialog> CreateAchievementsOverlay() override;
+  std::unique_ptr<rex::ui::AchievementNotificationDialog> CreateAchievementNotificationDialog()
+      override {
+    return nullptr;
+  }
 
  private:
   void RecordShutdownOnce();
@@ -54,6 +65,10 @@ class PinyonShiftApp final : public rex::ReXApp {
   std::unique_ptr<pinyon_shift::hostui::HostUi> host_ui_;
   // The XAM message box and keyboard drawn by host_ui_ (NP-5.2).
   std::unique_ptr<rex::kernel::xam::XamUiProvider> xam_dialogs_;
+  // Achievement icons for the unlock toast (the title's XDBF images).
+  std::unique_ptr<rex::ui::AchievementIconCache> achievement_icons_;
+  uint64_t achievement_listener_ = 0;
+  std::unique_ptr<pinyon_shift::SaveBackups> save_backups_;
   // The settings file the in-game settings screen edits.
   std::unique_ptr<pinyon_shift::config::HostConfig> host_config_;
 };

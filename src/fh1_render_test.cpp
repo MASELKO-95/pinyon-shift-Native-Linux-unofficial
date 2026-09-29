@@ -23,6 +23,8 @@
 #include <rex/input/input_driver.h>
 #include <rex/input/input_system.h>
 #include <rex/kernel/xam/ui_provider.h>
+#include <rex/system/achievement_manager.h>
+#include <rex/system/kernel_state.h>
 #include <rex/perf/counter.h>
 #include <rex/runtime.h>
 #include <rex/system/interfaces/graphics.h>
@@ -84,7 +86,8 @@ struct HostKeyStep {
 rex::ui::VirtualKey ParseHostKey(const std::string& name) {
   using rex::ui::VirtualKey;
   static const std::pair<const char*, VirtualKey> kNames[] = {
-      {"f6", VirtualKey::kF6},       {"f8", VirtualKey::kF8},
+      {"f6", VirtualKey::kF6},       {"f7", VirtualKey::kF7},
+      {"f8", VirtualKey::kF8},
       {"enter", VirtualKey::kReturn},
       {"escape", VirtualKey::kEscape}, {"up", VirtualKey::kUp},
       {"down", VirtualKey::kDown},   {"left", VirtualKey::kLeft},
@@ -319,7 +322,9 @@ void LoadScript(const std::filesystem::path& path) {
       g_test.host_keys.push_back(step);
     } else if (command == "xamdialog") {
       std::string frame, kind, extra;
-      if (!(row >> frame >> kind) || row >> extra || (kind != "message" && kind != "keyboard")) {
+      if (!(row >> frame >> kind) || row >> extra ||
+          (kind != "message" && kind != "keyboard" && kind != "achievements" &&
+           kind != "toast")) {
         Fail("script_xamdialog_columns");
       }
       HostKeyStep step{ParseUnsigned(frame, 10, "xamdialog_frame")};
@@ -744,6 +749,19 @@ bool ObserveOutput(
         auto* provider = rex::kernel::xam::GetXamUiProvider();
         if (!provider) {
           diagnostics::RecordEvent("fh1.render_test.xam_dialog", {{"result", "no_provider"}});
+        } else if (step.xam_dialog == "achievements") {
+          provider->ShowAchievements([] {
+            diagnostics::RecordEvent("fh1.render_test.xam_dialog",
+                                     {{"kind", "achievements"}, {"result", "closed"}});
+          });
+        } else if (step.xam_dialog == "toast") {
+          // The first achievement's unlock notification, without unlocking.
+          auto& achievements = REX_KERNEL_STATE()->achievements();
+          const auto list = achievements.ListAchievements();
+          const bool shown =
+              !list.empty() && achievements.ShowAchievementNotification(list.front().id);
+          diagnostics::RecordEvent("fh1.render_test.xam_dialog",
+                                   {{"kind", "toast"}, {"result", shown ? "shown" : "none"}});
         } else if (step.xam_dialog == "message") {
           provider->ShowMessageBox(
               "Storage device", "The selected storage device is full. Choose another device "

@@ -6,10 +6,12 @@
 #include <memory>
 #include <cctype>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include <rex/audio/downmix.h>
+#include <rex/input/pad_remap.h>
 #include <rex/cvar.h>
 #include <rex/logging.h>
 
@@ -72,8 +74,8 @@ std::string Upper(std::string text) {
 // function here may capture `this`.
 class SettingsPages : public std::enable_shared_from_this<SettingsPages> {
  public:
-  SettingsPages(hostui::HostUi& host_ui, config::HostConfig& config)
-      : host_ui_(host_ui), config_(config) {}
+  SettingsPages(hostui::HostUi& host_ui, config::HostConfig& config, SettingsServices services)
+      : host_ui_(host_ui), config_(config), services_(std::move(services)) {}
 
   std::unique_ptr<MenuScreen> Root();
 
@@ -110,10 +112,14 @@ class SettingsPages : public std::enable_shared_from_this<SettingsPages> {
   std::unique_ptr<MenuScreen> Controls();
   std::unique_ptr<MenuScreen> Profile();
   std::unique_ptr<MenuScreen> Gamertag();
+  std::unique_ptr<MenuScreen> Backups();
+  std::unique_ptr<MenuScreen> ControllerButtons();
+  std::unique_ptr<MenuScreen> ConfirmRestore(std::string slot);
   static constexpr size_t kMaxGamertag = 15;
 
   hostui::HostUi& host_ui_;
   config::HostConfig& config_;
+  SettingsServices services_;
 };
 
 MenuRow SettingsPages::Setting(std::string label, std::vector<Choice> choices, bool restart) {
@@ -287,8 +293,60 @@ std::unique_ptr<MenuScreen> SettingsPages::Audio() {
   return std::make_unique<MenuScreen>("AUDIO", std::move(rows));
 }
 
+std::unique_ptr<MenuScreen> SettingsPages::ControllerButtons() {
+  // One row per physical control, showing what the title receives from it;
+  // swapping A and B is A SENDS B and B SENDS A. Menus here keep the
+  // physical layout whatever is set.
+  using rex::input::PadControl;
+  std::vector<MenuRow> rows;
+  for (size_t i = 0; i < rex::input::kPadControlCount; ++i) {
+    MenuRow row;
+    row.label = std::string(rex::input::PadControlName(PadControl(i))) + " SENDS";
+    row.value = [this, i] {
+      const auto remap = rex::input::ParsePadRemap(Unquote(Saved("pad_remap")));
+      return std::string(rex::input::PadControlName(remap[i]));
+    };
+    row.adjust = [this, i](int direction) {
+      auto remap = rex::input::ParsePadRemap(Unquote(Saved("pad_remap")));
+      const size_t count = rex::input::kPadControlCount;
+      remap[i] = PadControl((size_t(remap[i]) + count + (direction > 0 ? 1 : count - 1)) % count);
+      const std::string text = rex::input::FormatPadRemap(remap);
+      config_.Set("pad_remap", config::Quote(text));
+      rex::cvar::SetFlagByName("pad_remap", text);
+      Save();
+    };
+    rows.push_back(std::move(row));
+  }
+  rows.push_back(Toggle("INVERT LOOK", "pad_invert_right_stick_y"));
+  MenuRow reset;
+  reset.label = "RESET TO DEFAULT";
+  reset.activate = [this] {
+    config_.Set("pad_remap", config::Quote(""));
+    rex::cvar::SetFlagByName("pad_remap", "");
+    Save();
+  };
+  rows.push_back(std::move(reset));
+  return std::make_unique<MenuScreen>("CONTROLLER", std::move(rows), [this] {
+    return rex::input::FormatPadRemap(rex::input::ParsePadRemap(Unquote(Saved("pad_remap"))))
+                   .empty()
+               ? std::string("EVERY BUTTON SENDS ITSELF")
+               : std::string("CHANGES APPLY AT ONCE; MENUS HERE KEEP THE PHYSICAL LAYOUT");
+  });
+}
+
 std::unique_ptr<MenuScreen> SettingsPages::Controls() {
   std::vector<MenuRow> rows;
+  MenuRow controller;
+  controller.label = "CONTROLLER BUTTONS";
+  controller.activate = [this] { host_ui_.Push(ControllerButtons()); };
+  rows.push_back(std::move(controller));
+  rows.push_back(Setting("RUMBLE",
+                         {{"OFF", {{"pad_rumble_strength", "0"}}},
+                          {"25%", {{"pad_rumble_strength", "25"}}},
+                          {"50%", {{"pad_rumble_strength", "50"}}},
+                          {"75%", {{"pad_rumble_strength", "75"}}},
+                          {"100%", {{"pad_rumble_strength", "100"}}}},
+                         false));
   rows.push_back(Toggle("MOUSE AND KEYBOARD", "mnk_mode"));
   rows.push_back(Setting("MOUSE",
                          {{"OFF", {{"mnk_mouse", "false"}, {"mnk_mouse_steering", "false"}}},
@@ -407,10 +465,95 @@ std::unique_ptr<MenuScreen> SettingsPages::Profile() {
   rows[0].restart_pending = [this] {
     return !SameValue(Unquote(Saved("user_name")), Live("user_name"));
   };
-  rows[1].label = "LANGUAGE";
-  rows[1].value = [] { return std::string("ENGLISH"); };
-  rows[1].enabled = [] { return false; };
+  // FH1 picks its string table from the console language and country; each
+  // pair was checked to load its table (probe of 2026-09-29).
+  const std::tuple<const char*, int, int> languages[] = {
+      {"ENGLISH (US)", 1, 103},        {"ENGLISH (UK)", 1, 35},
+      {"FRENCH", 4, 34},               {"GERMAN", 3, 24},
+      {"ITALIAN", 6, 50},              {"SPANISH (SPAIN)", 5, 31},
+      {"SPANISH (MEXICO)", 5, 71},     {"PORTUGUESE (BRAZIL)", 9, 13},
+      {"DUTCH", 16, 74},               {"DANISH", 1, 25},
+      {"NORWEGIAN", 15, 75},           {"SWEDISH", 13, 90},
+      {"FINNISH", 1, 32},              {"POLISH", 11, 82},
+      {"CZECH", 1, 23},                {"HUNGARIAN", 1, 42},
+      {"RUSSIAN", 12, 88},             {"JAPANESE", 2, 53},
+      {"KOREAN", 7, 56},               {"CHINESE (TRADITIONAL)", 8, 101},
+  };
+  std::vector<Choice> choices;
+  for (const auto& [label, language, country] : languages) {
+    choices.push_back({label,
+                       {{"user_language", std::to_string(language)},
+                        {"user_country", std::to_string(country)}}});
+  }
+  rows[1] = Setting("LANGUAGE", std::move(choices), true);
+  if (services_.save_backups) {
+    MenuRow backups;
+    backups.label = "SAVE BACKUPS";
+    backups.activate = [this] { host_ui_.Push(Backups()); };
+    rows.push_back(std::move(backups));
+  }
   return std::make_unique<MenuScreen>("PROFILE", std::move(rows));
+}
+
+// "20260929T074240Z-session" as "2026-09-29 07:42 SESSION START".
+std::string SlotLabel(const std::string& name) {
+  if (name.size() < 16) {
+    return Upper(name);
+  }
+  std::string label = name.substr(0, 4) + "-" + name.substr(4, 2) + "-" + name.substr(6, 2) +
+                      " " + name.substr(9, 2) + ":" + name.substr(11, 2);
+  const std::string reason = name.size() > 17 ? name.substr(17) : std::string();
+  if (reason == "session") {
+    label += " SESSION START";
+  } else if (reason == "before-restore") {
+    label += " BEFORE RESTORE";
+  }
+  return label;
+}
+
+std::unique_ptr<MenuScreen> SettingsPages::Backups() {
+  SaveBackups* backups = services_.save_backups;
+  std::vector<MenuRow> rows;
+  if (backups->RestorePending()) {
+    MenuRow cancel;
+    cancel.label = "CANCEL THE RESTORE";
+    cancel.activate = [backups] { backups->CancelRestore(); };
+    rows.push_back(std::move(cancel));
+  }
+  for (const auto& slot : backups->List()) {
+    MenuRow row;
+    row.label = SlotLabel(slot.name);
+    row.value = [kilobytes = slot.bytes >> 10] { return std::to_string(kilobytes) + " KB"; };
+    row.activate = [this, name = slot.name] { host_ui_.Push(ConfirmRestore(name)); };
+    rows.push_back(std::move(row));
+  }
+  const bool empty = rows.empty();
+  return std::make_unique<MenuScreen>("SAVE BACKUPS", std::move(rows), [backups, empty] {
+    if (backups->RestorePending()) {
+      return std::string("RESTART THE GAME TO RESTORE THE CHOSEN BACKUP");
+    }
+    return std::string(empty ? "A BACKUP IS TAKEN AFTER EACH SAVE" : "NEWEST FIRST, UTC TIMES");
+  });
+}
+
+std::unique_ptr<MenuScreen> SettingsPages::ConfirmRestore(std::string slot) {
+  SaveBackups* backups = services_.save_backups;
+  auto self = std::make_shared<const MenuScreen*>(nullptr);
+  std::vector<MenuRow> rows(2);
+  rows[0].label = "RESTORE AT NEXT START";
+  rows[0].activate = [this, backups, slot, self] {
+    backups->ScheduleRestore(slot);
+    host_ui_.Finish(*self);
+  };
+  rows[1].label = "CANCEL";
+  rows[1].activate = [this, self] { host_ui_.Finish(*self); };
+  auto screen = std::make_unique<MenuScreen>("RESTORE BACKUP", std::move(rows));
+  screen->set_body("The game will restore the saves from " + SlotLabel(slot) +
+                   " when it next starts. Your current saves are backed up first, so this can "
+                   "be undone.");
+  screen->SetFocus(1);
+  *self = screen.get();
+  return screen;
 }
 
 std::unique_ptr<MenuScreen> SettingsPages::Root() {
@@ -424,17 +567,26 @@ std::unique_ptr<MenuScreen> SettingsPages::Root() {
   rows.push_back(Page("AUDIO", &SettingsPages::Audio));
   rows.push_back(Page("CONTROLS", &SettingsPages::Controls));
   rows.push_back(Page("PROFILE", &SettingsPages::Profile));
+  if (services_.achievements) {
+    MenuRow row;
+    row.label = "ACHIEVEMENTS";
+    row.activate = [self = shared_from_this()] {
+      self->host_ui_.Push(self->services_.achievements());
+    };
+    rows.push_back(std::move(row));
+  }
   return std::make_unique<MenuScreen>("SETTINGS", std::move(rows));
 }
 
 }  // namespace
 
 std::unique_ptr<hostui::MenuScreen> CreateSettingsMenu(hostui::HostUi& host_ui,
-                                                       config::HostConfig& config) {
+                                                       config::HostConfig& config,
+                                                       SettingsServices services) {
   if (!config.Load()) {
     REXLOG_ERROR("Settings: cannot read {}; changes will not be saved", config.path().string());
   }
-  return std::make_shared<SettingsPages>(host_ui, config)->Root();
+  return std::make_shared<SettingsPages>(host_ui, config, std::move(services))->Root();
 }
 
 void ApplyMasterVolume() {

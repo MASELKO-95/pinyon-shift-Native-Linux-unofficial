@@ -23,6 +23,7 @@ if(WIN32)
         src/pinyon_shift_app.cpp
         src/pinyon_shift_diagnostics.cpp
         src/pinyon_shift_runtime_hooks.cpp
+        src/save_backups.cpp
         src/ui/fh1_ui_api.cpp
         src/ui/host_style.cpp
         src/ui/hostui/fh1_archive.cpp
@@ -35,6 +36,7 @@ if(WIN32)
         src/ui/photo_export.cpp
         src/ui/png_writer.cpp
         src/ui/xam_dialogs.cpp
+        src/ui/achievements_menu.cpp
         src/config/host_config.cpp
         src/native_renderer/graphics_hooks.cpp
         src/native_renderer/guest_output_renderer.cpp
@@ -47,6 +49,7 @@ else()
         src/pinyon_shift_app.cpp
         src/pinyon_shift_diagnostics.cpp
         src/pinyon_shift_runtime_hooks.cpp
+        src/save_backups.cpp
         src/ui/fh1_ui_api.cpp
         src/ui/host_style.cpp
         src/ui/hostui/fh1_archive.cpp
@@ -59,6 +62,7 @@ else()
         src/ui/photo_export.cpp
         src/ui/png_writer.cpp
         src/ui/xam_dialogs.cpp
+        src/ui/achievements_menu.cpp
         src/config/host_config.cpp
         src/native_renderer/graphics_hooks.cpp
         src/native_renderer/guest_output_renderer.cpp

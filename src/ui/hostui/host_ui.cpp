@@ -106,7 +106,33 @@ HostUi::HostUi(rex::ReXApp& app, rex::ui::Presenter& presenter, rex::ui::Immedia
 HostUi::~HostUi() {
   alive_.reset();
   screens_.clear();
+  toasts_.clear();
   FinishClose();
+  ReleaseDrawer();
+}
+
+void HostUi::EnsureDrawer() {
+  if (!drawer_registered_) {
+    drawer_registered_ = true;
+    presenter_.AddUIDrawerFromUIThread(this, kZOrder);
+  }
+}
+
+void HostUi::ReleaseDrawer() {
+  if (drawer_registered_) {
+    drawer_registered_ = false;
+    presenter_.RemoveUIDrawerFromUIThread(this);
+  }
+}
+
+void HostUi::ShowToast(std::string heading, std::string title, std::string detail,
+                       rex::ui::ImmediateTexture* icon) {
+  if (!LoadAssets()) {
+    return;
+  }
+  toasts_.push_back(Toast{std::move(heading), std::move(title), std::move(detail), icon});
+  EnsureDrawer();
+  RequestPaint();
 }
 
 bool HostUi::LoadAssets() {
@@ -199,7 +225,7 @@ bool HostUi::Open(std::unique_ptr<MenuScreen> screen) {
   if (!registered_) {
     registered_ = true;
     SetGuestUiActive(true);
-    presenter_.AddUIDrawerFromUIThread(this, kZOrder);
+    EnsureDrawer();
     window_.AddInputListener(this, kZOrder);
   }
   RequestPaint();
@@ -246,9 +272,11 @@ void HostUi::FinishClose() {
     return;
   }
   registered_ = false;
-  presenter_.RemoveUIDrawerFromUIThread(this);
   window_.RemoveInputListener(this);
   SetGuestUiActive(false);
+  if (toasts_.empty()) {
+    ReleaseDrawer();
+  }
   // Unregistered: the drawer, the input listener and the guest input
   // capture are all released.
   diagnostics::RecordEvent("hostui.closed");
@@ -597,18 +625,22 @@ void HostUi::Draw(rex::ui::UIDrawContext& context) {
     } else {
       RequestPaint();
     }
-    return;
+  } else if (is_open()) {
+    PollPad();
+    if (is_open()) {
+      DrawMenu(context);
+    }
   }
-  if (!is_open()) {
-    return;
+  DrawToasts(context);
+  if (!registered_ && toasts_.empty()) {
+    ReleaseDrawer();
   }
-  PollPad();
-  if (!is_open()) {
-    return;
-  }
+}
+
+bool HostUi::PrepareCanvas(rex::ui::UIDrawContext& context) {
   canvas_ = ComputeCanvas(context);
   if (canvas_.scale <= 0.0f) {
-    return;
+    return false;
   }
   if (canvas_.scale != atlas_scale_) {
     // New output size: rasterize the fonts again at the new pixel sizes.
@@ -616,6 +648,58 @@ void HostUi::Draw(rex::ui::UIDrawContext& context) {
     texts_.clear();
     atlases_.clear();
     atlas_scale_ = canvas_.scale;
+  }
+  return true;
+}
+
+void HostUi::DrawToasts(rex::ui::UIDrawContext& context) {
+  if (toasts_.empty() || !PrepareCanvas(context)) {
+    return;
+  }
+  // One at a time, 5 s each with a quarter-second fade at both ends, in the
+  // top of the safe area where the title's own notifications do not sit.
+  constexpr float kShowSeconds = 5.0f;
+  constexpr float kFadeSeconds = 0.25f;
+  const auto now = std::chrono::steady_clock::now();
+  Toast& toast = toasts_.front();
+  if (toast.shown == std::chrono::steady_clock::time_point{}) {
+    toast.shown = now;
+  }
+  const float age = std::chrono::duration<float>(now - toast.shown).count();
+  if (age >= kShowSeconds) {
+    toasts_.erase(toasts_.begin());
+    RequestPaint();
+    return;
+  }
+  const float alpha = std::clamp(std::min(age, kShowSeconds - age) / kFadeSeconds, 0.0f, 1.0f);
+  const auto fade = [alpha](uint32_t color) {
+    return (color & 0x00FFFFFFu) | (uint32_t(float(color >> 24) * alpha) << 24);
+  };
+  constexpr float kWidth = 520.0f, kHeight = 96.0f;
+  const float left = (kTitleWidth - kWidth) * 0.5f;
+  const float top = kSafeTop + 8.0f;
+  drawer_.Begin(context, float(context.render_target_width()),
+                float(context.render_target_height()));
+  DrawGradient(left, top, kWidth, kHeight, fade(kBackdropLeft), fade(kBackdropRight));
+  DrawRect(left, top, 8.0f, kHeight, fade(kMagenta));
+  float text_left = left + 28.0f;
+  if (toast.icon) {
+    DrawRect(left + 24.0f, top + 16.0f, 64.0f, 64.0f, fade(kWhite), toast.icon);
+    text_left = left + 104.0f;
+  }
+  DrawText(Face::kLabel, kBadgeSize, toast.heading, text_left, top + 28.0f, fade(kMagenta));
+  DrawText(Face::kDisplay, 30.0f, toast.title, text_left, top + 60.0f, fade(kWhite));
+  if (!toast.detail.empty()) {
+    DrawText(Face::kLabel, kBadgeSize, toast.detail, text_left, top + 84.0f, fade(kDimWhite));
+  }
+  Flush();
+  drawer_.End();
+  RequestPaint();
+}
+
+void HostUi::DrawMenu(rex::ui::UIDrawContext& context) {
+  if (!PrepareCanvas(context)) {
+    return;
   }
   const MenuScreen& screen = *screens_.back();
 

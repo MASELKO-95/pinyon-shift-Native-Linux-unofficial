@@ -42,7 +42,22 @@ auto Once(std::function<void(Args...)> done) {
 
 class XamDialogs final : public XamUiProvider {
  public:
-  explicit XamDialogs(hostui::HostUi& host_ui) : host_ui_(host_ui) {}
+  XamDialogs(hostui::HostUi& host_ui, std::function<std::unique_ptr<MenuScreen>()> achievements)
+      : host_ui_(host_ui), achievements_(std::move(achievements)) {}
+
+  void ShowAchievements(std::function<void()> done) override {
+    auto finish = Once(std::move(done));
+    auto screen = achievements_ ? achievements_() : nullptr;
+    if (!screen) {
+      finish();
+      return;
+    }
+    screen->set_on_back([finish] { finish(); });
+    diagnostics::RecordEvent("xam.dialog.open", {{"kind", "achievements"}});
+    if (!host_ui_.OpenDialog(std::move(screen))) {
+      finish();
+    }
+  }
 
   void ShowMessageBox(const std::string& title, const std::string& text,
                       const std::vector<std::string>& buttons, uint32_t default_button,
@@ -166,12 +181,14 @@ class XamDialogs final : public XamUiProvider {
 
  private:
   hostui::HostUi& host_ui_;
+  std::function<std::unique_ptr<MenuScreen>()> achievements_;
 };
 
 }  // namespace
 
-std::unique_ptr<XamUiProvider> CreateXamDialogs(hostui::HostUi& host_ui) {
-  return std::make_unique<XamDialogs>(host_ui);
+std::unique_ptr<XamUiProvider> CreateXamDialogs(
+    hostui::HostUi& host_ui, std::function<std::unique_ptr<MenuScreen>()> achievements) {
+  return std::make_unique<XamDialogs>(host_ui, std::move(achievements));
 }
 
 }  // namespace pinyon_shift::ui
