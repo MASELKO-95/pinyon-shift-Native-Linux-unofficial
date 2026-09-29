@@ -5,9 +5,14 @@
 
 #include <rex/rex_app.h>
 
+namespace pinyon_shift::hostui {
+class HostUi;
+}
+
 class PinyonShiftApp final : public rex::ReXApp {
  public:
   using rex::ReXApp::ReXApp;
+  ~PinyonShiftApp() override;
 
   static std::unique_ptr<rex::ui::WindowedApp> Create(
       rex::ui::WindowedAppContext& context);
@@ -32,6 +37,10 @@ class PinyonShiftApp final : public rex::ReXApp {
 
  private:
   void RecordShutdownOnce();
+  void ToggleGameMenu();
 
   std::atomic_bool shutdown_recorded_{false};
+  // Created on first use: the presenter and input system it needs exist only
+  // after runtime setup.
+  std::unique_ptr<pinyon_shift::hostui::HostUi> host_ui_;
 };

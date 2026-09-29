@@ -24,7 +24,14 @@ if(WIN32)
         src/pinyon_shift_diagnostics.cpp
         src/pinyon_shift_runtime_hooks.cpp
         src/ui/fh1_ui_api.cpp
+        src/ui/game_menu.cpp
         src/ui/host_style.cpp
+        src/ui/hostui/fh1_archive.cpp
+        src/ui/hostui/glyph_atlas.cpp
+        src/ui/hostui/host_ui.cpp
+        src/ui/hostui/menu.cpp
+        src/ui/hostui/vector_font.cpp
+        src/ui/hostui/xds_texture.cpp
         src/native_renderer/graphics_hooks.cpp
         src/native_renderer/guest_output_renderer.cpp
         src/native_renderer/shader_capture.cpp
@@ -37,7 +44,14 @@ else()
         src/pinyon_shift_diagnostics.cpp
         src/pinyon_shift_runtime_hooks.cpp
         src/ui/fh1_ui_api.cpp
+        src/ui/game_menu.cpp
         src/ui/host_style.cpp
+        src/ui/hostui/fh1_archive.cpp
+        src/ui/hostui/glyph_atlas.cpp
+        src/ui/hostui/host_ui.cpp
+        src/ui/hostui/menu.cpp
+        src/ui/hostui/vector_font.cpp
+        src/ui/hostui/xds_texture.cpp
         src/native_renderer/graphics_hooks.cpp
         src/native_renderer/guest_output_renderer.cpp
         src/native_renderer/shader_capture.cpp
@@ -61,8 +75,20 @@ if(WIN32)
     target_link_libraries(pinyon_shift_fh1_shader_pack_tests PRIVATE bcrypt)
 endif()
 
+add_executable(pinyon_shift_hostui_tests EXCLUDE_FROM_ALL
+    tests/ui/hostui_test.cpp
+    src/ui/hostui/fh1_archive.cpp
+    src/ui/hostui/glyph_atlas.cpp
+    src/ui/hostui/menu.cpp
+    src/ui/hostui/vector_font.cpp
+    src/ui/hostui/xds_texture.cpp
+)
+target_include_directories(pinyon_shift_hostui_tests PRIVATE src ${REXSDK_DIR}/include)
+target_link_libraries(pinyon_shift_hostui_tests PRIVATE rex::runtime)
+
 add_executable(pinyon_shift_fh1_archive_extract EXCLUDE_FROM_ALL
     tools/fh1_archive_extract.cpp
+    src/ui/hostui/fh1_archive.cpp
 )
 
 add_executable(pinyon_shift_fh1_texture_import EXCLUDE_FROM_ALL
@@ -79,7 +105,7 @@ else()
         ${REXSDK_DIR}/src/core/math_gcc.cpp)
 endif()
 target_include_directories(pinyon_shift_fh1_archive_extract PRIVATE
-    ${REXSDK_DIR}/include)
+    src ${REXSDK_DIR}/include)
 target_link_libraries(pinyon_shift_fh1_archive_extract PRIVATE rex::runtime)
 
 pinyon_shift_attach_rexglue(pinyon_shift)

@@ -19,14 +19,18 @@
 #include <rex/runtime.h>
 #include <rex/system/kernel_state.h>
 #include <rex/system/xthread.h>
+#include <rex/input/input_system.h>
 #include <rex/ui/flags.h>
+#include <rex/ui/keybinds.h>
 #include <rex/ui/window.h>
 
 #include "native_renderer/guest_output_renderer.h"
 #include "native_renderer/shader_capture.h"
 #include "pinyon_shift_diagnostics.h"
 #include "pinyon_shift_runtime_hooks.h"
+#include "ui/game_menu.h"
 #include "ui/host_style.h"
+#include "ui/hostui/host_ui.h"
 
 #include <cstdio>
 
@@ -472,7 +476,31 @@ void PinyonShiftApp::OnPostLoadXexImage() {
   pinyon_shift::diagnostics::RecordEvent("xex.loaded", {{"title_id", title}});
 }
 
+PinyonShiftApp::~PinyonShiftApp() = default;
+
+void PinyonShiftApp::ToggleGameMenu() {
+  if (host_ui_ && host_ui_->is_open()) {
+    host_ui_->Close();
+    return;
+  }
+  if (!host_ui_) {
+    rex::ui::Presenter* presenter =
+        runtime() && runtime()->graphics_system() ? runtime()->graphics_system()->presenter()
+                                                  : nullptr;
+    if (!presenter || !immediate_drawer() || !window()) {
+      REXLOG_WARN("Host UI: presentation is not ready");
+      return;
+    }
+    host_ui_ = std::make_unique<pinyon_shift::hostui::HostUi>(
+        *this, *presenter, *immediate_drawer(), *window(),
+        static_cast<rex::input::InputSystem*>(runtime()->input_system()), game_data_root());
+  }
+  host_ui_->Open(pinyon_shift::ui::CreateGameMenu(*host_ui_));
+}
+
 void PinyonShiftApp::OnPostSetup() {
+  rex::ui::RegisterBind("bind_game_menu", "F6", "Open the in-game settings menu",
+                        [this] { ToggleGameMenu(); });
   pinyon_shift::diagnostics::RefreshCrashReporter();
   rex::kernel::xboxkrnl::SetGuestFileOpenObserver(&PinyonShiftObserveGuestFileOpen);
   pinyon_shift::native_renderer::InstallGuestOutputRenderer(
@@ -529,6 +557,9 @@ bool PinyonShiftApp::OnWindowCloseRequested() {
 }
 
 void PinyonShiftApp::OnShutdown() {
+  rex::ui::UnregisterBind("bind_game_menu");
+  // Before the presenter, drawer and kernel it uses are torn down.
+  host_ui_.reset();
   pinyon_shift::fh1_render_test::Stop();
   pinyon_shift::native_renderer::UninstallShaderCapture(
       runtime() ? runtime()->graphics_system() : nullptr);
