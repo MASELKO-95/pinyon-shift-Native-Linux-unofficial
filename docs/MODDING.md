@@ -100,8 +100,12 @@ A mod may replace textures without touching the archives that hold them:
 ```
 
 `<hash>` is 16 hex digits naming the texture's content. To find it, run the
-game with `--texture_dump_dir=<folder>`: every DXT1, DXT3 and DXT5 texture it
-loads is written there as `<hash>.dds`, untiled and with its mip levels. Edit
+game with `--texture_dump_dir=<folder>`: every DXT1, DXT3, DXT5, DXT5A (BC4),
+DXN (BC5) and 8_8_8_8 texture it loads is written there as `<hash>.dds`,
+untiled and with its mip levels. 8_8_8_8 dumps use a DX10 header and keep the
+channels as the game stores them (the game's swizzle picks them when it
+draws), so edit them in place rather than reordering channels. Textures the
+game renders itself (resolve output) are never dumped or replaced. Edit
 a dump and ship it under the same name; the replacement must keep the format
 and at least as many mip levels, otherwise it is logged and ignored. Earlier
 mods win.
