@@ -128,9 +128,10 @@ code every later slice touches, and NP-1 is both the largest remaining
 NP-0.7 moved to NP-9.4, which bumps the pack format anyway.
 
 Status on 2026-09-28: NP-0.1 to NP-0.5 and NP-0.8 are done, and NP-1.1 to
-NP-1.4 and NP-1.6 are done. NP-0.6's repair of cards saved by older builds
-waits on a product decision, because it would change player save files. Next
-is NP-1.5.
+NP-1.4, NP-1.6 and NP-1.7 are done. NP-0.6's repair of cards saved by older
+builds waits on a product decision, because it would change player save files.
+NP-1.5 (the pause-menu entry) is in research; the settings screen opens with F6
+until then.
 
 ## NP-0 Clean native baseline
 
@@ -181,7 +182,7 @@ past that row is host-drawn with the game's own assets.
 | NP-1.4 | **Done**: `src/ui/settings_menu.cpp` puts SETTINGS (F6 until NP-1.5) over the host UI with Display (fullscreen, vsync, frame-rate limit, variable refresh rate, game frame-rate limit), Graphics (resolution scale, anisotropy, anti-aliasing, motion blur, depth of field), Audio (master volume through the new `pinyon_shift_master_volume` and the SDK output gain, mute), Controls (mouse-and-keyboard mode and the key each pad control maps to) and Profile placeholders for NP-5. Live settings apply at once; the others save and show a RESTART badge that turns orange, with a note, while a saved change is not live yet (NP-1.6 makes the cheap ones live). Every change is written at once through `src/config/host_config.cpp`, with a backup in `config/backups` before the first save of a session. The launcher's edits moved into `tools/host-config.ps1` with the same rules, and `tools/tests/test_host_config.py` checks that both write identical bytes and that the launcher reads back what the game writes. No LOD-bias setting exists yet to expose. | M |
 | NP-1.5 | Pause-menu entry: a production LSB2 label patch of the offline `MULTIPLAYER` row to `SETTINGS` (same byte length per language, or a per-language table) and an activation hook at the pause dispatch sites (`config/rexglue/analysis/main-xex.toml:135-140`) that opens the host screen and returns focus to the row on close. The stock row keeps its font, focus sound and animation. | M |
 | NP-1.6 | **Done**: anti-aliasing (`swap_post_effect`, through a change callback to the command processor), the game frame-rate limit (`pinyon_shift_fh1_render_fps_limit`, reread every guest-vblank tick) and variable refresh rate (the D3D12 presenter recreates its swap chain when the tearing preference changes) apply live; only the resolution scale still needs a restart. F11 (`bind_fullscreen`) toggles fullscreen and saves it. Pad input in host menus is applied after drawing, so window and swap-chain changes never happen inside a paint. `fullscreen`, `vsync`, the presentation limit, anisotropy, motion blur, depth of field, keybinds and `mnk_*` were already live. | S |
-| NP-1.7 | Launcher becomes install, verify, build, play and report. Its graphics panel keeps only internal scale (because a scale needs a pack produced before launch) and a button that explains settings now live in the game. Stop forcing `vsync=true` at `set-graphics-experiment.ps1:297`. | S |
+| NP-1.7 | **Done**: the launcher's graphics panel keeps only the internal resolution (a scale needs shaders prepared before launch) and an OTHER SETTINGS button that explains the rest is in game (F6). `set-graphics-experiment.ps1 -Action Apply` writes only the settings it is given, so a launcher save no longer resets in-game choices, and it no longer forces `vsync = true`; `test_graphics_settings.py` covers a scale-only save keeping them. Install, verify, build, play and report were already the launcher's flow. | S |
 
 **Gates.** The settings screen opens and closes 100 times in a scripted route
 with no leaked component, stale callback or save write; it is navigable with

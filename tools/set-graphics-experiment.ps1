@@ -214,6 +214,9 @@ switch ($Action) {
         $schema = Get-SchemaVersion $text
         if ($schema -lt 1 -or $schema -gt 25) { throw "Unsupported host configuration schema: $schema" }
         $backup = New-HostConfigBackup $configPath
+        # The retired guest vblank rate became the render limit, which the
+        # replacement defaults to following the display.
+        $hadLegacyVblank = [regex]::IsMatch($text, '(?m)^[ \t]*pinyon_shift_fh1_guest_vblank_hz[ \t]*=')
         foreach ($retired in $retiredSettings) {
             $text = Remove-TomlValue $text $retired
         }
@@ -221,27 +224,45 @@ switch ($Action) {
         # schema 24 wrote it for players (src/pinyon_shift_app.cpp).
         if ($schema -lt 24) { $text = Remove-TomlValue $text 'readback_resolve' }
         $text = Set-TomlValue $text 'pinyon_shift_config_schema' '25'
-        $text = Set-TomlValue $text 'pinyon_shift_fh1_render_fps_limit' '0'
         $text = Set-TomlValue $text 'pinyon_shift_fh1_source_presentation' 'true'
-        if (-not [regex]::IsMatch($text, '(?m)^\s*xma_relaxed_padding_admission\s*=')) {
+        if (-not [regex]::IsMatch($text, '(?m)^[ \t]*xma_relaxed_padding_admission[ \t]*=')) {
             $text = Set-TomlValue $text 'xma_relaxed_padding_admission' 'false'
         }
+        # Only the settings passed are written: the in-game settings screen
+        # edits the same file, and saving here must not undo its choices.
+        $bound = $PSBoundParameters
         $effectiveResolution = switch ($Preset) {
             'shipping_1x' { 1 }
             'experimental_2x' { 2 }
             'experimental_3x' { 3 }
-            default { $ResolutionScale }
+            default { $null }
         }
-        $override = switch ($Anisotropy) { 4 { 3 } 8 { 4 } 16 { 5 } }
-        $text = Set-TomlValue $text 'anisotropic_override' ([string]$override)
-        $text = Set-TomlValue $text 'swap_post_effect' ('"' + $PostEffect + '"')
-        $text = Set-TomlValue $text 'disable_motion_blur' $DisableMotionBlur
-        $text = Set-TomlValue $text 'disable_depth_of_field' $DisableDepthOfField
-        $text = Set-TomlValue $text 'draw_resolution_scale_x' ([string]$effectiveResolution)
-        $text = Set-TomlValue $text 'draw_resolution_scale_y' ([string]$effectiveResolution)
-        $text = Set-TomlValue $text 'vsync' 'true'
-        $text = Set-TomlValue $text 'host_present_fps_limit' ([string]$PresentationFps)
-        $text = Set-TomlValue $text 'pinyon_shift_fh1_render_fps_limit' ([string]$RenderFps)
+        if ($null -eq $effectiveResolution -and $bound.ContainsKey('ResolutionScale')) {
+            $effectiveResolution = $ResolutionScale
+        }
+        if ($null -ne $effectiveResolution) {
+            $text = Set-TomlValue $text 'draw_resolution_scale_x' ([string]$effectiveResolution)
+            $text = Set-TomlValue $text 'draw_resolution_scale_y' ([string]$effectiveResolution)
+        }
+        if ($bound.ContainsKey('Anisotropy')) {
+            $override = switch ($Anisotropy) { 4 { 3 } 8 { 4 } 16 { 5 } }
+            $text = Set-TomlValue $text 'anisotropic_override' ([string]$override)
+        }
+        if ($bound.ContainsKey('PostEffect')) {
+            $text = Set-TomlValue $text 'swap_post_effect' ('"' + $PostEffect + '"')
+        }
+        if ($bound.ContainsKey('DisableMotionBlur')) {
+            $text = Set-TomlValue $text 'disable_motion_blur' $DisableMotionBlur
+        }
+        if ($bound.ContainsKey('DisableDepthOfField')) {
+            $text = Set-TomlValue $text 'disable_depth_of_field' $DisableDepthOfField
+        }
+        if ($bound.ContainsKey('PresentationFps')) {
+            $text = Set-TomlValue $text 'host_present_fps_limit' ([string]$PresentationFps)
+        }
+        if ($bound.ContainsKey('RenderFps') -or $hadLegacyVblank) {
+            $text = Set-TomlValue $text 'pinyon_shift_fh1_render_fps_limit' ([string]$RenderFps)
+        }
         $text = Set-TomlValue $text 'host_present_sleep_spin' 'true'
         $text = Set-TomlValue $text 'clear_memory_page_state' 'true'
         Write-HostConfig $configPath $text

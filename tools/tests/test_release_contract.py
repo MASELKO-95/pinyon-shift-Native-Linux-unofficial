@@ -495,8 +495,13 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         )
         self.assertIn('"clear_memory_page_state = true\\n"', app)
         self.assertNotIn("Accurate showroom", launcher_xaml)
-        self.assertIn("DisableMotionBlurCheckBox", launcher_xaml)
-        self.assertIn("DisableDepthOfFieldCheckBox", launcher_xaml)
+        # NP-1.7: the launcher keeps only the internal resolution; the rest
+        # is set in game and a launcher save must not overwrite it.
+        self.assertIn("ResolutionComboBox", launcher_xaml)
+        self.assertNotIn("DisableMotionBlurCheckBox", launcher_xaml)
+        self.assertNotIn("AnisotropyComboBox", launcher_xaml)
+        self.assertNotIn('"-Anisotropy"', launcher)
+        self.assertIn('"-ResolutionScale", SelectedTag(ResolutionComboBox)', launcher)
         self.assertNotIn("NativeRendererComboBox", launcher_xaml)
         self.assertNotIn("ResetRendererButton", launcher_xaml)
         # The renderer choice is gone: native is the only renderer.

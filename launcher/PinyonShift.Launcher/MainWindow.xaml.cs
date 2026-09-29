@@ -30,7 +30,6 @@ public partial class MainWindow : Window
     private StreamWriter? _sessionLog;
     private CrashReport? _pendingReport;
     private bool _busy;
-    private bool _applyingGraphicsResult;
     private bool _canChooseInstallRoot;
 
     private static readonly string InstallRootPreference = Path.Combine(
@@ -738,47 +737,13 @@ public partial class MainWindow : Window
     private async void SaveGraphicsButton_Click(object sender, RoutedEventArgs e) =>
         await ChangeGraphicsSettingsAsync("Apply", "Settings saved. Restart the preview to apply them.");
 
-    private void GraphicsPresetComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_applyingGraphicsResult || GraphicsPresetComboBox.SelectedItem is null ||
-            ResolutionComboBox is null) return;
-        _applyingGraphicsResult = true;
-        try
-        {
-            switch (SelectedTag(GraphicsPresetComboBox))
-            {
-                case "shipping_1x":
-                    SelectTag(ResolutionComboBox, "1");
-                    break;
-                case "experimental_2x":
-                    SelectTag(ResolutionComboBox, "2");
-                    break;
-                case "experimental_3x":
-                    SelectTag(ResolutionComboBox, "3");
-                    break;
-            }
-        }
-        finally
-        {
-            _applyingGraphicsResult = false;
-        }
-    }
-
-    private void GraphicsControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_applyingGraphicsResult || ResolutionComboBox?.SelectedItem is null ||
-            GraphicsPresetComboBox is null) return;
-        var inferred = SelectedTag(ResolutionComboBox) switch
-        {
-            "1" => "shipping_1x",
-            "2" => "experimental_2x",
-            "3" => "experimental_3x",
-            _ => "custom"
-        };
-        _applyingGraphicsResult = true;
-        SelectTag(GraphicsPresetComboBox, inferred);
-        _applyingGraphicsResult = false;
-    }
+    private void InGameSettingsButton_Click(object sender, RoutedEventArgs e) =>
+        MessageBox.Show(this,
+            "Display, graphics, audio and control settings live in the game now. Press F6 while " +
+            "playing to open them. Changes there apply at once, except the resolution scale, and are " +
+            "saved to the same settings file this launcher uses, with a backup before the first change " +
+            "of each session.",
+            "In-game settings", MessageBoxButton.OK, MessageBoxImage.Information);
 
     private async void ResetGraphicsButton_Click(object sender, RoutedEventArgs e)
     {
@@ -841,11 +806,8 @@ public partial class MainWindow : Window
         {
             "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
             "-Action", action, "-StateRoot", _stateRoot,
-            "-Anisotropy", SelectedTag(AnisotropyComboBox), "-PostEffect", SelectedTag(PostEffectComboBox),
+            // Only the scale: the rest is set in game and must not be overwritten.
             "-ResolutionScale", SelectedTag(ResolutionComboBox),
-            "-Preset", SelectedTag(GraphicsPresetComboBox),
-            "-DisableMotionBlur", DisableMotionBlurCheckBox.IsChecked == true ? "true" : "false",
-            "-DisableDepthOfField", DisableDepthOfFieldCheckBox.IsChecked == true ? "true" : "false",
             "-Json"
         }) startInfo.ArgumentList.Add(argument);
         using var process = Process.Start(startInfo) ??
@@ -867,23 +829,8 @@ public partial class MainWindow : Window
     private static string SelectedTag(ComboBox comboBox) =>
         (comboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? throw new InvalidOperationException("Choose a setting first.");
 
-    private void ApplyGraphicsResult(GraphicsResult result)
-    {
-        _applyingGraphicsResult = true;
-        try
-        {
-            SelectTag(AnisotropyComboBox, result.Settings.Anisotropy.ToString());
-            SelectTag(PostEffectComboBox, result.Settings.PostEffect);
-            SelectTag(GraphicsPresetComboBox, result.Settings.Preset);
-            SelectTag(ResolutionComboBox, result.Settings.ResolutionScale.ToString());
-            DisableMotionBlurCheckBox.IsChecked = result.Settings.DisableMotionBlur;
-            DisableDepthOfFieldCheckBox.IsChecked = result.Settings.DisableDepthOfField;
-        }
-        finally
-        {
-            _applyingGraphicsResult = false;
-        }
-    }
+    private void ApplyGraphicsResult(GraphicsResult result) =>
+        SelectTag(ResolutionComboBox, result.Settings.ResolutionScale.ToString());
 
     private static void SelectTag(ComboBox comboBox, string value)
     {
@@ -893,12 +840,7 @@ public partial class MainWindow : Window
 
     private void SetGraphicsControlsEnabled(bool enabled)
     {
-        AnisotropyComboBox.IsEnabled = enabled;
-        PostEffectComboBox.IsEnabled = enabled;
         ResolutionComboBox.IsEnabled = enabled;
-        GraphicsPresetComboBox.IsEnabled = enabled;
-        DisableMotionBlurCheckBox.IsEnabled = enabled;
-        DisableDepthOfFieldCheckBox.IsEnabled = enabled;
         SaveGraphicsButton.IsEnabled = enabled;
         ResetGraphicsButton.IsEnabled = enabled;
         RestoreGraphicsButton.IsEnabled = enabled;

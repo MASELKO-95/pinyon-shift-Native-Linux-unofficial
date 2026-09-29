@@ -58,6 +58,29 @@ class GraphicsSettingsTests(unittest.TestCase):
             self.run_tool(state, "-Action", "Restore")
             self.assertEqual(config.read_text(encoding="utf-8"), original)
 
+    def test_saving_the_scale_keeps_in_game_settings(self):
+        # The launcher only saves the resolution scale; everything else is
+        # set in game and must survive.
+        with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:
+            state = pathlib.Path(temporary)
+            config = state / "config/pinyon_shift.toml"
+            config.parent.mkdir(parents=True)
+            config.write_text(
+                "pinyon_shift_config_schema = 25\nanisotropic_override = 5\n"
+                "swap_post_effect = \"fxaa\"\nvsync = false\n"
+                "pinyon_shift_fh1_render_fps_limit = 30\nhost_present_fps_limit = 120\n"
+                "disable_motion_blur = true\n",
+                encoding="utf-8")
+            result = self.run_tool(state, "-Action", "Apply", "-ResolutionScale", "3")
+            updated = config.read_text(encoding="utf-8")
+            for line in ("anisotropic_override = 5", 'swap_post_effect = "fxaa"', "vsync = false",
+                         "pinyon_shift_fh1_render_fps_limit = 30",
+                         "host_present_fps_limit = 120", "disable_motion_blur = true",
+                         "draw_resolution_scale_x = 3", "draw_resolution_scale_y = 3"):
+                self.assertIn(line, updated)
+            self.assertEqual(result["settings"]["resolution_scale"], 3)
+            self.assertFalse(result["settings"]["vsync"])
+
     def test_reset_writes_supported_defaults_and_preserves_backup(self):
         with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:
             state = pathlib.Path(temporary)
