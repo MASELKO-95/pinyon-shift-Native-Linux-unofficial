@@ -131,7 +131,8 @@ Status on 2026-09-28: NP-0.1 to NP-0.5 and NP-0.8 are done, and NP-1.1 to
 NP-1 is done except its gate runs. NP-0.6's repair of cards saved by older
 builds waits on a product decision, because it would change player save files.
 NP-2.1, NP-2.2 and NP-2.8 are done; NP-2.3 to NP-2.5 were measured and not
-built (NP-2.4 waits for AMD or Intel hardware). Next is NP-3.
+built (NP-2.4 waits for AMD or Intel hardware). NP-3.6 is done; next in NP-3
+are NP-3.2 and NP-3.1.
 
 ## NP-0 Clean native baseline
 
@@ -237,7 +238,7 @@ hash, because gameplay integrates a variable delta.
 | NP-3.3 | Write-watch churn: batch the per-page `VirtualProtect` restores into runs, re-arm watches less often, and test 64 KiB watch granularity (`sdk/src/system/xmemory.cpp:2112-2293`, `sdk/src/graphics/shared_memory.cpp:366-399`); gate with `tools/check-fh1-texture-watch.py` and golden replays. | M |
 | NP-3.4 | Lock diet: cache a direct object pointer with a generation in the guest dispatch header so `GetNativeObject`, `KeSetEvent` and waits skip the recursive global mutex and handle table; add a pause instruction and a spin cap to `RtlEnterCriticalSection`; replace the timer queue's spin-wait strategy; run with `clock_no_scaling=true` or make `UpdateGuestClock` lock-free. | S each |
 | NP-3.5 | FMA3 build variant: measure a `-mfma` (x86-64-v3) build against the SSE4.1 baseline, then ship a dual baseline with runtime dispatch if it wins. Hardware FMA is bit-identical to `std::fma`; never substitute `a*b+c`. | S to test, M to ship |
-| NP-3.6 | Replace the two 500 µs yield-spins (vblank thread and presenter) with high-resolution waitable timers and a spin of at most 50 µs; watch vblank lateness and dropped presents. | S |
+| NP-3.6 | **Done** (SDK `41c37c6`). The old vblank wait barely spun (about 11 us per wait): `sleep_for` overshot its 500 us margin, so vblanks woke about 600 us late on average and up to 2 ms. `rex::thread::SleepUntil` waits on a per-thread high-resolution waitable timer set early by the spin margin (50 us) plus a running estimate of the timer's own overshoot, then spins with `YieldProcessor`; the vblank thread and the presenter pacing use it. `fh1-race-sync` at the unlocked 240 Hz vblank: lateness 43 us mean and 0.3-1.2 ms max, about 92 us of spin per wait (2 % of a core), race-window median 16.91 vs 16.93 ms; with `host_present_fps_limit=60` the present interval median is 16.92 vs 17.21 ms. Control: `--high_resolution_timer_waits=false`. | S |
 | NP-3.7 | HFR correctness: locate the per-frame-stepped NPC and title-UI animation updaters (candidates: `sub_82AE8AE0`, which multiplies the video-mode refresh by a constant, and the consumers of the main-loop delta at `owner+448`), fix them with hooks that use real time, and extend `expect-simulation-time` to animation duration. | M–L |
 | NP-3.8 | Deferred until NP-3.0 evidence exists: codegen register-locality options (`non_volatile_as_local`, `cr_as_local`, `ctr/xer_as_local`, blocked by interior-PC resume and fiber re-entry), `vmsum` and unaligned vector store lowerings, an AVX2 baseline. | L |
 
