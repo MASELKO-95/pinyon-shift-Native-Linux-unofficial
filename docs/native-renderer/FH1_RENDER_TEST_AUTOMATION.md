@@ -41,7 +41,7 @@ python tools/create-render-seed.py appdata-2026-09-27 `
   --note "Free roam next to the Gauntlet sign-up"
 python tools/run-fh1-render-test.py config/render-tests/fh1-race-sync.fh1test `
   --state-root .local/render-seeds/appdata-2026-09-27 --configuration RelWithDebInfo --hidden `
-  --shader-pack "$env:LOCALAPPDATA\PinyonShift\source\0.1.0\.local\preview\cache\shaders\shareable\4D5309C9.fh1-native-v2.10DE.09.1x1.pnsp" `
+  --shader-pack "$env:LOCALAPPDATA\PinyonShift\source\0.1.0\.local\preview\cache\shaders\shareable\4D5309C9.fh1-native-v3.d3d12.01.09.1x1.pnsp" `
   --seed-pipeline-prewarm
 ```
 

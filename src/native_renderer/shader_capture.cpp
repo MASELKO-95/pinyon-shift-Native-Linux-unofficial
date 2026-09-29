@@ -35,9 +35,14 @@ constexpr size_t kMaximumBytecodeBytes = 16 * 1024 * 1024;
 constexpr size_t kMaximumCaptureBytes = 512 * 1024 * 1024;
 constexpr size_t kMaximumBindings = 255;
 
+// Fh1ShaderPack::Backend values.
+constexpr uint32_t kBackendD3D12 = 1;
+constexpr uint32_t kBackendVulkan = 2;
+
 struct CaptureConfig {
   uint32_t translator_version = 0;
-  uint32_t vendor_id = 0;
+  uint32_t backend = 0;
+  uint32_t device_features = 0;
   bool bindless_resources = false;
   bool edram_rov = false;
   bool gamma_render_target_as_unorm8 = false;
@@ -191,11 +196,11 @@ bool WriteManifestLocked() {
 
   std::string document =
       fmt::format(
-          "{{\n  \"schema\": \"pinyon-shift.native-shader-pack.v2\",\n"
-          "  \"backend\": \"d3d12\",\n"
+          "{{\n  \"schema\": \"pinyon-shift.native-shader-pack.v3\",\n"
+          "  \"backend\": \"{}\",\n"
           "  \"translation\": {{\n"
           "    \"translator_version\": \"{:08X}\",\n"
-          "    \"vendor_id\": {},\n"
+          "    \"device_features\": {},\n"
           "    \"bindless_resources\": {},\n"
           "    \"edram_rov\": {},\n"
           "    \"gamma_render_target_as_unorm8\": {},\n"
@@ -203,16 +208,18 @@ bool WriteManifestLocked() {
           "    \"draw_resolution_scale_x\": {},\n"
           "    \"draw_resolution_scale_y\": {}\n"
           "  }},\n  \"entries\": [\n",
-          g_capture.config.translator_version, g_capture.config.vendor_id,
+          g_capture.config.backend == kBackendVulkan ? "vulkan" : "d3d12",
+          g_capture.config.translator_version, g_capture.config.device_features,
           g_capture.config.bindless_resources, g_capture.config.edram_rov,
           g_capture.config.gamma_render_target_as_unorm8,
           g_capture.config.msaa_2x, g_capture.config.draw_resolution_scale_x,
           g_capture.config.draw_resolution_scale_y);
   for (size_t index = 0; index < entries.size(); ++index) {
     const CaptureEntry &entry = entries[index];
-    const char *stage = entry.stage == rex::system::GraphicsShaderStage::kVertex
-                            ? "vertex"
-                            : "pixel";
+    const char *stage =
+        entry.stage == rex::system::GraphicsShaderStage::kVertex  ? "vertex"
+        : entry.stage == rex::system::GraphicsShaderStage::kPixel ? "pixel"
+                                                                  : "geometry";
     document += fmt::format("    {{\n      \"stage\": \"{}\",\n"
                             "      \"guest_hash\": \"{:016X}\",\n"
                             "      \"specialization_mask\": \"{:016X}\",\n"
@@ -261,7 +268,8 @@ void ObserveShaderTranslation(
       std::as_bytes(std::span(observation.bytecode, observation.bytecode_size));
   const CaptureConfig config{
       observation.translator_version,
-      observation.vendor_id,
+      observation.backend,
+      observation.device_features,
       observation.bindless_resources,
       observation.edram_rov,
       observation.gamma_render_target_as_unorm8,
@@ -272,12 +280,27 @@ void ObserveShaderTranslation(
     std::lock_guard lock(g_capture.mutex);
     ++g_capture.rejected_callbacks;
   };
+  // Geometry shaders have no guest shader or bindings; guest shaders have a
+  // hash.
+  const bool geometry =
+      observation.stage == rex::system::GraphicsShaderStage::kGeometry;
+  static constexpr uint8_t kSpirvMagic[4] = {0x03, 0x02, 0x23, 0x07};
+  const bool magic_valid =
+      bytecode.size() >= 4 &&
+      (config.backend == kBackendD3D12
+           ? std::memcmp(bytecode.data(), "DXBC", 4) == 0
+           : config.backend == kBackendVulkan && bytecode.size() % 4 == 0 &&
+                 std::memcmp(bytecode.data(), kSpirvMagic, 4) == 0);
   if ((observation.stage != rex::system::GraphicsShaderStage::kVertex &&
-       observation.stage != rex::system::GraphicsShaderStage::kPixel) ||
-      observation.guest_hash == 0 || bytecode.size() < 4 ||
-      bytecode.size() > kMaximumBytecodeBytes ||
-      std::memcmp(bytecode.data(), "DXBC", 4) != 0 ||
-      !config.translator_version || !config.vendor_id ||
+       observation.stage != rex::system::GraphicsShaderStage::kPixel &&
+       !geometry) ||
+      (geometry ? observation.guest_hash != 0 ||
+                      observation.texture_binding_count ||
+                      observation.sampler_binding_count ||
+                      observation.used_texture_mask
+                : observation.guest_hash == 0) ||
+      !magic_valid || bytecode.size() > kMaximumBytecodeBytes ||
+      !config.translator_version ||
       !config.draw_resolution_scale_x || !config.draw_resolution_scale_y ||
       observation.texture_binding_count > kMaximumBindings ||
       observation.sampler_binding_count > kMaximumBindings ||

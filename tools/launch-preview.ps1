@@ -70,13 +70,21 @@ $stagedNativeShaderPack = $null
 $stagedNativePipelineCache = $null
 $stagedShaderProducer = $null
 if ($DiscShaderCorpusDir) {
-    $producerSource = Join-Path $resolvedBuildDirectory `
-        'rexglue-artifacts/rexgpu-fh1-producer.dll'
+    # Plugins carry the build type's postfix (PluginFileName in the SDK).
+    $buildType = 'Release'
+    $cache = Join-Path $resolvedBuildDirectory 'CMakeCache.txt'
+    if (Test-Path -LiteralPath $cache -PathType Leaf) {
+        $line = Select-String -LiteralPath $cache -Pattern '^CMAKE_BUILD_TYPE:STRING=(.+)$' |
+            Select-Object -First 1
+        if ($line) { $buildType = $line.Matches[0].Groups[1].Value }
+    }
+    $pluginPostfix = switch ($buildType) { 'Debug' { 'd' } 'RelWithDebInfo' { 'rd' } default { '' } }
+    $producerName = "rexgpu-fh1-producer$pluginPostfix.dll"
+    $producerSource = Join-Path $resolvedBuildDirectory "rexglue-artifacts/$producerName"
     if (-not (Test-Path -LiteralPath $producerSource -PathType Leaf)) {
         throw 'Build the rexgpu-fh1-producer target before producing FH1 shaders.'
     }
-    $stagedShaderProducer = Join-Path (Split-Path $executable -Parent) `
-        'rexgpu-fh1-producer.dll'
+    $stagedShaderProducer = Join-Path (Split-Path $executable -Parent) $producerName
 }
 if (-not ($RenderTestScript -or $ShaderCaptureDir -or $DiscShaderCorpusDir -or $CrashSelfTest -or $SkipShaderPreparation)) {
     & (Join-Path $PSScriptRoot 'prepare-fh1-shaders.ps1') -StateRoot $resolvedStateRoot `

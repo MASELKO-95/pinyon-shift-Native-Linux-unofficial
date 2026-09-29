@@ -94,7 +94,7 @@ target_include_directories(pinyon_shift_fh1_ui_api_tests PRIVATE src)
 
 add_executable(pinyon_shift_fh1_shader_pack_tests EXCLUDE_FROM_ALL
     tests/native_renderer/fh1_shader_pack_test.cpp
-    ${REXSDK_DIR}/src/graphics/d3d12/fh1_shader_pack.cpp
+    ${REXSDK_DIR}/src/graphics/fh1_shader_pack.cpp
 )
 target_include_directories(pinyon_shift_fh1_shader_pack_tests PRIVATE
     ${REXSDK_DIR}/include)

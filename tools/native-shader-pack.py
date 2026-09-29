@@ -15,19 +15,27 @@ import tempfile
 from dataclasses import dataclass
 
 
-SCHEMA = "pinyon-shift.native-shader-pack.v2"
+SCHEMA = "pinyon-shift.native-shader-pack.v3"
 MAGIC = b"PNYNSHPK"
-VERSION = 2
+VERSION = 3
 HEADER = struct.Struct("<8sIIIIQQQ32sIIIIIIII")
 ENTRY = struct.Struct("<IIQQQQIIII32s")
 TEXTURE_BINDING = struct.Struct("<IIII")
 SAMPLER_BINDING = struct.Struct("<IIIIII")
-STAGES = {"vertex": 1, "pixel": 2}
+STAGES = {"vertex": 1, "pixel": 2, "geometry": 3}
 STAGE_NAMES = {value: key for key, value in STAGES.items()}
-BYTECODE_FORMAT_DXIL = 1
+STAGE_GEOMETRY = STAGES["geometry"]
+# The backend is also each entry's bytecode format: DXBC or SPIR-V.
+BACKENDS = {"d3d12": 1, "vulkan": 2}
+BACKEND_NAMES = {value: key for key, value in BACKENDS.items()}
+BACKEND_D3D12 = BACKENDS["d3d12"]
+SPIRV_MAGIC = bytes((0x03, 0x02, 0x23, 0x07))
+# D3D12 device features: switch statements for control flow (not on Intel).
+D3D12_FEATURE_SWITCH = 1 << 0
+KNOWN_D3D12_FEATURES = D3D12_FEATURE_SWITCH
 MAX_ENTRY_COUNT = 65_535
 MAX_BYTECODE_SIZE = 16 * 1024 * 1024
-MAX_PACK_SIZE = 512 * 1024 * 1024
+MAX_PACK_SIZE = 1024 * 1024 * 1024
 MAX_BINDINGS = 255
 HEX_64 = re.compile(r"^[0-9A-Fa-f]{16}$")
 HEX_32 = re.compile(r"^[0-9A-Fa-f]{8}$")
@@ -69,7 +77,8 @@ class ShaderEntry:
 @dataclass(frozen=True)
 class TranslationConfig:
     translator_version: int
-    vendor_id: int
+    backend: int
+    device_features: int
     flags: int
     draw_resolution_scale_x: int
     draw_resolution_scale_y: int
@@ -99,7 +108,17 @@ def _parse_uint32(value: object, field: str, maximum: int = 0xFFFFFFFF) -> int:
     return value
 
 
+def _bytecode_valid(backend: int, bytecode: bytes) -> bool:
+    if backend == BACKEND_D3D12:
+        return bytecode.startswith(b"DXBC")
+    return len(bytecode) % 4 == 0 and bytecode.startswith(SPIRV_MAGIC)
+
+
 def _load_translation_config(document: dict) -> TranslationConfig:
+    backend_name = document.get("backend")
+    if backend_name not in BACKENDS:
+        raise PackError("shader manifest backend must be d3d12 or vulkan")
+    backend = BACKENDS[backend_name]
     raw = document.get("translation")
     if not isinstance(raw, dict):
         raise PackError("translation must be a JSON object")
@@ -127,11 +146,19 @@ def _load_translation_config(document: dict) -> TranslationConfig:
         translator_version=_parse_hex32(
             raw.get("translator_version"), "translation.translator_version"
         ),
-        vendor_id=_parse_uint32(raw.get("vendor_id"), "translation.vendor_id", 0xFFFF),
+        backend=backend,
+        device_features=_parse_device_features(backend, raw.get("device_features")),
         flags=flags,
         draw_resolution_scale_x=scale_x,
         draw_resolution_scale_y=scale_y,
     )
+
+
+def _parse_device_features(backend: int, value: object) -> int:
+    features = _parse_uint32(value, "translation.device_features")
+    if backend == BACKEND_D3D12 and features & ~KNOWN_D3D12_FEATURES:
+        raise PackError("translation.device_features has unknown D3D12 bits")
+    return features
 
 
 def _load_binding_list(
@@ -187,8 +214,6 @@ def load_manifest(path: pathlib.Path) -> PackInput:
         raise PackError("shader manifest must be a JSON object")
     if document.get("schema") != SCHEMA:
         raise PackError(f"shader manifest schema must be {SCHEMA}")
-    if document.get("backend") != "d3d12":
-        raise PackError("shader manifest backend must be d3d12")
     config = _load_translation_config(document)
     raw_entries = document.get("entries")
     if not isinstance(raw_entries, list) or not raw_entries:
@@ -207,7 +232,7 @@ def load_manifest(path: pathlib.Path) -> PackInput:
             raise PackError(f"entries[{index}] must be a JSON object")
         stage_name = raw.get("stage")
         if stage_name not in STAGES:
-            raise PackError(f"entries[{index}].stage must be vertex or pixel")
+            raise PackError(f"entries[{index}].stage must be vertex, pixel or geometry")
         identity = ShaderIdentity(
             stage=STAGES[stage_name],
             guest_hash=_parse_hex64(raw.get("guest_hash"), f"entries[{index}].guest_hash"),
@@ -238,8 +263,10 @@ def load_manifest(path: pathlib.Path) -> PackInput:
             raise PackError(
                 f"entries[{index}] bytecode exceeds {MAX_BYTECODE_SIZE} bytes"
             )
-        if not bytecode.startswith(b"DXBC"):
-            raise PackError(f"entries[{index}] is not a DXIL container")
+        if not _bytecode_valid(config.backend, bytecode):
+            raise PackError(
+                f"entries[{index}] is not a {BACKEND_NAMES[config.backend]} shader"
+            )
         actual_digest = hashlib.sha256(bytecode).digest()
         expected_digest = _parse_sha256(
             raw.get("sha256"), f"entries[{index}].sha256"
@@ -273,6 +300,12 @@ def load_manifest(path: pathlib.Path) -> PackInput:
             expected_mask |= 1 << binding[1]
         if used_texture_mask != expected_mask:
             raise PackError(f"entries[{index}].used_texture_mask does not match bindings")
+        if identity.stage == STAGE_GEOMETRY and (
+            identity.guest_hash or texture_bindings or sampler_bindings
+        ):
+            raise PackError(
+                f"entries[{index}] geometry shaders take no guest hash or bindings"
+            )
         entries.append(
             ShaderEntry(
                 identity,
@@ -307,7 +340,7 @@ def serialize(pack_input: PackInput) -> bytes:
         index.extend(
             ENTRY.pack(
                 shader.identity.stage,
-                BYTECODE_FORMAT_DXIL,
+                pack_input.config.backend,
                 shader.identity.guest_hash,
                 shader.identity.specialization_mask,
                 entry_data_offset,
@@ -334,11 +367,11 @@ def serialize(pack_input: PackInput) -> bytes:
         len(data),
         hashlib.sha256(content).digest(),
         pack_input.config.translator_version,
-        pack_input.config.vendor_id,
+        pack_input.config.backend,
+        pack_input.config.device_features,
         pack_input.config.flags,
         pack_input.config.draw_resolution_scale_x,
         pack_input.config.draw_resolution_scale_y,
-        0,
         0,
         0,
     ) + content
@@ -358,13 +391,13 @@ def verify_pack(data: bytes) -> dict[str, object]:
         data_size,
         content_digest,
         translator_version,
-        vendor_id,
+        backend,
+        device_features,
         flags,
         scale_x,
         scale_y,
         reserved_0,
         reserved_1,
-        reserved_2,
     ) = HEADER.unpack_from(data)
     if magic != MAGIC or version != VERSION:
         raise PackError("shader pack magic or version is unsupported")
@@ -381,13 +414,13 @@ def verify_pack(data: bytes) -> dict[str, object]:
         raise PackError("shader pack content SHA-256 does not match")
     if (
         not translator_version
-        or vendor_id > 0xFFFF
+        or backend not in BACKEND_NAMES
+        or (backend == BACKEND_D3D12 and device_features & ~KNOWN_D3D12_FEATURES)
         or flags & ~KNOWN_FLAGS
         or not 0 < scale_x <= 4
         or not 0 < scale_y <= 4
         or reserved_0
         or reserved_1
-        or reserved_2
     ):
         raise PackError("shader pack translation configuration is invalid")
 
@@ -408,8 +441,12 @@ def verify_pack(data: bytes) -> dict[str, object]:
             reserved,
             bytecode_digest,
         ) = ENTRY.unpack_from(data, offset)
-        if stage not in STAGE_NAMES or bytecode_format != BYTECODE_FORMAT_DXIL:
+        if stage not in STAGE_NAMES or bytecode_format != backend:
             raise PackError(f"shader pack entry {index} has unsupported identity data")
+        if stage == STAGE_GEOMETRY and (
+            guest_hash or texture_binding_count or sampler_binding_count or used_texture_mask
+        ):
+            raise PackError(f"shader pack entry {index} is an invalid geometry shader")
         if (
             reserved != 0
             or not 0 < bytecode_size <= MAX_BYTECODE_SIZE
@@ -429,8 +466,10 @@ def verify_pack(data: bytes) -> dict[str, object]:
         if bytecode_start < data_offset or entry_end > len(data):
             raise PackError(f"shader pack entry {index} escapes the payload")
         bytecode = data[bytecode_start:bytecode_end]
-        if not bytecode.startswith(b"DXBC"):
-            raise PackError(f"shader pack entry {index} is not a DXIL container")
+        if not _bytecode_valid(backend, bytecode):
+            raise PackError(
+                f"shader pack entry {index} is not a {BACKEND_NAMES[backend]} shader"
+            )
         if hashlib.sha256(bytecode).digest() != bytecode_digest:
             raise PackError(f"shader pack entry {index} SHA-256 does not match")
         binding_offset = bytecode_end
@@ -467,10 +506,13 @@ def verify_pack(data: bytes) -> dict[str, object]:
 
     return {
         "schema": SCHEMA,
-        "backend": "d3d12",
+        "backend": BACKEND_NAMES[backend],
         "entry_count": entry_count,
+        "geometry_shader_count": sum(
+            1 for identity in identities if identity.stage == STAGE_GEOMETRY
+        ),
         "translator_version": f"{translator_version:08X}",
-        "vendor_id": vendor_id,
+        "device_features": device_features,
         "flags": flags,
         "draw_resolution_scale_x": scale_x,
         "draw_resolution_scale_y": scale_y,
@@ -537,8 +579,8 @@ def _stage(arguments: argparse.Namespace) -> dict[str, object]:
     if arguments.scale is not None and scale != arguments.scale:
         raise PackError(f"shader pack does not match the requested {arguments.scale}x scale")
     name = (
-        f"4D5309C9.fh1-native-v2.{metadata['vendor_id']:04X}."
-        f"{metadata['flags']:02X}.{scale}x{scale}.pnsp"
+        f"4D5309C9.fh1-native-v{VERSION}.{metadata['backend']}."
+        f"{metadata['device_features']:02X}.{metadata['flags']:02X}.{scale}x{scale}.pnsp"
     )
     destination = arguments.state_root.resolve() / "cache/shaders/shareable" / name
     unchanged = destination.is_file() and destination.stat().st_size == len(data)
@@ -561,7 +603,7 @@ def _stage(arguments: argparse.Namespace) -> dict[str, object]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Build or verify deterministic native D3D12 shader packs."
+        description="Build or verify deterministic native D3D12 and Vulkan shader packs."
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     build_parser = subparsers.add_parser("build", help="build a pack from a manifest")

@@ -8,16 +8,25 @@
 #include <string>
 #include <Windows.h>
 
-#include <rex/graphics/d3d12/fh1_shader_pack.h>
+#include <rex/graphics/fh1_shader_pack.h>
 
 int main(int argc, char** argv) {
   assert(argc == 2);
-  using rex::graphics::d3d12::Fh1ShaderPack;
-  const Fh1ShaderPack::Config config{0x20260827, 0x10DE, 0xD, 1, 1};
+  using rex::graphics::Fh1ShaderPack;
+  const Fh1ShaderPack::Config config{0x20260827, Fh1ShaderPack::Backend::kD3D12,
+                                     Fh1ShaderPack::kD3D12FeatureSwitch, 0xD, 1, 1};
+  assert(Fh1ShaderPack::FileName(0x4D5309C9, config) ==
+         "4D5309C9.fh1-native-v3.d3d12.01.0D.1x1.pnsp");
   Fh1ShaderPack pack;
   std::string error;
   assert(pack.Load(std::filesystem::path(argv[1]), config, &error));
-  assert(pack.size() == 1);
+  // A pixel shader and a geometry shader (key 0x1234).
+  assert(pack.size() == 2);
+  const auto* geometry = pack.Find(Fh1ShaderPack::Stage::kGeometry, 0, 0x1234);
+  assert(geometry);
+  assert(geometry->bytecode.size() == 12);
+  assert(std::memcmp(geometry->bytecode.data(), "DXBCgeometry", 12) == 0);
+  assert(geometry->texture_bindings.empty());
   const auto* entry = pack.Find(rex::graphics::xenos::ShaderType::kPixel, 1, 2);
   assert(entry);
   assert(entry->bytecode.size() == 9);

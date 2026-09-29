@@ -70,7 +70,7 @@ if ($ShaderMissDir) {
     $missDirectory = Join-Path $producerState 'cache/fh1-shader-misses'
     [void][IO.Directory]::CreateDirectory($missDirectory)
     Get-ChildItem -LiteralPath $ShaderMissDir -Filter '*.bin' |
-        Where-Object Name -Match '^(vertex|pixel)-[0-9A-F]{16}-[0-9A-F]{16}\.bin$' |
+        Where-Object Name -Match '^(vertex|pixel|geometry)-[0-9A-F]{16}-[0-9A-F]{16}\.bin$' |
         Copy-Item -Destination $missDirectory
 }
 if ($RuntimeConfig -and (Test-Path -LiteralPath $RuntimeConfig)) {
@@ -138,6 +138,10 @@ if ($strictLog -match 'FH1 precompiled shader pack miss' -or
     -not ($strictLog -match "Loaded $($pack.entry_count) FH1 precompiled shaders")) {
     throw 'The compiler-free route did not load and use the produced shader pack without misses.'
 }
+# Plugins carry the build type's postfix (PluginFileName in the SDK).
+$buildType = (Select-String -LiteralPath (Join-Path $build 'CMakeCache.txt') `
+    -Pattern '^CMAKE_BUILD_TYPE:STRING=(.+)$' | Select-Object -First 1).Matches[0].Groups[1].Value
+$pluginPostfix = switch ($buildType) { 'Debug' { 'd' } 'RelWithDebInfo' { 'rd' } default { '' } }
 $report = [ordered]@{
     schema_version = 1
     result = if ($AllowPipelineDiscovery) { 'shaders-validated' } else { 'route-validated' }
@@ -148,8 +152,8 @@ $report = [ordered]@{
     dump_id = $dump.id; render_test_sha256 = (Get-FileHash -LiteralPath $script).Hash
     corpus_sha256 = (Get-FileHash -LiteralPath (Join-Path $work 'corpus.json')).Hash
     pack = $pack; producer_pid = $producer.process_id; strict_pid = $strict.process_id
-    runtime_sha256 = (Get-FileHash -LiteralPath (Join-Path $build 'rexgpu-fh1.dll')).Hash
-    producer_sha256 = (Get-FileHash -LiteralPath (Join-Path $build 'rexglue-artifacts/rexgpu-fh1-producer.dll')).Hash
+    runtime_sha256 = (Get-FileHash -LiteralPath (Join-Path $build "rexgpu-fh1$pluginPostfix.dll")).Hash
+    producer_sha256 = (Get-FileHash -LiteralPath (Join-Path $build "rexglue-artifacts/rexgpu-fh1-producer$pluginPostfix.dll")).Hash
     executable_sha256 = (Get-FileHash -LiteralPath (Join-Path $build 'pinyon_shift.exe')).Hash
     execution = $execution
 }

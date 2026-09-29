@@ -1,32 +1,43 @@
 # FH1 native shader pack format
 
-Version 2 is the Forza Horizon 1 D3D12 runtime renderer input. It stores the
-native shader container plus the texture and sampler binding metadata that
+Version 3 is the Forza Horizon 1 runtime renderer input. It stores the
+native shader bytecode plus the texture and sampler binding metadata that
 ReXGlue normally derives while translating Xenos microcode. A matching entry
-therefore bypasses `DxbcShaderTranslator` completely. The FH1 native
+therefore bypasses the shader translator completely. The FH1 native
 executor, the only renderer, draws every guest draw with the pack's shaders.
+Version 3 (NP-9.4) is backend-neutral: the loader is
+`rex::graphics::Fh1ShaderPack`, a pack holds DXBC for D3D12 or SPIR-V for
+Vulkan, and it carries the host geometry shaders pipelines need, so the
+runtime no longer builds them.
 
 This is deliberately title-specific. The runtime looks only for title
-`4D5309C9` and selects an exact pack by translator version, GPU vendor, D3D12
-translation flags, and integer render scale:
+`4D5309C9` and selects an exact pack by translator version, backend, device
+features, translation flags, and integer render scale:
 
 ```text
-4D5309C9.fh1-native-v2.<vendor>.<flags>.<scale-x>x<scale-y>.pnsp
+4D5309C9.fh1-native-v3.<backend>.<features>.<flags>.<scale-x>x<scale-y>.pnsp
 ```
+
+`<backend>` is `d3d12` or `vulkan`. `<features>` (two hexadecimal digits) holds
+the device features that change what the translator emits, in place of
+version 2's GPU vendor: for D3D12 only bit 0, switch statements for control
+flow, which the translator avoids on Intel. NVIDIA and AMD therefore share a
+pack. The producer labels its output with the device it ran on, so keep
+`dxbc_switch` at its default while producing.
 
 ## Manifest
 
-`tools/native-shader-pack.py` consumes one or more UTF-8 V2 manifests. Multiple
+`tools/native-shader-pack.py` consumes one or more UTF-8 V3 manifests. Multiple
 manifests are merged only when their translation configurations are identical;
 duplicate identities must contain identical data.
 
 ```json
 {
-  "schema": "pinyon-shift.native-shader-pack.v2",
+  "schema": "pinyon-shift.native-shader-pack.v3",
   "backend": "d3d12",
   "translation": {
     "translator_version": "20260827",
-    "vendor_id": 4318,
+    "device_features": 1,
     "bindless_resources": true,
     "edram_rov": false,
     "gamma_render_target_as_unorm8": false,
@@ -60,9 +71,12 @@ duplicate identities must contain identical data.
 ```
 
 The stable identity is `(stage, guest_hash, specialization_mask)`. The runtime
-never substitutes another specialization. Bytecode paths must remain below the
-manifest directory, begin with D3D container magic `DXBC`, match their SHA-256,
-and be at most 16 MiB. Packs are bounded to 65,535 entries and 512 MiB.
+never substitutes another specialization. Stages are `vertex`, `pixel` and
+`geometry`; a geometry entry has guest hash zero, the backend's geometry
+shader key as its specialization and no bindings. Bytecode paths must remain
+below the manifest directory, begin with the backend's magic (`DXBC`, or the
+SPIR-V word `0x07230203` with a whole number of words), match their SHA-256,
+and be at most 16 MiB. Packs are bounded to 65,535 entries and 1 GiB.
 
 An entry may also carry `bytecode_offset` and `bytecode_size`; `bytecode` then
 names a file shared by many entries and the entry's bytecode is that byte
@@ -85,11 +99,13 @@ python .\tools\native-shader-pack.py verify `
 
 All integers are unsigned little-endian. A 112-byte header is followed by
 88-byte sorted entries and 16-byte-aligned payloads. The header contains magic
-`PNYNSHPK`, version `2`, sizes and offsets, entry count, payload size, a SHA-256
-of the complete index and payload, translator version, vendor, translation
-flags, render scales, and three zero reserved words.
+`PNYNSHPK`, version `3`, sizes and offsets, entry count, payload size, a SHA-256
+of the complete index and payload, translator version, backend (1 D3D12, 2
+Vulkan), device features, translation flags, render scales, and two zero
+reserved words.
 
-Each entry stores stage, bytecode format, guest hash, specialization mask,
+Each entry stores stage (1 vertex, 2 pixel, 3 geometry), bytecode format
+(equal to the backend), guest hash, specialization mask,
 payload offset and bytecode size, texture/sampler counts, used-texture mask, a
 zero reserved word, and bytecode SHA-256. Its payload is bytecode followed by
 16-byte texture bindings and 24-byte sampler bindings.
@@ -106,6 +122,16 @@ signature and pipeline creation without Xenos shader translation. During
 explicit offline corpus production, a miss may use the compatibility translator
 and is observable by the capture callback.
 
+Geometry shaders (point sprites, rectangle and quad lists) come from the pack
+too: `PipelineCache::GetGeometryShader` looks the key up, and the DXBC
+geometry shader generator and `DXBCChecksum.cpp` are compiled only into the
+producer. For every vertex shader translation it captures, the producer also
+writes the geometry shaders pipelines drawn with it can take (rectangle and
+quad lists without point data, point lists with and without point
+coordinates), so the finite set follows the pack's vertex shaders. A runtime
+geometry shader miss is logged, recorded like a shader miss and the pipeline
+is not created.
+
 Normal FH1 execution always enforces this gate; there is no runtime
 setting or launcher argument that can disable it. A miss is marked
 terminal-invalid and reported as a GPU error before the translator can run,
@@ -121,8 +147,7 @@ so the alternate ROV shader ABI and its synthetic depth shader are absent too.
 summary, so tests prove both that the runtime did not fall back and that the
 expected scene completed.
 
-Packs are produced per integer scale (1x, 2x or 3x; the native executor
-supports no others) and must be produced with the native renderer: a pack
+Packs are produced per integer scale (1x to 4x) and must be produced with the native renderer: a pack
 produced with the removed Xenos renderer lacked the native depth-rectangle
 clear vertex shader `1E6883FCCDE1F688` (`79e072a`).
 
@@ -134,7 +159,8 @@ preparation route, `fh1-shader-preparation` from an empty profile, never
 reaches. A shipping build records each such miss once per session: the
 guest microcode is written as `<stage>-<hash>-<modification>.bin` (for
 example `vertex-37EBBE47900A46F5-0000000000000007.bin`) under the state's
-`cache/fh1-shader-misses` (SDK `3986ece`).
+`cache/fh1-shader-misses` (SDK `3986ece`). A geometry shader miss is an empty
+`geometry-0000000000000000-<key>.bin`; the producer builds that key.
 
 Graphics preparation (`tools/prepare-fh1-shaders.ps1`, run by
 `launch-preview.ps1` and the launcher) includes the hashes of those records

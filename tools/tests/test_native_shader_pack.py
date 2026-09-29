@@ -24,16 +24,22 @@ PACK = load_module()
 
 
 class NativeShaderPackTests(unittest.TestCase):
-    def make_manifest(self, root: pathlib.Path, entries: list[dict]) -> pathlib.Path:
+    def make_manifest(
+        self,
+        root: pathlib.Path,
+        entries: list[dict],
+        backend: str = "d3d12",
+        device_features: int = 1,
+    ) -> pathlib.Path:
         manifest = root / "shader-manifest.json"
         manifest.write_text(
             json.dumps(
                 {
                     "schema": PACK.SCHEMA,
-                    "backend": "d3d12",
+                    "backend": backend,
                     "translation": {
                         "translator_version": "20260827",
-                        "vendor_id": 0x10DE,
+                        "device_features": device_features,
                         "bindless_resources": True,
                         "edram_rov": False,
                         "gamma_render_target_as_unorm8": True,
@@ -48,10 +54,12 @@ class NativeShaderPackTests(unittest.TestCase):
         )
         return manifest
 
-    def make_shader(self, root: pathlib.Path, name: str, payload: bytes) -> dict:
+    def make_shader(
+        self, root: pathlib.Path, name: str, payload: bytes, magic: bytes = b"DXBC"
+    ) -> dict:
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        bytecode = b"DXBC" + payload
+        bytecode = magic + payload
         path.write_bytes(bytecode)
         return {
             "bytecode": name,
@@ -82,7 +90,9 @@ class NativeShaderPackTests(unittest.TestCase):
             metadata = PACK.verify_pack(first)
             self.assertEqual(metadata["entry_count"], 2)
             self.assertEqual(metadata["translator_version"], "20260827")
-            self.assertEqual(metadata["vendor_id"], 0x10DE)
+            self.assertEqual(metadata["backend"], "d3d12")
+            self.assertEqual(metadata["device_features"], 1)
+            self.assertEqual(metadata["geometry_shader_count"], 0)
             self.assertEqual(metadata["pack_sha256"], hashlib.sha256(first).hexdigest().upper())
 
     def test_shared_bytecode_file_matches_one_file_per_shader(self):
@@ -214,7 +224,7 @@ class NativeShaderPackTests(unittest.TestCase):
             )
             destination = pathlib.Path(result["destination"])
             self.assertEqual(
-                destination.name, "4D5309C9.fh1-native-v2.10DE.0D.1x1.pnsp"
+                destination.name, "4D5309C9.fh1-native-v3.d3d12.01.0D.1x1.pnsp"
             )
             self.assertEqual(destination.read_bytes(), pack.read_bytes())
             self.assertTrue(result["changed"])
@@ -251,10 +261,64 @@ class NativeShaderPackTests(unittest.TestCase):
                     bytecode=invalid.name,
                     sha256=hashlib.sha256(invalid.read_bytes()).hexdigest(),
                 )
-                with self.assertRaisesRegex(PACK.PackError, "not a DXIL"):
+                with self.assertRaisesRegex(PACK.PackError, "not a d3d12 shader"):
                     PACK.load_manifest(self.make_manifest(root, [non_dxil]))
             finally:
                 outside.unlink(missing_ok=True)
+
+    def test_geometry_shaders_are_keyed_without_a_guest_shader(self):
+        with tempfile.TemporaryDirectory(prefix="pinyon-shader-pack-") as temporary:
+            root = pathlib.Path(temporary)
+            geometry = {
+                "stage": "geometry",
+                "guest_hash": "0000000000000000",
+                "specialization_mask": "0000000000001234",
+                **self.make_shader(root, "geometry.dxbc", b"geometry"),
+            }
+            pixel = {
+                "stage": "pixel",
+                "guest_hash": "0000000000000001",
+                "specialization_mask": "0000000000000002",
+                **self.make_shader(root, "pixel.dxbc", b"pixel"),
+            }
+            data = PACK.serialize(
+                PACK.load_manifest(self.make_manifest(root, [geometry, pixel]))
+            )
+            metadata = PACK.verify_pack(data)
+            self.assertEqual(metadata["entry_count"], 2)
+            self.assertEqual(metadata["geometry_shader_count"], 1)
+            with self.assertRaisesRegex(PACK.PackError, "no guest hash or bindings"):
+                PACK.load_manifest(
+                    self.make_manifest(root, [dict(geometry, guest_hash="0000000000000001")])
+                )
+
+    def test_vulkan_packs_hold_spirv_and_d3d12_features_are_checked(self):
+        with tempfile.TemporaryDirectory(prefix="pinyon-shader-pack-") as temporary:
+            root = pathlib.Path(temporary)
+            spirv = {
+                "stage": "vertex",
+                "guest_hash": "0000000000000010",
+                "specialization_mask": "0000000000000000",
+                **self.make_shader(root, "vertex.spv", b"\0" * 16, PACK.SPIRV_MAGIC),
+            }
+            data = PACK.serialize(
+                PACK.load_manifest(
+                    self.make_manifest(root, [spirv], backend="vulkan", device_features=0)
+                )
+            )
+            self.assertEqual(PACK.verify_pack(data)["backend"], "vulkan")
+            dxbc = {
+                "stage": "vertex",
+                "guest_hash": "0000000000000010",
+                "specialization_mask": "0000000000000000",
+                **self.make_shader(root, "vertex.dxbc", b"vertex"),
+            }
+            with self.assertRaisesRegex(PACK.PackError, "not a vulkan shader"):
+                PACK.load_manifest(self.make_manifest(root, [dxbc], backend="vulkan"))
+            with self.assertRaisesRegex(PACK.PackError, "unknown D3D12 bits"):
+                PACK.load_manifest(self.make_manifest(root, [dxbc], device_features=2))
+            with self.assertRaisesRegex(PACK.PackError, "d3d12 or vulkan"):
+                PACK.load_manifest(self.make_manifest(root, [dxbc], backend="metal"))
 
     def test_content_and_entry_corruption_are_rejected(self):
         with tempfile.TemporaryDirectory(prefix="pinyon-shader-pack-") as temporary:
@@ -370,20 +434,33 @@ class NativeShaderPackTests(unittest.TestCase):
         self.assertIn("'.dxil', '.pnsp'", report)
 
     def test_runtime_pack_loader(self):
-        executable = (
-            ROOT / "out/build/win-amd64-release/pinyon_shift_fh1_shader_pack_tests.exe"
+        executable = next(
+            (
+                candidate
+                for candidate in (
+                    ROOT / f"out/build/{name}/pinyon_shift_fh1_shader_pack_tests.exe"
+                    for name in ("win-amd64-release", "win-amd64-relwithdebinfo")
+                )
+                if candidate.is_file()
+            ),
+            None,
         )
-        if sys.platform != "win32" or not executable.is_file():
+        if sys.platform != "win32" or executable is None:
             self.skipTest("Build pinyon_shift_fh1_shader_pack_tests for the Windows loader check")
         bytecode = b"DXBCpixel"
         entry = PACK.ShaderEntry(
             PACK.ShaderIdentity(2, 1, 2), bytecode, hashlib.sha256(bytecode).digest(),
             ((7, 3, 1, 0),), ((5, 3, 0, 1, 2, 3),), 1 << 3,
         )
-        config = PACK.TranslationConfig(0x20260827, 0x10DE, 0xD, 1, 1)
+        geometry_bytecode = b"DXBCgeometry"
+        geometry = PACK.ShaderEntry(
+            PACK.ShaderIdentity(3, 0, 0x1234), geometry_bytecode,
+            hashlib.sha256(geometry_bytecode).digest(), (), (), 0,
+        )
+        config = PACK.TranslationConfig(0x20260827, 1, 1, 0xD, 1, 1)
         with tempfile.TemporaryDirectory(prefix="pinyon-shader-pack-runtime-") as temporary:
             fixture = pathlib.Path(temporary) / "fixture.pnsp"
-            fixture.write_bytes(PACK.serialize(PACK.PackInput(config, (entry,))))
+            fixture.write_bytes(PACK.serialize(PACK.PackInput(config, (entry, geometry))))
             result = subprocess.run(
                 [str(executable), str(fixture)], capture_output=True, text=True, timeout=30
             )
