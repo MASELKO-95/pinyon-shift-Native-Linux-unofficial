@@ -49,6 +49,14 @@ WAIT_LEAVES = (
     "ZwWaitForMultipleObjects",
     "NtYieldExecution",
     "ZwYieldExecution",
+    "NtSignalAndWaitForSingleObject",
+    "ZwSignalAndWaitForSingleObject",
+    "NtRemoveIoCompletion",
+    "ZwRemoveIoCompletion",
+    "NtWaitForWorkViaWorkerFactory",
+    "ZwWaitForWorkViaWorkerFactory",
+    "NtWaitForKeyedEvent",
+    "ZwWaitForKeyedEvent",
 )
 
 

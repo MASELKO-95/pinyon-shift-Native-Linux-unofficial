@@ -10,9 +10,10 @@
 //
 // --lines 1 adds each leaf's source file and line to its name.
 //
-// It waits for the process and its threads, samples until the process exits
-// and writes <directory>/samples.csv (t_ms, thread, cycles, stack_id) and
-// <directory>/stacks.csv (stack_id, frames root first, ';' separated).
+// It waits for the process and a matching thread, adds matching threads that
+// start later, samples until the process exits and writes, in <directory>,
+// samples.csv (t_ms, thread, cycles, stack_id), stacks.csv (stack_id, frames
+// root first, ';' separated) and threads.csv (thread, name).
 // tools/summarize-thread-samples.py reports a time window of them.
 
 #include <windows.h>
@@ -353,8 +354,20 @@ int wmain(int argc, wchar_t** argv) {
   DWORD last_refresh = GetTickCount();
   while (WaitForSingleObject(process, 0) != WAIT_OBJECT_0) {
     if (GetTickCount() - last_refresh > 2000) {
-      // Pick up modules loaded since the last refresh.
+      // Pick up modules loaded and matching threads started since the last
+      // refresh (guest threads start throughout the run).
       SymRefreshModuleList(process);
+      for (auto& found : FindThreads(process_id, thread_names)) {
+        bool known = false;
+        for (const auto& thread : threads) {
+          known |= thread.id == found.id;
+        }
+        if (known) {
+          CloseHandle(found.handle);
+        } else {
+          threads.push_back(found);
+        }
+      }
       last_refresh = GetTickCount();
     }
     for (auto& thread : threads) {
