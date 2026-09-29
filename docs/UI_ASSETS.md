@@ -90,10 +90,9 @@ Each target is a FontCompiler vector font, `<target>_vector_aa.dt`, with a
   ascent and descent in font units, a scale) and one 40-byte record per glyph:
   code point, advance in ems, the glyph's vertex range and triangle range, and
   a horizontal offset.
-- `.gpu`: the glyph meshes. Vertices are four big-endian 16-bit values, a
-  half-float position in ems and two coverage parameters; a `u16` triangle
-  list follows. Each glyph holds the letter's mesh and a mirrored
-  complementary mesh whose outer vertices carry parameter 1.0.
+- `.gpu`: the glyph meshes. Vertices are four big-endian half floats
+  `(x, y, u, v)`; a `u16` triangle list follows, with indices relative to the
+  glyph's first vertex.
 
 The Latin fonts cover U+0021–U+007E and Latin-1 and Latin Extended letters
 (237 glyphs; 303 in the Cyrillic variants). The digital-gauge fonts carry
@@ -104,20 +103,45 @@ but does not decode.
 
 The catalogue records every glyph's advance and mesh size.
 
+## How the title draws a vector font
+
+One shader pair draws every vector-font glyph in the recorded frames (vertex
+shader `9C19E3CACBE2E342`, pixel shader `D7524D5CA740AAE5` in `default.xex`),
+one draw per glyph, straight to the screen; there is no glyph cache texture.
+Variants for textured, outlined and bevelled text exist in the executable but
+were not used in those frames.
+
+- The vertex shader places a vertex at `(|x| + offset, y)` ems, where
+  `offset` is the glyph record's horizontal offset. The sign of `x` is a flag,
+  not a position: positive triangles are inside the outline, negative ones
+  cover the outer half of the anti-aliasing edge. Folding by `|x|` is why a
+  raw plot shows each glyph next to a mirrored "frame".
+- `(u, v)` is a curve coordinate. Curve triangles use `(-1, 1)`, `(0, -1)`
+  and `(1, 1)`; straight edges use `u = 0` with `v = 0` on the outline and
+  `v = 1` at interior points.
+- With `s` the interpolated sign, `f = u² - v` and `d = f·s / |∇(f·s)|` in
+  pixels, coverage is `saturate(0.5 - d)`. Where `u` and `v` are constant
+  the gradient is zero and only the sign of `f·s` counts (fully in or out).
+- Glyphs blend with ordinary alpha, no culling, depth or stencil; the pen
+  advances by the glyph's advance with no kerning.
+
+`src/ui/hostui/vector_font.cpp` reproduces this on the CPU. Rendered at the
+title's sizes it matches recorded frames to within the background
+contribution at the edges. The pause menu's items use the heavy italic `E`;
+`B` is the condensed slab used for the help bar, driver names and timers; `D`
+is a heavier `B`; `A` is the sans body text; `C` is a digits-and-capitals
+subset of `A`; `SYM` holds icons.
+
 ## Font decision for the host UI
 
 The backlog asked whether the host UI should draw the game's bitmap fonts or a
-metrically matched TTF. Neither exists as stated: the Latin fonts are meshes,
-and the coverage rule that turns a glyph's two meshes and per-vertex
-parameters into the letter lives in the title's `VectorFont` shader. Filling
-the meshes directly, by even-odd, by orientation or by thresholding the
-parameter, gives recognisable letters with wrong corners and stray
-triangles. No installed Windows font matches the advance widths either:
-fitting each of `A` to `E` against every font in `C:\Windows\Fonts` with a
-free scale leaves at least 5 % mean advance error.
-
-Until the coverage rule is reproduced, the host UI keeps the NP-1.1 system
-font (Segoe UI, sized in logical pixels at the window DPI) and takes the
-title's colours and texture art from the catalogue. Once the rule is known,
-the fonts can be rasterized at load from the player's own disc into the host
-UI's glyph atlas, so nothing derived is distributed.
+metrically matched TTF. The Latin fonts are meshes rather than bitmaps, and
+no installed Windows font matches their advance widths: fitting each of `A`
+to `E` against every font in `C:\Windows\Fonts` with a free scale leaves at
+least 5 % mean advance error. With the coverage rule reproduced, the host UI
+uses the game's own fonts instead: at first use it reads `Fonts.zip` from the
+player's disc and rasterizes the glyphs it needs into its atlas at the
+current output size, so nothing derived is distributed and text stays sharp
+at every internal scale. The Cyrillic `*ru_vector_aa.dt` variants are loaded
+where present. Chinese, Japanese and Korean text needs the bitmap fonts and
+waits for NP-5.
