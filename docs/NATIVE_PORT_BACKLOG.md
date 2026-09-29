@@ -159,6 +159,7 @@ runs on the development machine (Ryzen 7 5800X, RTX 4080).
 | NP-13 | The macOS port (ARM64 baseline, MoltenVK, app bundle) | A Mac and its toolchain |
 | NP-14 | The Android port (NDK build, fibers, page size, mobile GPU, sideloading) | The Android NDK and a reference device |
 | NP-X | AMD, Intel and lower-end GPU qualification; an unscripted drive before each train | Hardware and a player |
+| NP-12.4 | The Vulkan device loss in the race at 2x: the checkpoints name only where the GPU was, not the faulting command | Installing the Vulkan SDK's validation layers or NVIDIA Nsight Aftermath (the maintainer's call; neither is installed) |
 
 ## NP-0 Clean native baseline
 
