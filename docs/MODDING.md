@@ -100,12 +100,12 @@ A mod may replace textures without touching the archives that hold them:
 ```
 
 `<hash>` is 16 hex digits naming the texture's content. To find it, run the
-game with `--texture_dump_dir=<folder>`: every BC3 (DXT5) texture it loads
-is written there as `<hash>.dds`, untiled and with its mip levels. Edit a
-dump and ship it under the same name; the replacement must keep the size, the
-DXT5 format and at least as many mip levels, otherwise it is logged and
-ignored. Earlier mods win. Only BC3 textures are supported so far, at their
-original resolution.
+game with `--texture_dump_dir=<folder>`: every DXT1, DXT3 and DXT5 texture it
+loads is written there as `<hash>.dds`, untiled and with its mip levels. Edit
+a dump and ship it under the same name; the replacement must keep the size,
+the format and at least as many mip levels, otherwise it is logged and
+ignored. Earlier mods win. Replacements at a higher resolution are not
+supported yet.
 
 ## Database patches
 
