@@ -130,7 +130,7 @@ NP-0.7 moved to NP-9.4, which bumps the pack format anyway.
 Status on 2026-09-28: NP-0.1 to NP-0.5 and NP-0.8 are done, and NP-1.1 to
 NP-1 is done except its gate runs. NP-0.6's repair of cards saved by older
 builds waits on a product decision, because it would change player save files.
-NP-2.1 is done; next are NP-2.2 and NP-2.8.
+NP-2.1 and NP-2.2 are done; next is NP-2.8.
 
 ## NP-0 Clean native baseline
 
@@ -204,7 +204,7 @@ counter or trace to prove its share before code changes.
 | --- | --- | --- |
 | NP-2.0 | **Done.** Instrumentation: per-frame `texture_resolve_reloads` and `texture_resolve_reload_bytes` counters, `texture_reloads`/`texture_loads` phases in `--fh1_native_gpu_profile`, the back-face stencil mask in the frame census and `tools/summarize-fh1-stencil-census.py`; CPU profile captures now run on a private state copy with a staged pack. Race results are in the [performance baselines](native-renderer/NATIVE_PERFORMANCE_BASELINES.md#race-frame-cost-breakdown): the race frame is bound by the GPU commands thread (23.1 of 25.8 ms busy; the title polls for it 9.9 ms per frame); on that thread `IssueDraw` takes 11.6 ms, tape replay 3.9, type-0 register writes 3.7 and shared-memory uploads 3.7; resolve-sourced reloads are 88 per frame (64-71 MB, 0.39-0.56 ms GPU). | S |
 | NP-2.1 | **Done** (SDK `6220b1b`), in `DeferredCommandList` rather than the executor so every caller benefits: a render-target bind equal to the tape's current one is not recorded, and `Reset`/`Swap` forget the binding because each tape replays into its own command list. 98 % of binds were repeats (11.98 of 12.22 million on `fh1-race-sync`). Five interleaved pairs: race-window median 20.08 ms off vs 19.70 ms on (-1.9 %); golden replays 4/4. Control: `--d3d12_elide_repeated_render_target_binds=false`. | S |
-| NP-2.2 | Dirty-mask fetch constants by the shaders' used registers instead of re-uploading the whole 768-byte block on any write (`command_processor.cpp:1778-1780, 3845-3856`); reduce the per-register float-constant gather. | S–M |
+| NP-2.2 | **Done** (SDK `e999f5d`), measured first on `fh1-race-sync`. Fetch constants: 11.19 million block uploads for 12.2 million draws, and only 3 % followed writes to slots the draw's shaders do not read, so a dirty mask by used slots would save almost nothing and was not built. Float constants: 19.4 million uploads gathered 436 million registers in 136 million contiguous runs (about 22 in 7 per upload); the gather now copies whole runs, a third of the copies, with identical buffers (golden replays 4/4). The saving, about 0.1 ms per race frame by the counts, is below what the race A/B resolves. | S–M |
 | NP-2.3 | Persistent SRVs per executor surface instead of one-use descriptors created per resolve and transfer (`fh1_native_executor.cpp:1089-1111, 1915-1934`). | S |
 | NP-2.4 | Cheaper depth-transfer stencil: the NP-2.0 census shows both scene depth surfaces write nonzero stencil (REPLACE with a per-object reference) in every race window, so precision tracking alone cannot skip the eight stencil-bit passes on the dominant 4x/1x ping-pong. Replace them with one pass that writes the stencil reference from the pixel shader where `PSSpecifiedStencilRefSupported` holds, keep the bit passes as the fallback, and keep the skip for sources the census proves unwritten (`fh1_native_executor.cpp:927-936, 1053-1082`); a single-pass fast path for same-layout MSAA-only depth transfers; skip transfers whose destination is cleared before use (needs a guest-order proof from a frame dump). | M |
 | NP-2.5 | A/B quad, point and rectangle lists without geometry shaders using the existing `force_convert_quad_lists_to_triangle_lists` cvar; keep if menus and the map are unchanged under golden replay. | S |
@@ -552,6 +552,13 @@ changes.
   draws within a few frames and logs no repeated `Failed in backend`
   errors, and the next launch loads those shaders from the delta cache
   without a preparation run.
+- **Known gap in the preparation route.** On `fh1-race-sync` from the
+  `appdata-2026-09-27` seed, 2 of 11 runs on 2026-09-28 missed vertex
+  shaders `953C0C0D7A505911/7F` and `DAB93405F7249276/0` while the title
+  saved a car card, which fails the route's forbidden-error check. The
+  preparation route does not render that thumbnail path; until misses
+  compile on the fly, the capture route should reach it (or the seed's
+  cards should be in a state that renders them every run).
 
 ### Faster graphics preparation
 
