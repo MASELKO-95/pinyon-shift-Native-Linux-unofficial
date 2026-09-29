@@ -229,9 +229,12 @@ result as the golden replay beside the dump (`<dump>.native.golden.bin`). `tools
 its golden replay: this is the offline regression suite for the executor.
 Replays are deterministic. Dumps hold guest memory and stay under `.local`;
 like the render tests, replays copy the seed to a private state directory.
-Dumps are recorded on D3D12 and replay on either backend: with
+Dumps are recorded on either backend and replay on either backend: with
 `--build-directory out/build/win-amd64-vulkan --game-argument=--gpu_backend=vulkan`
-the same frame runs on Vulkan, and its `.replay.bin` compares with the D3D12
-golden (the front buffer is tiled, little-endian 2_10_10_10 with red in the
-high bits; the two backends differ only in sparse edge samples on the four
-goldens).
+the recording run or the replay runs on Vulkan, and a `.replay.bin` compares
+with the other backend's (the front buffer is tiled, little-endian
+2_10_10_10 with red in the high bits; the two backends differ only in sparse
+edge samples on the four goldens, and by at most 8 of 1023 per channel on a
+Vulkan-recorded free-roam frame replayed on D3D12). A Vulkan dump replays on
+Vulkan with no differing words; D3D12 dumps of 3D scenes differ from their
+own recorded front buffer in about 2 % of words (edge samples).
