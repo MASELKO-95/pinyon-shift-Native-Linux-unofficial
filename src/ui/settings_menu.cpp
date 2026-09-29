@@ -179,14 +179,13 @@ std::unique_ptr<MenuScreen> SettingsPages::Display() {
                           {"120", {{"host_present_fps_limit", "120"}}},
                           {"240", {{"host_present_fps_limit", "240"}}}},
                          false));
-  rows.push_back(Toggle("VARIABLE REFRESH RATE", "d3d12_allow_variable_refresh_rate_and_tearing",
-                        true));
+  rows.push_back(Toggle("VARIABLE REFRESH RATE", "d3d12_allow_variable_refresh_rate_and_tearing"));
   rows.push_back(Setting("GAME FRAME RATE LIMIT",
                          {{"OFF", {{"pinyon_shift_fh1_render_fps_limit", "0"}}},
                           {"30", {{"pinyon_shift_fh1_render_fps_limit", "30"}}},
                           {"60", {{"pinyon_shift_fh1_render_fps_limit", "60"}}},
                           {"120", {{"pinyon_shift_fh1_render_fps_limit", "120"}}}},
-                         true));
+                         false));
   auto note = RestartNote(rows);
   return std::make_unique<MenuScreen>("DISPLAY", std::move(rows), std::move(note));
 }
@@ -210,7 +209,7 @@ std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
                          {{"OFF", {{"swap_post_effect", "\"none\""}}},
                           {"FXAA", {{"swap_post_effect", "\"fxaa\""}}},
                           {"FXAA EXTREME", {{"swap_post_effect", "\"fxaa_extreme\""}}}},
-                         true));
+                         false));
   rows.push_back(Toggle("MOTION BLUR", "disable_motion_blur", false, true));
   rows.push_back(Toggle("DEPTH OF FIELD", "disable_depth_of_field", false, true));
   auto note = RestartNote(rows);

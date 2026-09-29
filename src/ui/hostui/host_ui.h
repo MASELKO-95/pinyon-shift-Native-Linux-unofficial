@@ -125,6 +125,8 @@ class HostUi final : public rex::ui::UIDrawer, public rex::ui::WindowInputListen
   PadNavigator pad_;
   // Whether the drawer and input listener are registered (open).
   bool registered_ = false;
+  // Expires with this object, for deferred work queued from Draw.
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
   bool applying_ = false;
   bool close_pending_ = false;
   bool guest_ui_active_ = false;

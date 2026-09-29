@@ -13,6 +13,7 @@
 #include <rex/ui/ui_event.h>
 #include <rex/ui/virtual_key.h>
 #include <rex/ui/window.h>
+#include <rex/ui/windowed_app_context.h>
 
 #include "ui/hostui/fh1_archive.h"
 #include "ui/hostui/xds_texture.h"
@@ -101,7 +102,10 @@ HostUi::HostUi(rex::ReXApp& app, rex::ui::Presenter& presenter, rex::ui::Immedia
       input_system_(input_system),
       game_data_root_(std::move(game_data_root)) {}
 
-HostUi::~HostUi() { Close(); }
+HostUi::~HostUi() {
+  alive_.reset();
+  Close();
+}
 
 bool HostUi::LoadAssets() {
   if (assets_loaded_ || assets_failed_) {
@@ -243,11 +247,23 @@ void HostUi::PollPad() {
   const auto now = uint64_t(std::chrono::duration_cast<std::chrono::milliseconds>(
                                 std::chrono::steady_clock::now() - start_time_)
                                 .count());
-  for (NavCommand command :
-       pad_.Poll(uint16_t(state.gamepad.buttons), int16_t(state.gamepad.thumb_lx),
-                 int16_t(state.gamepad.thumb_ly), now)) {
-    Apply(command);
+  std::vector<NavCommand> commands =
+      pad_.Poll(uint16_t(state.gamepad.buttons), int16_t(state.gamepad.thumb_lx),
+                int16_t(state.gamepad.thumb_ly), now);
+  if (commands.empty()) {
+    return;
   }
+  // Polling runs inside Draw, where settings that resize the window or
+  // recreate the swap chain must not apply; run the commands after it.
+  window_.app_context().CallInUIThreadDeferred(
+      [alive = std::weak_ptr<bool>(alive_), this, commands = std::move(commands)] {
+        if (alive.expired()) {
+          return;
+        }
+        for (NavCommand command : commands) {
+          Apply(command);
+        }
+      });
 }
 
 HostUi::Canvas HostUi::ComputeCanvas(rex::ui::UIDrawContext& context) const {

@@ -22,6 +22,8 @@
 #include <rex/input/input_system.h>
 #include <rex/ui/flags.h>
 #include <rex/ui/keybinds.h>
+#include <rex/ui/presenter.h>
+#include <rex/ui/windowed_app_context.h>
 #include <rex/ui/window.h>
 
 #include "native_renderer/guest_output_renderer.h"
@@ -507,6 +509,29 @@ void PinyonShiftApp::ToggleGameMenu() {
 void PinyonShiftApp::OnPostSetup() {
   rex::ui::RegisterBind("bind_game_menu", "F6", "Open the in-game settings menu",
                         [this] { ToggleGameMenu(); });
+  rex::ui::RegisterBind("bind_fullscreen", "F11", "Toggle fullscreen", [this] {
+    const bool fullscreen = !REXCVAR_GET(fullscreen);
+    rex::cvar::SetFlagByName("fullscreen", fullscreen ? "true" : "false");
+    if (host_config_ && host_config_->Load()) {
+      host_config_->Set("fullscreen", fullscreen ? "true" : "false");
+      host_config_->Save();
+    }
+  });
+  // ResizeBuffers cannot toggle tearing: a changed preference makes the
+  // presenter recreate its swap chain on the next surface update, which is
+  // requested outside any drawing.
+  rex::cvar::RegisterChangeCallback(
+      "d3d12_allow_variable_refresh_rate_and_tearing", [this](std::string_view, std::string_view) {
+        if (!window()) {
+          return;
+        }
+        window()->app_context().CallInUIThreadDeferred([this] {
+          if (runtime() && runtime()->graphics_system() &&
+              runtime()->graphics_system()->presenter()) {
+            runtime()->graphics_system()->presenter()->OnSurfaceResizeFromUIThread();
+          }
+        });
+      });
   pinyon_shift::ui::ApplyMasterVolume();
   rex::cvar::RegisterChangeCallback(
       "pinyon_shift_master_volume",
@@ -568,6 +593,8 @@ bool PinyonShiftApp::OnWindowCloseRequested() {
 
 void PinyonShiftApp::OnShutdown() {
   rex::ui::UnregisterBind("bind_game_menu");
+  rex::ui::UnregisterBind("bind_fullscreen");
+  rex::cvar::UnregisterChangeCallbacks("d3d12_allow_variable_refresh_rate_and_tearing");
   // Before the presenter, drawer and kernel it uses are torn down.
   host_ui_.reset();
   pinyon_shift::fh1_render_test::Stop();
