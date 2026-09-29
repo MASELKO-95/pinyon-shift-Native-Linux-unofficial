@@ -171,7 +171,8 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         )
         self.assertNotIn("d3d12/render_target_cache.cpp", graphics_cmake)
         launcher = (ROOT / "tools/launch-preview.ps1").read_text(encoding="utf-8")
-        self.assertIn("rexgpu-fh1-producer.dll", launcher)
+        # The producer carries the build type's plugin postfix (rd, d or none).
+        self.assertIn('"rexgpu-fh1-producer$pluginPostfix.dll"', launcher)
         self.assertIn("Remove-Item -LiteralPath $stagedShaderProducer", launcher)
 
         package_script = (ROOT / "tools/package-launcher.ps1").read_text()
@@ -260,7 +261,7 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
         package = (ROOT / "tools/package-launcher.ps1").read_text(encoding="utf-8")
         self.assertNotIn("thirdparty/shiftglue-sdk/", cmake)
-        self.assertIn("${REXSDK_DIR}/src/graphics/d3d12/fh1_shader_pack.cpp", cmake)
+        self.assertIn("${REXSDK_DIR}/src/graphics/fh1_shader_pack.cpp", cmake)
         for source in ("tests/native_renderer", "tools/fh1_archive_extract.cpp",
                        "tools/fh1_texture_import.cpp", "tools/extract-fh1-shader-corpus.py",
                        "tools/build-fh1-gpu-prewarm.py", "tools/produce-fh1-artifacts.ps1",
