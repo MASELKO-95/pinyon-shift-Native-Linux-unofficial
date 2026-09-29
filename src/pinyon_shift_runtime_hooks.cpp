@@ -2,12 +2,14 @@
 #include <atomic>
 #include <array>
 #include <bit>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <string>
@@ -32,6 +34,9 @@ REXCVAR_DEFINE_BOOL(pinyon_shift_skip_opening_movies, false, "Pinyon Shift",
 REXCVAR_DEFINE_BOOL(
     pinyon_shift_stabilize_vehicle_presentation, false, "Pinyon Shift",
     "Suppress isolated implausible player-vehicle presentation transforms");
+REXCVAR_DEFINE_BOOL(pinyon_shift_pause_settings, true, "Pinyon Shift",
+                    "Turn the offline pause menu's MULTIPLAYER row into SETTINGS, which opens "
+                    "the in-game settings screen (takes effect at the next start)");
 REXCVAR_DEFINE_BOOL(disable_motion_blur, false, "Pinyon Shift",
                     "Disable Forza Horizon motion blur");
 REXCVAR_DEFINE_BOOL(disable_depth_of_field, false, "Pinyon Shift",
@@ -1692,7 +1697,8 @@ uint32_t ApplyUiStringTableLabelPatch(uint32_t buffer, uint32_t size,
 // 0x82CAFFA0 is just after the loader appended the ".str" suffix to the table
 // path, so the stack string at r1+96 holds the final VFS path.
 void PinyonShiftTraceUiStringTableLoad(PPCRegister& r1) {
-  if (UiExperimentModeValue() != UiExperimentMode::kLabelPatch) {
+  if (UiExperimentModeValue() != UiExperimentMode::kLabelPatch &&
+      !REXCVAR_GET(pinyon_shift_pause_settings)) {
     return;
   }
   // MSVC std::string: data/capacity at +0/+20, size at +16.
@@ -1713,8 +1719,9 @@ void PinyonShiftTraceUiStringTableLoad(PPCRegister& r1) {
   }
   // The path is the label of the next chunk even when its event is capped.
   g_ui_string_current_path = path;
-  if (g_ui_string_load_count.fetch_add(1, std::memory_order_relaxed) >=
-      kUiStringTraceLimit) {
+  if (UiExperimentModeValue() != UiExperimentMode::kLabelPatch ||
+      g_ui_string_load_count.fetch_add(1, std::memory_order_relaxed) >=
+          kUiStringTraceLimit) {
     return;
   }
   pinyon_shift::diagnostics::RecordEvent(
@@ -1722,11 +1729,130 @@ void PinyonShiftTraceUiStringTableLoad(PPCRegister& r1) {
       {{"address", "82CAFFA0"}, {"path", path}});
 }
 
+namespace {
+
+// NP-1.5: the offline pause menu's MULTIPLAYER row becomes SETTINGS and opens
+// the in-game settings screen. The row's label is entry 0xDD6B
+// (IDS_Multiplayer) of the pausemenu.str LSB2 table. The loader reads the
+// table's header separately; the chunk seen here starts with the entries:
+// (u16 key hash, u32 character offset) in ascending hash order, closed by a
+// 0xFFFF sentinel whose offset is the pool's length, then the pool of
+// NUL-terminated UTF-16BE strings. Only that entry is rewritten, and only
+// where the replacement fits: the title reads strings up to the NUL, so a
+// shorter label needs no other change. IDS_MultiplayerOption, which also
+// reads MULTIPLAYER, is left alone.
+constexpr uint16_t kPauseMultiplayerLabelHash = 0xDD6Bu;
+constexpr std::u16string_view kPauseSettingsLabel = u"SETTINGS";
+constexpr uint32_t kPauseMenuVtable = 0x8205109Cu;
+std::function<void()> g_pause_settings_handler;
+
+uint16_t LoadGuestU16Unaligned(uint32_t address) {
+  return static_cast<uint16_t>(LoadGuestU8(address) << 8 | LoadGuestU8(address + 1u));
+}
+
+uint32_t LoadGuestU32Unaligned(uint32_t address) {
+  return uint32_t(LoadGuestU16Unaligned(address)) << 16 | LoadGuestU16Unaligned(address + 2u);
+}
+
+bool IsPauseMenuTable(std::string_view path) {
+  constexpr std::string_view kName = "pausemenu.str";
+  if (path.size() < kName.size()) {
+    return false;
+  }
+  const std::string_view tail = path.substr(path.size() - kName.size());
+  return std::equal(tail.begin(), tail.end(), kName.begin(), [](char a, char b) {
+    return char(std::tolower(static_cast<unsigned char>(a))) == b;
+  });
+}
+
+void PatchPauseSettingsLabel(uint32_t buffer, uint32_t size) {
+  constexpr uint32_t kMaximumEntries = 4096u;
+  if (!IsPauseMenuTable(g_ui_string_current_path) || buffer == 0u || size < 12u ||
+      size > kUiStringChunkMaximumBytes || !PinyonShiftGuestRangeReadable(buffer, size)) {
+    return;
+  }
+  // Find the sentinel; anything that does not look like the entry table
+  // leaves the chunk untouched.
+  uint32_t count = 0;
+  uint16_t previous_hash = 0;
+  for (;; ++count) {
+    if (count > kMaximumEntries || 6ull * (count + 1ull) > size) {
+      return;
+    }
+    const uint16_t hash = LoadGuestU16Unaligned(buffer + 6u * count);
+    if (count && hash < previous_hash) {
+      return;
+    }
+    if (hash == 0xFFFFu) {
+      break;
+    }
+    previous_hash = hash;
+  }
+  const uint64_t pool = 6ull * (uint64_t(count) + 1ull);
+  if (pool + 2ull * LoadGuestU32Unaligned(buffer + 6u * count + 2u) > size) {
+    return;
+  }
+  for (uint32_t index = 0; index < count; ++index) {
+    const uint32_t entry = buffer + 6u * index;
+    if (LoadGuestU16Unaligned(entry) != kPauseMultiplayerLabelHash) {
+      continue;
+    }
+    const uint64_t start = pool + 2ull * LoadGuestU32Unaligned(entry + 2u);
+    uint64_t length = 0;
+    while (start + 2ull * length + 2ull <= size &&
+           LoadGuestU16Unaligned(buffer + uint32_t(start + 2ull * length)) != 0u) {
+      ++length;
+    }
+    const bool fits = start + 2ull * length + 2ull <= size &&
+                      length >= kPauseSettingsLabel.size();
+    if (fits) {
+      uint32_t at = buffer + uint32_t(start);
+      for (char16_t character : kPauseSettingsLabel) {
+        StoreGuestU8(at++, uint8_t(character >> 8));
+        StoreGuestU8(at++, uint8_t(character));
+      }
+      StoreGuestU8(at++, 0u);
+      StoreGuestU8(at, 0u);
+    }
+    pinyon_shift::diagnostics::RecordEvent(
+        "ui.pause_settings.label",
+        {{"table", g_ui_string_current_path},
+         {"stock_length", std::to_string(length)},
+         {"patched", fits ? "1" : "0"}});
+    return;
+  }
+}
+
+}  // namespace
+
+void PinyonShiftSetPauseSettingsHandler(std::function<void()> handler) {
+  g_pause_settings_handler = std::move(handler);
+}
+
+// 0x82739DB0 is case 6 (the MULTIPLAYER row) of CPauseMenu's action switch in
+// sub_82739D00. Offline, the stock case shows "MULTIPLAYER UNAVAILABLE"; when
+// the row is SETTINGS the hook opens the settings screen instead and jumps to
+// the switch's common exit (0x8273A10C), which records the row as the last
+// selection, so the pause menu stays open with the row focused.
+bool PinyonShiftPauseSettingsActivate(PPCRegister& r31) {
+  if (!REXCVAR_GET(pinyon_shift_pause_settings) || !g_pause_settings_handler ||
+      !PinyonShiftGuestRangeReadable(r31.u32, 4u) ||
+      LoadGuestU32(r31.u32) != kPauseMenuVtable) {
+    return false;
+  }
+  pinyon_shift::diagnostics::RecordEvent("ui.pause_settings.open", {{"menu", Hex32(r31.u32)}});
+  g_pause_settings_handler();
+  return true;
+}
+
 // 0x82CAC740 is the instruction after the payload read inside sub_82CAC5B8:
 // r30 is the payload start, r29 its length, r26 the ownership/verbatim flag.
 void PinyonShiftTraceUiStringTableChunk(PPCRegister& r3, PPCRegister& r26,
                                         PPCRegister& r29, PPCRegister& r30,
                                         PPCRegister& r31) {
+  if (REXCVAR_GET(pinyon_shift_pause_settings)) {
+    PatchPauseSettingsLabel(r30.u32, r29.u32);
+  }
   if (UiExperimentModeValue() != UiExperimentMode::kLabelPatch) {
     return;
   }

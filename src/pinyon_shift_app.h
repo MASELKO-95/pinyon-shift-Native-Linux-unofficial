@@ -41,6 +41,8 @@ class PinyonShiftApp final : public rex::ReXApp {
  private:
   void RecordShutdownOnce();
   void ToggleGameMenu();
+  // Opens the settings screen unless it is open; UI thread.
+  void OpenSettingsMenu();
 
   std::atomic_bool shutdown_recorded_{false};
   // Created on first use: the presenter and input system it needs exist only

@@ -121,6 +121,15 @@ address = 0x82E73BE0
 name = "PinyonShiftTraceUiTextValue"
 registers = ["r3", "r4", "r5"]
 
+# NP-1.5: case 6 (MULTIPLAYER, relabelled SETTINGS) of CPauseMenu's action
+# switch in sub_82739D00. When the hook returns true the stock popup is skipped
+# and the switch's common exit records the selection as usual.
+[[midasm_hook]]
+address = 0x82739DB0
+name = "PinyonShiftPauseSettingsActivate"
+registers = ["r31"]
+jump_address_on_true = 0x8273A10C
+
 [[midasm_hook]]
 # Observe the title's label-resource getter only on verified pause buttons.
 # The receiver and resource fields are read-only; no guest state is changed.

@@ -104,7 +104,8 @@ HostUi::HostUi(rex::ReXApp& app, rex::ui::Presenter& presenter, rex::ui::Immedia
 
 HostUi::~HostUi() {
   alive_.reset();
-  Close();
+  screens_.clear();
+  FinishClose();
 }
 
 bool HostUi::LoadAssets() {
@@ -158,6 +159,7 @@ bool HostUi::Open(std::unique_ptr<MenuScreen> screen) {
   screens_.clear();
   screens_.push_back(std::move(screen));
   pad_.Reset();
+  draining_ = false;
   if (!registered_) {
     registered_ = true;
     SetGuestUiActive(true);
@@ -187,11 +189,39 @@ void HostUi::Close() {
   if (!registered_) {
     return;
   }
+  // Stay registered, drawing nothing, until the input is released.
+  draining_ = true;
+  drain_started_ = std::chrono::steady_clock::now();
+  RequestPaint();
+}
+
+void HostUi::FinishClose() {
+  draining_ = false;
+  held_keys_.clear();
+  if (!registered_) {
+    return;
+  }
   registered_ = false;
   presenter_.RemoveUIDrawerFromUIThread(this);
   window_.RemoveInputListener(this);
   SetGuestUiActive(false);
   RequestPaint();
+}
+
+bool HostUi::InputReleased() {
+  if (!held_keys_.empty()) {
+    return false;
+  }
+  if (!input_system_) {
+    return true;
+  }
+  rex::input::X_INPUT_STATE state = {};
+  using rex::X_RESULT;  // X_ERROR_SUCCESS expands to an unqualified cast
+  if (input_system_->GetHostPadState(0, &state) != X_ERROR_SUCCESS) {
+    return true;
+  }
+  return !uint16_t(state.gamepad.buttons) && !state.gamepad.left_trigger &&
+         !state.gamepad.right_trigger;
 }
 
 void HostUi::SetGuestUiActive(bool active) {
@@ -418,6 +448,16 @@ void HostUi::Flush() {
 }
 
 void HostUi::Draw(rex::ui::UIDrawContext& context) {
+  if (draining_) {
+    // A second is plenty for a press to end; never hold the guest longer.
+    constexpr auto kMaximumDrain = std::chrono::seconds(1);
+    if (InputReleased() || std::chrono::steady_clock::now() - drain_started_ > kMaximumDrain) {
+      FinishClose();
+    } else {
+      RequestPaint();
+    }
+    return;
+  }
   if (!is_open()) {
     return;
   }
@@ -521,12 +561,15 @@ void HostUi::Draw(rex::ui::UIDrawContext& context) {
 }
 
 void HostUi::OnKeyDown(rex::ui::KeyEvent& e) {
-  if (!is_open()) {
-    return;
-  }
   const VirtualKey key = e.virtual_key();
   if (key >= VirtualKey::kF1 && key <= VirtualKey::kF24) {
     return;  // keybinds stay live
+  }
+  if (std::find(held_keys_.begin(), held_keys_.end(), int(key)) == held_keys_.end()) {
+    held_keys_.push_back(int(key));
+  }
+  if (!is_open()) {
+    return;
   }
   e.set_handled(true);
   switch (key) {
@@ -564,6 +607,8 @@ void HostUi::OnKeyDown(rex::ui::KeyEvent& e) {
 }
 
 void HostUi::OnKeyUp(rex::ui::KeyEvent& e) {
+  held_keys_.erase(std::remove(held_keys_.begin(), held_keys_.end(), int(e.virtual_key())),
+                   held_keys_.end());
   if (is_open() && !(e.virtual_key() >= VirtualKey::kF1 && e.virtual_key() <= VirtualKey::kF24)) {
     e.set_handled(true);
   }

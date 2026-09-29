@@ -487,6 +487,13 @@ void PinyonShiftApp::ToggleGameMenu() {
     host_ui_->Close();
     return;
   }
+  OpenSettingsMenu();
+}
+
+void PinyonShiftApp::OpenSettingsMenu() {
+  if (host_ui_ && host_ui_->is_open()) {
+    return;
+  }
   if (!host_ui_) {
     rex::ui::Presenter* presenter =
         runtime() && runtime()->graphics_system() ? runtime()->graphics_system()->presenter()
@@ -532,6 +539,12 @@ void PinyonShiftApp::OnPostSetup() {
           }
         });
       });
+  // SETTINGS in the pause menu (NP-1.5): the hook runs on the guest thread.
+  PinyonShiftSetPauseSettingsHandler([this] {
+    if (window()) {
+      window()->app_context().CallInUIThreadDeferred([this] { OpenSettingsMenu(); });
+    }
+  });
   pinyon_shift::ui::ApplyMasterVolume();
   rex::cvar::RegisterChangeCallback(
       "pinyon_shift_master_volume",
@@ -594,6 +607,7 @@ bool PinyonShiftApp::OnWindowCloseRequested() {
 void PinyonShiftApp::OnShutdown() {
   rex::ui::UnregisterBind("bind_game_menu");
   rex::ui::UnregisterBind("bind_fullscreen");
+  PinyonShiftSetPauseSettingsHandler(nullptr);
   rex::cvar::UnregisterChangeCallbacks("d3d12_allow_variable_refresh_rate_and_tearing");
   // Before the presenter, drawer and kernel it uses are torn down.
   host_ui_.reset();

@@ -61,7 +61,10 @@ class HostUi final : public rex::ui::UIDrawer, public rex::ui::WindowInputListen
   // assets cannot be loaded.
   bool Open(std::unique_ptr<MenuScreen> screen);
   void Push(std::unique_ptr<MenuScreen> screen);
-  // Closes every screen. Safe to call from a row's action.
+  // Closes every screen. Safe to call from a row's action. The guest gets its
+  // input back only once no pad button or key is held, so the press that
+  // closed the menu does not also reach the title (B would leave its pause
+  // menu, Enter would press Start).
   void Close();
 
   void Draw(rex::ui::UIDrawContext& context) override;
@@ -100,6 +103,8 @@ class HostUi final : public rex::ui::UIDrawer, public rex::ui::WindowInputListen
   void PollPad();
   void RequestPaint();
   void SetGuestUiActive(bool active);
+  void FinishClose();
+  bool InputReleased();
 
   Canvas ComputeCanvas(rex::ui::UIDrawContext& context) const;
   Text& TextFor(Face face, float title_pixels);
@@ -125,6 +130,10 @@ class HostUi final : public rex::ui::UIDrawer, public rex::ui::WindowInputListen
   PadNavigator pad_;
   // Whether the drawer and input listener are registered (open).
   bool registered_ = false;
+  // Closed, waiting for held buttons and keys to be released.
+  bool draining_ = false;
+  std::chrono::steady_clock::time_point drain_started_;
+  std::vector<int> held_keys_;
   // Expires with this object, for deferred work queued from Draw.
   std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
   bool applying_ = false;
