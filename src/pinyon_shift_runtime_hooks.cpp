@@ -4358,6 +4358,20 @@ void PinyonShiftAcceptModdedLastBlock(PPCRegister& r3, PPCRegister& r24) {
   PinyonShiftAcceptModdedBlock(r3, r24);
 }
 
+void PinyonShiftAcceptModdedFileSize(PPCRegister& r1, PPCRegister& r6, PPCRegister& r31) {
+  if (r6.u64 == r31.u64 || r6.u64 > 0xFFFFFFFFull) {
+    return;
+  }
+  const std::string path = PinyonShiftReadGuestAscii(LoadGuestU32(r1.u32 + 92u), 260u);
+  if (path.empty() || !pinyon_shift::mod::IsOverriddenGamePath(path)) {
+    return;
+  }
+  pinyon_shift::diagnostics::RecordEvent(
+      "mod.file.size_accepted",
+      {{"path", path}, {"table_size", std::to_string(r31.u32)}, {"size", std::to_string(r6.u64)}});
+  r31.u64 = r6.u64;
+}
+
 void PinyonShiftRestoreCareerEligibility(PPCRegister& r3, PPCRegister& r4,
                                          PPCRegister& r31) {
   const uint32_t activity = LoadGuestU32(r31.u32 + 196u);

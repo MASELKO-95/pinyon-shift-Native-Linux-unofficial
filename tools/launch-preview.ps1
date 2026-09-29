@@ -91,6 +91,11 @@ if (Test-Path -LiteralPath (Join-Path $resolvedStateRoot 'mods') -PathType Conta
     & (Get-PinyonPython) (Join-Path $PSScriptRoot 'build-mod-patches.py') $resolvedStateRoot `
         --game-root $resolvedGameRoot | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Could not build the mods'' database patches.' }
+    # Mods' single archive members (NP-10.1), rebuilt into copies of the
+    # player's archives with zipmanifest.xml to match.
+    & (Get-PinyonPython) (Join-Path $PSScriptRoot 'build-mod-archives.py') $resolvedStateRoot `
+        --game-root $resolvedGameRoot | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not build the mods'' archive members.' }
 }
 
 $savedStateRoot = $env:PINYON_SHIFT_STATE_ROOT

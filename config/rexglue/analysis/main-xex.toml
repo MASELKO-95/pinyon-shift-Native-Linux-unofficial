@@ -596,6 +596,16 @@ address = 0x82C0580C
 name = "PinyonShiftAcceptModdedLastBlock"
 registers = ["r3", "r24"]
 
+# sub_82C03E90 opens such a file and compares its real size (r6, from
+# sub_82A7CDB8) with the size in the title's table (r31); a mismatch ends in
+# the same error. For a file a loaded mod replaces the real size is accepted
+# (NP-10.1: a rebuilt archive is larger than the original). The path is at
+# [r1+92]; r31 becomes the stream's size.
+[[midasm_hook]]
+address = 0x82C041A4
+name = "PinyonShiftAcceptModdedFileSize"
+registers = ["r1", "r6", "r31"]
+
 # sub_828E2898 is about to read the non-durable per-profile career eligibility
 # byte through sub_8252AA48. Repair the actual byte for a valid durable
 # checkpoint so later progression gates observe the restored eligibility too.

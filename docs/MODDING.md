@@ -72,6 +72,25 @@ the originals and stops with a dirty-disc error on a mismatch. For a file a
 loaded mod replaces, the host accepts the mismatch (logged once as
 `mod.file.hash_accepted`); every other file is still checked.
 
+### Single archive members
+
+Most game data lives in zip archives listed in `media/zipmanifest.xml`. A
+mod that changes one file inside an archive ships just that member:
+
+```text
+<state>/mods/<name>/members/<archive path>/<member path>
+e.g. mods/my_mod/members/media/StringTables/EN.zip/PauseMenu.str
+```
+
+Before each start, `tools/build-mod-archives.py` (run by
+`launch-preview.ps1`) rebuilds each affected archive from the player's own
+copy: other members keep their compressed bytes, replaced ones are stored
+uncompressed, and a matching `zipmanifest.xml` goes with it, all as the
+generated mod `zz-archive-patches`. An earlier mod wins a member two mods
+replace. Only existing members can be replaced, and archives whose end
+record disagrees with the manifest (the largest track archive) must still be
+replaced whole. `zz-archive-patches/archives.json` lists what was rebuilt.
+
 ## Database patches
 
 The game's data (cars, prices, events) is the SQLite database
