@@ -39,8 +39,9 @@ $backupDirectory = Join-Path $configDirectory 'backups'
 function Get-DefaultConfigText {
     @'
 # Pinyon Shift host configuration.
-# Schema 25 keeps one occlusion-query path; schema 24 retired the renderer choice.
-pinyon_shift_config_schema = 25
+# Schema 26 stops re-uploading CPU-written memory every frame; schema 25 keeps
+# one occlusion-query path; schema 24 retired the renderer choice.
+pinyon_shift_config_schema = 26
 input_backend = "sdl"
 hid_mappings_file = "gamecontrollerdb.txt"
 mnk_mode = true
@@ -61,7 +62,7 @@ disable_motion_blur = false
 disable_depth_of_field = false
 draw_resolution_scale_x = 1
 draw_resolution_scale_y = 1
-clear_memory_page_state = true
+clear_memory_page_state = false
 '@
 }
 
@@ -143,15 +144,15 @@ function Get-SettingsResult([string]$Text, [string]$BackupPath, [string]$Operati
     $override = [int](Get-TomlValue $Text 'anisotropic_override' '3')
     $anisotropyValue = switch ($override) { 3 { 4 } 4 { 8 } 5 { 16 } default { 4 } }
     $resolutionScale = [int](Get-TomlValue $Text 'draw_resolution_scale_x' '1')
-    $clearPageState = (Get-TomlValue $Text 'clear_memory_page_state' 'true') -eq 'true'
+    $clearPageState = (Get-TomlValue $Text 'clear_memory_page_state' 'false') -eq 'true'
     $vsyncEnabled = (Get-TomlValue $Text 'vsync' 'true') -eq 'true'
     $presentationFps = [int](Get-TomlValue $Text 'host_present_fps_limit' '0')
     $renderFps = [int](Get-TomlValue $Text 'pinyon_shift_fh1_render_fps_limit' '0')
-    $presetName = if ($clearPageState -and $resolutionScale -eq 2) {
+    $presetName = if ($resolutionScale -eq 2) {
         'experimental_2x'
-    } elseif ($clearPageState -and $resolutionScale -eq 3) {
+    } elseif ($resolutionScale -eq 3) {
         'experimental_3x'
-    } elseif ($clearPageState -and $resolutionScale -eq 1 -and $vsyncEnabled) {
+    } elseif ($resolutionScale -eq 1 -and $vsyncEnabled) {
         'shipping_1x'
     } else {
         'custom'
@@ -187,7 +188,7 @@ switch ($Action) {
             Get-Content -LiteralPath $configPath -Raw
         } else { Get-DefaultConfigText }
         $schema = Get-SchemaVersion $text
-        if ($schema -lt 1 -or $schema -gt 25) { throw "Unsupported host configuration schema: $schema" }
+        if ($schema -lt 1 -or $schema -gt 26) { throw "Unsupported host configuration schema: $schema" }
     }
     'Reset' {
         $backup = New-HostConfigBackup $configPath
@@ -204,7 +205,7 @@ switch ($Action) {
         $backup = New-HostConfigBackup $configPath
         $text = Get-Content -LiteralPath $source.FullName -Raw
         $schema = Get-SchemaVersion $text
-        if ($schema -lt 1 -or $schema -gt 25) { throw "Backup uses unsupported schema: $schema" }
+        if ($schema -lt 1 -or $schema -gt 26) { throw "Backup uses unsupported schema: $schema" }
         Write-HostConfig $configPath $text
     }
     'Apply' {
@@ -212,7 +213,7 @@ switch ($Action) {
             Get-Content -LiteralPath $configPath -Raw
         } else { Get-DefaultConfigText }
         $schema = Get-SchemaVersion $text
-        if ($schema -lt 1 -or $schema -gt 25) { throw "Unsupported host configuration schema: $schema" }
+        if ($schema -lt 1 -or $schema -gt 26) { throw "Unsupported host configuration schema: $schema" }
         $backup = New-HostConfigBackup $configPath
         # The retired guest vblank rate became the render limit, which the
         # replacement defaults to following the display.
@@ -223,7 +224,9 @@ switch ($Action) {
         # readback_resolve is a developer setting; only launchers before
         # schema 24 wrote it for players (src/pinyon_shift_app.cpp).
         if ($schema -lt 24) { $text = Remove-TomlValue $text 'readback_resolve' }
-        $text = Set-TomlValue $text 'pinyon_shift_config_schema' '25'
+        # Schema 26 turned clear_memory_page_state off (src/pinyon_shift_app.cpp).
+        if ($schema -lt 26) { $text = Set-TomlValue $text 'clear_memory_page_state' 'false' }
+        $text = Set-TomlValue $text 'pinyon_shift_config_schema' '26'
         $text = Set-TomlValue $text 'pinyon_shift_fh1_source_presentation' 'true'
         if (-not [regex]::IsMatch($text, '(?m)^[ \t]*xma_relaxed_padding_admission[ \t]*=')) {
             $text = Set-TomlValue $text 'xma_relaxed_padding_admission' 'false'
@@ -264,7 +267,6 @@ switch ($Action) {
             $text = Set-TomlValue $text 'pinyon_shift_fh1_render_fps_limit' ([string]$RenderFps)
         }
         $text = Set-TomlValue $text 'host_present_sleep_spin' 'true'
-        $text = Set-TomlValue $text 'clear_memory_page_state' 'true'
         Write-HostConfig $configPath $text
     }
 }

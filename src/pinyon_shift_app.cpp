@@ -41,7 +41,7 @@
 extern "C" int __llvm_profile_dump(void);
 #endif
 
-REXCVAR_DEFINE_UINT32(pinyon_shift_config_schema, 25, "Pinyon Shift",
+REXCVAR_DEFINE_UINT32(pinyon_shift_config_schema, 26, "Pinyon Shift",
                       "Pinyon Shift host configuration schema version");
 REXCVAR_DEFINE_BOOL(pinyon_shift_capture_performance, true, "Pinyon Shift",
                     "Capture lightweight per-frame performance counters to a session CSV");
@@ -52,8 +52,12 @@ namespace {
 // renderer is the only renderer, so migration drops fh1_renderer and the other
 // renderer-era settings the runtime no longer registers. Schema 25 drops the
 // occlusion-query mode and ZPD classification settings: the host-query path
-// is the only occlusion path.
-constexpr uint32_t kConfigSchema = 25;
+// is the only occlusion path. Schema 26 turns clear_memory_page_state off: it
+// made every frame upload again every page the CPU had uploaded, about 20 MB
+// of vertex data per race frame, and the race window runs 12 % faster
+// without it with no rendering difference on the race, photo, dealership and
+// FMV routes.
+constexpr uint32_t kConfigSchema = 26;
 
 bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
                            bool& migrated) {
@@ -90,7 +94,7 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
               "disable_depth_of_field = false\n"
               "draw_resolution_scale_x = 1\n"
               "draw_resolution_scale_y = 1\n"
-              "clear_memory_page_state = true\n";
+              "clear_memory_page_state = false\n";
     created = true;
     return output.good();
   }
@@ -233,6 +237,12 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
           std::regex(R"((?:^|\n)\s*readback_resolve\s*=.*(?:\r?\n|$))", std::regex::icase),
           "\n");
     }
+    if (schema < 26) {
+      migrated_text = std::regex_replace(
+          migrated_text,
+          std::regex(R"((^|\n)(\s*clear_memory_page_state\s*=\s*)true)", std::regex::icase),
+          "$1$2false");
+    }
     if (schema == 1) {
       const std::regex stabilization_pattern(
           R"((?:^|\n)\s*pinyon_shift_stabilize_vehicle_presentation\s*=\s*(true|false)\s*(?:#.*)?(?:\r?\n|$))");
@@ -272,7 +282,7 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
         {"vsync", "vsync = true\n"},
         {"host_present_fps_limit", "host_present_fps_limit = 0\n"},
         {"host_present_sleep_spin", "host_present_sleep_spin = true\n"},
-        {"clear_memory_page_state", "clear_memory_page_state = true\n"},
+        {"clear_memory_page_state", "clear_memory_page_state = false\n"},
         {"pinyon_shift_fh1_render_fps_limit",
          "pinyon_shift_fh1_render_fps_limit = 0\n"},
         {"pinyon_shift_fh1_source_presentation",

@@ -130,7 +130,7 @@ NP-0.7 moved to NP-9.4, which bumps the pack format anyway.
 Status on 2026-09-28: NP-0.1 to NP-0.5 and NP-0.8 are done, and NP-1.1 to
 NP-1 is done except its gate runs. NP-0.6's repair of cards saved by older
 builds waits on a product decision, because it would change player save files.
-NP-2.1 and NP-2.2 are done; next is NP-2.8.
+NP-2.1, NP-2.2 and NP-2.8 are done; next are NP-2.3 to NP-2.5.
 
 ## NP-0 Clean native baseline
 
@@ -210,7 +210,7 @@ counter or trace to prove its share before code changes.
 | NP-2.5 | A/B quad, point and rectangle lists without geometry shaders using the existing `force_convert_quad_lists_to_triangle_lists` cvar; keep if menus and the map are unchanged under golden replay. | S |
 | NP-2.6 | **Done** (SDK `e18b220`), as overlap rather than direct recording: direct recording would only move the 3.7 ms of runtime and driver time into `IssueDraw` on the same thread. A submission worker now replays each tape, executes it and signals the fence; frames split into a new submission every 1024 draws when no occlusion query is open, and the swap and every direct-queue operation of the GPU commands thread wait for the worker. `fh1-race-sync`: race-window median 21.05-21.19 ms synchronous vs 19.25-20.32 ms asynchronous (-5.5 %), p95 25.6 vs 22.3-25.2 ms; 4/4 golden replays. Controls: `--d3d12_async_submission=false`, `--d3d12_submission_split_draws=N`. One of seven async runs stalled before the title menus, a boot stall an earlier synchronous run also hit; watch its rate. | M |
 | NP-2.7 | **Done** (SDK `37d0f72`): per-thread single-writer perf counters instead of two locked adds per increment, a reused range list in `SharedMemory::RequestRanges`, a known-register bitmap instead of the `GetRegisterInfo` switch on every register write, and sampler parameters reused while their fetch constant, binding filters and `anisotropic_override` are unchanged. `fh1-race-sync`, three interleaved pairs: race-window medians 25.28/24.30 ms control vs 21.13/21.21 ms on undisturbed runs, with equal per-frame draw, texture and pipeline counters. | S |
-| NP-2.8 | Size the per-draw shared-memory uploads (`UploadRanges`, 2.27 ms per race frame, 1.69 ms of it memcpy): log bytes and ranges per frame, separate index, vertex and constant data, and decide whether CPU-written ranges can be uploaded once per frame or mapped instead of copied per request. | S |
+| NP-2.8 | **Done** (SDK `54e96a7`, config schema 26). `SharedMemory` now counts uploads by kind (vertex, index, texture, memexport, other) with the bytes of pages already uploaded in the same frame, in the executor report. On `fh1-race-sync` a race frame uploaded about 20 MB of vertex data in 630 requests, 2.7 MB of index data and 2.5 MB of texture data, only 0.3 % of it twice in one frame: `clear_memory_page_state = true` dropped the valid bit of every CPU-uploaded page at each frame end, so every page a draw touched was copied again. Schema 26 turns it off (the Skate 3 recomp defaults it off too) and migrates older configs; over the route, vertex uploads fall from 41.6 GB to 0.42 GB and index uploads from 5.5 GB to 67 MB. Three interleaved pairs: race-window median 20.27 ms on vs 17.80 ms off (-12.2 %), p95 24.82 vs 25.26 ms. Race, photo-mode, buy-car (car-card render) and FMV routes pass with it off, with capture differences only in timing. | S |
 
 **Gates.** Three-by-three control and candidate runs on `fh1-race-sync`
 (last 600 frames) and `fh1-race-sustained` summarised with

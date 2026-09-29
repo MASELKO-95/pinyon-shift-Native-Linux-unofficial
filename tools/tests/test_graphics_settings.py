@@ -40,7 +40,7 @@ class GraphicsSettingsTests(unittest.TestCase):
             )
             updated = config.read_text(encoding="utf-8")
             self.assertEqual(result["settings"]["anisotropy"], 16)
-            self.assertIn("pinyon_shift_config_schema = 25", updated)
+            self.assertIn("pinyon_shift_config_schema = 26", updated)
             self.assertNotIn("fh1_renderer", updated)
             self.assertNotIn("renderer", result["settings"])
             self.assertIn("xma_relaxed_padding_admission = false", updated)
@@ -81,6 +81,24 @@ class GraphicsSettingsTests(unittest.TestCase):
             self.assertEqual(result["settings"]["resolution_scale"], 3)
             self.assertFalse(result["settings"]["vsync"])
 
+    def test_apply_turns_page_state_clearing_off_from_schema_25(self):
+        with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:
+            state = pathlib.Path(temporary)
+            config = state / "config/pinyon_shift.toml"
+            config.parent.mkdir(parents=True)
+            config.write_text("pinyon_shift_config_schema = 25\nclear_memory_page_state = true\n",
+                              encoding="utf-8")
+            result = self.run_tool(state, "-Action", "Apply", "-ResolutionScale", "1")
+            text = config.read_text(encoding="utf-8")
+            self.assertIn("pinyon_shift_config_schema = 26", text)
+            self.assertIn("clear_memory_page_state = false", text)
+            self.assertFalse(result["settings"]["clear_memory_page_state"])
+            # Once on schema 26, a player who turns it back on keeps it.
+            config.write_text("pinyon_shift_config_schema = 26\nclear_memory_page_state = true\n",
+                              encoding="utf-8")
+            self.run_tool(state, "-Action", "Apply", "-ResolutionScale", "1")
+            self.assertIn("clear_memory_page_state = true", config.read_text(encoding="utf-8"))
+
     def test_reset_writes_supported_defaults_and_preserves_backup(self):
         with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:
             state = pathlib.Path(temporary)
@@ -97,12 +115,12 @@ class GraphicsSettingsTests(unittest.TestCase):
             self.assertNotIn('occlusion_query', text)
             self.assertNotIn('zpd_end', text)
             self.assertNotIn('readback_resolve', text)
-            self.assertIn('clear_memory_page_state = true', text)
+            self.assertIn('clear_memory_page_state = false', text)
             self.assertIn('host_present_fps_limit = 0', text)
             self.assertIn('host_present_sleep_spin = true', text)
             self.assertIn('pinyon_shift_fh1_render_fps_limit = 0', text)
             self.assertIn('pinyon_shift_fh1_source_presentation = true', text)
-            self.assertIn("pinyon_shift_config_schema = 25", text)
+            self.assertIn("pinyon_shift_config_schema = 26", text)
             self.assertNotIn("fh1_renderer", text)
             self.assertEqual(result["settings"]["preset"], "shipping_1x")
             self.assertTrue(pathlib.Path(result["backup_path"]).is_file())
@@ -169,7 +187,7 @@ class GraphicsSettingsTests(unittest.TestCase):
             )
             result = self.run_tool(state, "-Action", "Apply")
             text = config.read_text(encoding="utf-8")
-            self.assertIn("pinyon_shift_config_schema = 25", text)
+            self.assertIn("pinyon_shift_config_schema = 26", text)
             self.assertIn("custom_value = 77", text)
             for line in retired:
                 self.assertNotIn(line.split(" =")[0] + " =", text)
