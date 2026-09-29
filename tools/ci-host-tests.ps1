@@ -51,7 +51,8 @@ try {
             'pinyon_shift_fh1_ui_api_tests',
             'pinyon_shift_hostui_tests',
             'pinyon_shift_host_config_tests',
-            'pinyon_shift_profile_body_tests')) {
+            'pinyon_shift_profile_body_tests',
+            'pinyon_shift_fh1_edram_tiles_tests')) {
         $exe = Join-Path $BuildDirectory "$test.exe"
         Write-Host "== $test"
         & $exe

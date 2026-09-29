@@ -126,6 +126,12 @@ add_executable(pinyon_shift_profile_body_tests EXCLUDE_FROM_ALL
 )
 target_include_directories(pinyon_shift_profile_body_tests PRIVATE src)
 
+add_executable(pinyon_shift_fh1_edram_tiles_tests EXCLUDE_FROM_ALL
+    tests/native_renderer/fh1_edram_tiles_test.cpp
+)
+target_include_directories(pinyon_shift_fh1_edram_tiles_tests PRIVATE ${REXSDK_DIR}/include)
+target_link_libraries(pinyon_shift_fh1_edram_tiles_tests PRIVATE rex::runtime)
+
 # Every host-side test, for CI (PINYON_SHIFT_HOST_TESTS_ONLY) and local runs.
 add_custom_target(pinyon_shift_host_tests)
 add_dependencies(pinyon_shift_host_tests
@@ -134,6 +140,7 @@ add_dependencies(pinyon_shift_host_tests
     pinyon_shift_hostui_tests
     pinyon_shift_host_config_tests
     pinyon_shift_profile_body_tests
+    pinyon_shift_fh1_edram_tiles_tests
     pinyon_shift_mod_hello_telemetry)
 
 add_executable(pinyon_shift_fh1_archive_extract EXCLUDE_FROM_ALL
