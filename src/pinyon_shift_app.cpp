@@ -33,6 +33,8 @@
 #include "config/host_config.h"
 #include "ui/host_style.h"
 #include "ui/hostui/host_ui.h"
+#include "mod/mod_host.h"
+#include "mod/overlay_device.h"
 #include "save_backups.h"
 #include "ui/achievements_menu.h"
 #include "ui/photo_export.h"
@@ -47,6 +49,10 @@ extern "C" int __llvm_profile_dump(void);
 
 REXCVAR_DEFINE_UINT32(pinyon_shift_config_schema, 26, "Pinyon Shift",
                       "Pinyon Shift host configuration schema version");
+REXCVAR_DEFINE_STRING(enabled_mods, "", "Mods",
+                      "Mods to load from <state>/mods, in order, separated by commas. With any "
+                      "enabled the title plays a separate profile (<state>/user-modded)")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 REXCVAR_DEFINE_BOOL(pinyon_shift_save_backups, true, "Pinyon Shift",
                     "Copy the save files to <state>/backups/saves after the title writes them "
                     "(restore from SETTINGS > PROFILE > SAVE BACKUPS)")
@@ -366,6 +372,23 @@ void PinyonShiftApp::OnConfigurePaths(rex::PathConfig& paths) {
   // can open the files.
   pinyon_shift::SaveBackups::ApplyPendingRestore(paths.user_data_root,
                                                  state_root / "backups" / "saves");
+  // Mods play a separate profile (NP-7.5), started from a copy of the
+  // player's own the first time, so the unmodded save is never touched.
+  if (host_config_->Load()) {
+    enabled_mods_ = host_config_->Get("enabled_mods").value_or("");
+  }
+  if (!enabled_mods_.empty()) {
+    const auto modded = state_root / "user-modded";
+    std::error_code error;
+    if (!std::filesystem::exists(modded, error) &&
+        std::filesystem::exists(paths.user_data_root, error)) {
+      std::filesystem::copy(paths.user_data_root, modded,
+                            std::filesystem::copy_options::recursive, error);
+      diagnostics::RecordEvent("mod.profile.created", {{"path", modded.string()}});
+    }
+    paths.user_data_root = modded;
+    pinyon_shift::mod::SetModdedProfile(modded);
+  }
 
   bool config_created = false;
   bool config_migrated = false;
@@ -559,6 +582,7 @@ void PinyonShiftApp::OpenSettingsMenu() {
     return pinyon_shift::ui::CreateAchievementsScreen(achievements());
   };
   services.save_backups = save_backups_.get();
+  services.mods_root = pinyon_shift::diagnostics::StateRoot() / "mods";
   host_ui_->Open(pinyon_shift::ui::CreateSettingsMenu(*host_ui_, *host_config_, services));
 }
 
@@ -599,6 +623,29 @@ void PinyonShiftApp::OnPostSetup() {
       window()->app_context().CallInUIThreadDeferred([this] { OpenSettingsMenu(); });
     }
   });
+  if (!enabled_mods_.empty()) {
+    pinyon_shift::mod::HostServices services;
+    services.config = host_config_.get();
+    services.post_to_ui = [this](std::function<void()> task) {
+      if (window()) {
+        window()->app_context().CallInUIThreadDeferred(std::move(task));
+      }
+    };
+    pinyon_shift::mod::LoadMods(pinyon_shift::diagnostics::StateRoot(), enabled_mods_,
+                                std::move(services));
+    // Mods' game/ files over the game's, before the title opens any.
+    if (auto overlays = pinyon_shift::mod::OverlayRoots(); !overlays.empty()) {
+      constexpr const char* kGameMount = "\\Device\\Harddisk0\\Partition1";
+      auto* file_system = runtime()->file_system();
+      auto overlay = std::make_unique<pinyon_shift::mod::OverlayDevice>(
+          kGameMount, game_data_root(), std::move(overlays));
+      if (overlay->Initialize() && file_system->ReplaceDevice(std::move(overlay))) {
+        pinyon_shift::diagnostics::RecordEvent("mod.overlay.mounted");
+      } else {
+        REXLOG_ERROR("Mods: could not mount the mods' game files");
+      }
+    }
+  }
   if (REXCVAR_GET(pinyon_shift_save_backups)) {
     save_backups_ = std::make_unique<pinyon_shift::SaveBackups>(
         pinyon_shift::diagnostics::StateRoot() / "user",
@@ -609,7 +656,10 @@ void PinyonShiftApp::OnPostSetup() {
   // Now, not on first use, so the title's first message box already gets
   // the host dialogs.
   if (window()) {
-    window()->app_context().CallInUIThreadDeferred([this] { EnsureHostUi(); });
+    window()->app_context().CallInUIThreadDeferred([this] {
+      EnsureHostUi();
+      pinyon_shift::mod::NotifyCreateDialogs();
+    });
   }
   pinyon_shift::ui::ApplyMasterVolume();
   rex::cvar::RegisterChangeCallback(
@@ -643,6 +693,7 @@ std::unique_ptr<rex::ui::ImGuiDialog> PinyonShiftApp::CreateAchievementsOverlay(
 void PinyonShiftApp::OnPreLaunchModule() {
   pinyon_shift::diagnostics::RefreshCrashReporter();
   pinyon_shift::diagnostics::RecordEvent("guest.launch.begin");
+  pinyon_shift::mod::NotifyModuleLaunched();
   // Unlocks arrive on guest threads; the toast is drawn on the UI thread.
   achievement_listener_ = achievements().RegisterNotificationCallback(
       [this](const rex::system::AchievementEvent& event) {
@@ -689,6 +740,11 @@ bool PinyonShiftApp::OnWindowCloseRequested() {
   // clean qualification boundary before allowing the SDK to terminate.
   pinyon_shift::native_renderer::UninstallShaderCapture(
       runtime() ? runtime()->graphics_system() : nullptr);
+  // The same hard exit skips everything OnShutdown would do for players' data
+  // and mods: finish a photo, stop the backup thread, tell mods.
+  pinyon_shift::mod::NotifyShutdown();
+  pinyon_shift::ui::WaitForPhoto();
+  save_backups_.reset();
   RecordShutdownOnce();
 #ifdef PINYON_SHIFT_PGO_GENERATE
   // The SDK's hard exit skips the executable's profile atexit handler.
@@ -700,6 +756,7 @@ bool PinyonShiftApp::OnWindowCloseRequested() {
 }
 
 void PinyonShiftApp::OnShutdown() {
+  pinyon_shift::mod::NotifyShutdown();
   rex::ui::UnregisterBind("bind_game_menu");
   rex::ui::UnregisterBind("bind_fullscreen");
   rex::ui::UnregisterBind("bind_photo");

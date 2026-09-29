@@ -24,6 +24,8 @@ if(WIN32)
         src/pinyon_shift_diagnostics.cpp
         src/pinyon_shift_runtime_hooks.cpp
         src/save_backups.cpp
+        src/mod/mod_host.cpp
+        src/mod/overlay_device.cpp
         src/ui/fh1_ui_api.cpp
         src/ui/host_style.cpp
         src/ui/hostui/fh1_archive.cpp
@@ -50,6 +52,8 @@ else()
         src/pinyon_shift_diagnostics.cpp
         src/pinyon_shift_runtime_hooks.cpp
         src/save_backups.cpp
+        src/mod/mod_host.cpp
+        src/mod/overlay_device.cpp
         src/ui/fh1_ui_api.cpp
         src/ui/host_style.cpp
         src/ui/hostui/fh1_archive.cpp
@@ -142,3 +146,19 @@ add_custom_target(pinyon_shift_stage_controller_mappings ALL
 if(WIN32)
     target_link_libraries(pinyon_shift PRIVATE bcrypt d3d12 dbghelp dxgi rex::gpu-fh1)
 endif()
+
+# The mod ABI header (NP-7) and the TOML parser mod.toml is read with.
+target_include_directories(pinyon_shift PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${REXSDK_DIR}/thirdparty/tomlplusplus/include)
+
+# Sample mods (NP-7.6): plain C libraries against include/pinyon_mod.h. Not
+# part of the default build; tools/install-sample-mod.py copies one into a
+# state directory's mods/.
+add_library(pinyon_shift_mod_hello_telemetry MODULE EXCLUDE_FROM_ALL
+    mods_src/samples/hello_telemetry/hello_telemetry.c)
+target_include_directories(pinyon_shift_mod_hello_telemetry PRIVATE include)
+set_target_properties(pinyon_shift_mod_hello_telemetry PROPERTIES
+    OUTPUT_NAME hello_telemetry
+    PREFIX ""
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/mods/hello_telemetry/code")

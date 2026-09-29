@@ -1,0 +1,32 @@
+# Semantic symbol table for mods (NP-7.2), for the supported executable in
+# config/supported-dumps.json. Mods find guest addresses and struct offsets by
+# these names (PinyonModApi::find_symbol, find_offset), never by literal
+# addresses. tools/generate-fh1-symbols.py turns this file, plus every
+# [[midasm_hook]] site in config/rexglue/analysis/main-xex.toml (as
+# "hook.<name>"), into src/mod/fh1_symbols.inc; tools/tests/test_fh1_symbols.py
+# fails when the two disagree.
+
+executable = "default.xex"
+sha256 = "DB40DF605ADE49A6"  # prefix of the supported default.xex SHA-256
+
+# Hook sites behind the PinyonHook ids, and functions a mod may call through a
+# guest task. Every address here must also be a hook site or a function start
+# in the generated code.
+[symbols]
+"frame.tick" = 0x823EDA10                # main loop, once per title frame
+"simulation.delta_store" = 0x823EDB84    # the variable gameplay delta (f31) is stored
+"vehicle.pose_written" = 0x82BC5A3C      # the active vehicle slot's pose is final
+"save.before_encrypt" = 0x82C666D0       # plaintext save body (r4) and size (r5)
+"ui.pause_button_constructed" = 0x8264FC08
+"ui.pause_menu_action" = 0x82739D00      # CPauseMenu action switch (sub_82739D00)
+"gpu.fence_wait_predicate" = 0x829F04A8  # D3D fence-wait predicate (sub_829F04A8)
+"graphics.frame" = 0x829EFEB8            # graphics frame boundary
+"kernel.get_av_pack" = 0x831EDA6C        # XGetAVPack import thunk: returns the AV pack, no side effects
+
+# Byte offsets inside title objects, as the hooks above read them.
+[offsets]
+"main_loop.delta" = 448                  # float seconds at owner+448
+"vehicle.active_slot" = 1500             # u32 index into the slot array
+"vehicle.slot_stride" = 1056
+"vehicle.slot.position" = 15120          # float4 x, y, z, w within a slot
+"vehicle.slot.forward" = 15184           # float4 forward vector within a slot

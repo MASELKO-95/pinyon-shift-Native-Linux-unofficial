@@ -12,6 +12,8 @@
 
 #include <rex/audio/downmix.h>
 #include <rex/input/pad_remap.h>
+
+#include "mod/mod_host.h"
 #include <rex/cvar.h>
 #include <rex/logging.h>
 
@@ -114,6 +116,7 @@ class SettingsPages : public std::enable_shared_from_this<SettingsPages> {
   std::unique_ptr<MenuScreen> Gamertag();
   std::unique_ptr<MenuScreen> Backups();
   std::unique_ptr<MenuScreen> ControllerButtons();
+  std::unique_ptr<MenuScreen> Mods();
   std::unique_ptr<MenuScreen> ConfirmRestore(std::string slot);
   static constexpr size_t kMaxGamertag = 15;
 
@@ -332,6 +335,70 @@ std::unique_ptr<MenuScreen> SettingsPages::ControllerButtons() {
                ? std::string("EVERY BUTTON SENDS ITSELF")
                : std::string("CHANGES APPLY AT ONCE; MENUS HERE KEEP THE PHYSICAL LAYOUT");
   });
+}
+
+std::unique_ptr<MenuScreen> SettingsPages::Mods() {
+  // One row per folder in <state>/mods, switched on and off in enabled_mods
+  // (at the next start); the note under the list is the focused mod's state.
+  std::vector<std::string> names;
+  std::error_code error;
+  for (auto it = std::filesystem::directory_iterator(services_.mods_root, error);
+       !error && it != std::filesystem::directory_iterator(); it.increment(error)) {
+    if (it->is_directory(error)) names.push_back(it->path().filename().string());
+  }
+  std::sort(names.begin(), names.end());
+  const auto enabled_list = [this] {
+    std::vector<std::string> list;
+    std::string text = Unquote(Saved("enabled_mods"));
+    size_t start = 0;
+    while (start <= text.size()) {
+      const size_t comma = text.find(',', start);
+      std::string name = text.substr(start, comma == std::string::npos ? std::string::npos
+                                                                       : comma - start);
+      if (!name.empty()) list.push_back(name);
+      if (comma == std::string::npos) break;
+      start = comma + 1;
+    }
+    return list;
+  };
+  std::vector<MenuRow> rows;
+  for (const auto& name : names) {
+    MenuRow row;
+    row.label = Upper(name);
+    row.restart_required = true;
+    row.value = [enabled_list, name] {
+      const auto list = enabled_list();
+      return std::string(std::find(list.begin(), list.end(), name) != list.end() ? "ON" : "OFF");
+    };
+    row.adjust = [this, enabled_list, name](int) {
+      auto list = enabled_list();
+      const auto it = std::find(list.begin(), list.end(), name);
+      if (it != list.end()) {
+        list.erase(it);
+      } else {
+        list.push_back(name);
+      }
+      std::string text;
+      for (const auto& entry : list) text += (text.empty() ? "" : ",") + entry;
+      config_.Set("enabled_mods", config::Quote(text));
+      Save();
+    };
+    rows.push_back(std::move(row));
+  }
+  auto self = std::make_shared<const MenuScreen*>(nullptr);
+  auto screen = std::make_unique<MenuScreen>("MODS", std::move(rows), [self, names] {
+    if (names.empty()) return std::string("PUT MODS IN THE MODS FOLDER OF THE GAME'S STATE");
+    const std::string& name = names[(*self)->focus()];
+    for (const auto& info : pinyon_shift::mod::Mods()) {
+      if (info.name == name) {
+        return info.loaded ? std::string("LOADED ") + info.version
+                           : std::string("NOT LOADED: ") + Upper(info.problem);
+      }
+    }
+    return std::string("MODS PLAY A SEPARATE PROFILE; CHANGES APPLY AT THE NEXT START");
+  });
+  *self = screen.get();
+  return screen;
 }
 
 std::unique_ptr<MenuScreen> SettingsPages::Controls() {
@@ -567,6 +634,12 @@ std::unique_ptr<MenuScreen> SettingsPages::Root() {
   rows.push_back(Page("AUDIO", &SettingsPages::Audio));
   rows.push_back(Page("CONTROLS", &SettingsPages::Controls));
   rows.push_back(Page("PROFILE", &SettingsPages::Profile));
+  if (!services_.mods_root.empty()) {
+    MenuRow row;
+    row.label = "MODS";
+    row.activate = [self = shared_from_this()] { self->host_ui_.Push(self->Mods()); };
+    rows.push_back(std::move(row));
+  }
   if (services_.achievements) {
     MenuRow row;
     row.label = "ACHIEVEMENTS";

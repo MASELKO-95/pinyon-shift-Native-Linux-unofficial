@@ -27,6 +27,7 @@
 #include "pinyon_shift_diagnostics.h"
 #include "fh1_render_test.h"
 #include "pinyon_shift_runtime_hooks.h"
+#include "mod/mod_host.h"
 #include "ui/fh1_ui_api.h"
 
 REXCVAR_DEFINE_BOOL(pinyon_shift_skip_opening_movies, false, "Pinyon Shift",
@@ -610,6 +611,12 @@ void PinyonShiftObserveGuestFileOpen(std::string_view guest_path) {
     }
   }
   pinyon_shift::fh1_render_test::ObserveFileOpened(path);
+  if (pinyon_shift::mod::HasSubscribers(PINYON_HOOK_FILE_OPEN)) {
+    PinyonHookEvent event{};
+    event.hook = PINYON_HOOK_FILE_OPEN;
+    event.text = path.c_str();
+    pinyon_shift::mod::Dispatch(event);
+  }
   if (!path.ends_with(".wmv")) {
     return;
   }
@@ -2021,6 +2028,12 @@ void PinyonShiftTraceUiStringLookup(PPCRegister& r3, PPCRegister& r29) {
 
 void PinyonShiftTraceUiPauseButtonConstructed(PPCRegister& r3,
                                                PPCRegister& r31) {
+  if (pinyon_shift::mod::HasSubscribers(PINYON_HOOK_PAUSE_BUTTON_CONSTRUCTED)) {
+    PinyonHookEvent event{};
+    event.hook = PINYON_HOOK_PAUSE_BUTTON_CONSTRUCTED;
+    event.args[0] = r31.u32;
+    pinyon_shift::mod::Dispatch(event);
+  }
   const UiExperimentMode experiment = UiExperimentModeValue();
   if (!UiTraceEnabled() && experiment == UiExperimentMode::kNone) {
     return;
@@ -3960,6 +3973,13 @@ void ApplyUiMutationExperiment() {
 void PinyonShiftTraceFrameTelemetry(PPCRegister& r28, PPCRegister& r31) {
   PROFILE_SIMULATION_TICK();
   ApplyUiMutationExperiment();
+  // frame.tick for mods: their guest tasks, then the hook.
+  pinyon_shift::mod::RunGuestTasks();
+  if (pinyon_shift::mod::HasSubscribers(PINYON_HOOK_FRAME_TICK)) {
+    PinyonHookEvent event{};
+    event.hook = PINYON_HOOK_FRAME_TICK;
+    pinyon_shift::mod::Dispatch(event);
+  }
   if (r28.u32 == 0) {
     return;
   }
@@ -4045,6 +4065,15 @@ void PinyonShiftTraceVehiclePose(PPCRegister& r1, PPCRegister& r30,
       LoadGuestF32(forward_address + 8),
       LoadGuestF32(forward_address + 12),
   };
+  if (pinyon_shift::mod::HasSubscribers(PINYON_HOOK_VEHICLE_POSE)) {
+    PinyonHookEvent event{};
+    event.hook = PINYON_HOOK_VEHICLE_POSE;
+    event.args[0] = position_address;
+    event.floats[0] = LoadGuestF32(position_address);
+    event.floats[1] = LoadGuestF32(position_address + 4);
+    event.floats[2] = LoadGuestF32(position_address + 8);
+    pinyon_shift::mod::Dispatch(event);
+  }
   VehiclePose effective = observed;
   bool suppressed = false;
   const bool stabilization_enabled =
@@ -4171,6 +4200,14 @@ void PinyonShiftTraceSaveStreamPayload(PPCRegister& r4, PPCRegister& r5,
 
 void PinyonShiftTraceSavePreEncryption(PPCRegister& r4, PPCRegister& r5) {
   SeedCareerCheckpointInSavePayload(r4.u32, r5.u32);
+  if (pinyon_shift::mod::HasSubscribers(PINYON_HOOK_SAVE_BEFORE_ENCRYPT)) {
+    PinyonHookEvent event{};
+    event.hook = PINYON_HOOK_SAVE_BEFORE_ENCRYPT;
+    event.args[0] = r4.u32;
+    event.args[1] = r5.u32;
+    pinyon_shift::mod::Dispatch(event);
+  }
+  pinyon_shift::mod::RecordSave(r4.u32, r5.u32);
   SnapshotSavePayload("plaintext", r4.u32, r5.u32, 0x82C666D4u);
 }
 

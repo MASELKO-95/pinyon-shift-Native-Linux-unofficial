@@ -494,6 +494,10 @@ const std::string& SessionId() {
 }
 
 void RecordEvent(std::string_view event, std::initializer_list<Field> fields) {
+  RecordEvent(event, std::span<const Field>(fields.begin(), fields.size()));
+}
+
+void RecordEvent(std::string_view event, std::span<const Field> fields) {
   std::ostringstream json;
   json << "{\"schema\":" << kDiagnosticsSchema << ",\"utc\":\"" << UtcTimestamp(false)
        << "\",\"session\":\"" << JsonEscape(g_session_id) << "\",\"event\":\""

@@ -1,0 +1,10 @@
+# An asset-only mod (NP-7.6): no library, only files under game/, which
+# replace the game's files with the same path while the mod is enabled.
+# Nothing from the disc is distributed: tools/install-sample-mod.py copies the
+# player's own media/StringTables/EN.zip into game/ as the starting point,
+# to be edited (for example with tools/fh1-ui-scene-insert.py or a string
+# table editor) before use.
+name = "english_strings"
+version = "1.0.0"
+abi = 1
+game_version = "DB40DF605ADE49A6"

@@ -1,0 +1,148 @@
+# Modding Pinyon Shift
+
+Pinyon Shift loads mods: native libraries that react to the title through
+hook points and a C API, and asset mods that replace game files. This page
+is the contract for mod authors. The design and its history are in the
+[native port backlog](NATIVE_PORT_BACKLOG.md#np-7-mod-host-v1) (NP-7).
+
+## Layout and enabling
+
+A mod lives in the state directory, never in the game files:
+
+```text
+<state>/mods/<name>/
+  mod.toml
+  code/<name>.dll        optional: a native mod
+  game/...               optional: files that replace the game's
+```
+
+`<state>` is the directory the launcher runs with (`--state-root`); for an
+installed preview it is `%LOCALAPPDATA%\PinyonShift\source\<version>\.local\preview`.
+Mods load when their names are listed, in order, in the `enabled_mods`
+setting of `<state>/config/pinyon_shift.toml`:
+
+```toml
+enabled_mods = "hello_telemetry,english_strings"
+```
+
+The in-game SETTINGS screen lists the mods found under `mods/`. A change
+takes effect at the next start. Every load and every rejection is logged as
+a `mod.loaded` or `mod.rejected` event with the reason.
+
+### mod.toml
+
+```toml
+name = "hello_telemetry"          # must equal the directory name
+version = "1.0.0"
+abi = 1                           # PINYON_MOD_ABI_VERSION the mod was built for
+game_version = "DB40DF605ADE49A6" # optional: prefix of the default.xex SHA-256
+library = "code/hello_telemetry.dll"  # omit for an asset-only mod
+requires = []                     # mods that must be enabled and load first
+load_after = []                   # mods to load after when they are enabled
+conflicts = []                    # mods that must not be enabled with this one
+```
+
+A mod whose requirement is missing or failed, or that conflicts with an
+enabled mod, is not loaded. Load order follows `requires` and `load_after`,
+otherwise the `enabled_mods` order.
+
+## Your saves stay separate
+
+With any mod enabled, the title plays a separate profile,
+`<state>/user-modded`, which starts as a copy of the player's own the first
+time. The unmodded profile in `<state>/user` is never opened while mods are
+on. Every save of the modded profile writes `user-modded/pinyon_shift_mods.json`
+with the enabled mods, a hash of the mod set and a hash of the plaintext save
+body, so a save can always be traced to the mods that made it. Turning all
+mods off returns to the unmodded profile unchanged.
+
+## Asset mods
+
+Files under `game/` replace the game's files with the same path
+(case-insensitive) while the mod is enabled; an earlier mod in the load order
+wins over a later one. Replacement is whole files: the title reads its
+archives (`media/*.zip`) through C streams, so an asset mod ships a complete
+archive. Nothing from the game disc may be distributed; a mod's install
+instructions should build its files from the player's own copy, as
+`tools/install-sample-mod.py english_strings` does. Each replaced file the
+title opens is logged as `mod.file.override`.
+
+## Native mods
+
+A native mod is a DLL built against the C header
+[`include/pinyon_mod.h`](../include/pinyon_mod.h). It exports two functions:
+
+```c
+PINYON_MOD_EXPORT uint32_t rex_mod_abi_version(void) { return PINYON_MOD_ABI_VERSION; }
+PINYON_MOD_EXPORT int rex_mod_create(const PinyonModApi* api, PinyonMod* mod);
+```
+
+`rex_mod_create` keeps the `PinyonModApi` pointer, registers what it needs
+and fills `PinyonMod` with its lifecycle callbacks: `on_create_dialogs`
+(presentation is ready: add binds), `on_module_launched` (the title is about
+to start) and `on_shutdown`. Mods are loaded before the title starts and are
+never unloaded. The ABI only grows: members are appended to `PinyonModApi`,
+whose `size` tells a mod which exist.
+
+### Hook points
+
+| Id | When | Event fields |
+| --- | --- | --- |
+| `PINYON_HOOK_FRAME_TICK` | once per title frame, main thread | none |
+| `PINYON_HOOK_VEHICLE_POSE` | the player's vehicle pose is final | `floats[0..2]` position, `args[0]` its guest address |
+| `PINYON_HOOK_SAVE_BEFORE_ENCRYPT` | the save body is about to be encrypted | `args[0]` body address, `args[1]` size |
+| `PINYON_HOOK_FILE_OPEN` | the title opened a file | `text` lower-case guest path |
+| `PINYON_HOOK_PAUSE_BUTTON_CONSTRUCTED` | the pause menu built a button | `args[0]` button address |
+
+Callbacks run on the guest thread that reached the hook, synchronously: keep
+them short. `subscribe` returns a handle for `unsubscribe`.
+
+### Guest memory, symbols and calls
+
+Guest memory is big-endian, as the title sees it; `read_guest` and
+`write_guest` copy bytes. Writing memory the GPU reads (textures, vertex
+buffers) is not supported: the renderer would not see the change.
+
+Mods never hard-code addresses. `find_symbol("frame.tick")` and
+`find_offset("vehicle.slot.position")` look names up in the symbol table for
+the supported executable: [`config/mod/fh1-symbols.toml`](../config/mod/fh1-symbols.toml),
+plus every hook site as `hook.<name>`. Unknown names return 0 or -1. The
+table is generated into the host by `tools/generate-fh1-symbols.py`, and a
+test fails when it and the hook declarations disagree.
+
+Guest functions are called only from a guest task: `enqueue_guest_task`
+runs a callback on the title's main thread at the next frame tick, where
+`call_guest(address, args, count)` calls a function with up to six integer
+arguments and returns `r3`. Recompiled code calls other functions directly,
+so a mod cannot replace a guest function; it can only observe hook points and
+call functions.
+
+### Settings, binds, dialogs and logging
+
+- `register_cvar(name, default, description)` adds a text setting under
+  "Mods", saved in `pinyon_shift.toml`; prefix the name with the mod's.
+  `get_cvar` and `set_cvar` read and change any setting by name.
+- `register_bind(name, "F9", description, callback, user)` adds a key bind the
+  player can rebind; the callback runs on the UI thread.
+- `show_dialog(title, text, buttons, count, callback, user)` shows a host
+  message box over the title; the chosen index (or `UINT32_MAX` for cancel)
+  arrives on the UI thread.
+- `log(level, text)` writes the runtime log; `log_event(event, keys, values,
+  count)` writes a `mod.<event>` diagnostics event.
+
+## Samples
+
+| Sample | Shows |
+| --- | --- |
+| [`hello_telemetry`](../mods_src/samples/hello_telemetry/hello_telemetry.c) | a setting, an F9 bind, `frame.tick` and vehicle-pose hooks, a guest call through the task queue (`kernel.get_av_pack`), a host dialog and shutdown |
+| [`english_strings`](../mods_src/samples/english_strings/mod.toml) | an asset-only mod replacing `media/StringTables/EN.zip` |
+
+Build and install them into a private state copy (never the AppData save):
+
+```text
+cmake --build out/build/win-amd64-release --target pinyon_shift_mod_hello_telemetry
+python tools/install-sample-mod.py <state> hello_telemetry
+python tools/install-sample-mod.py <state> english_strings
+```
+
+`config/render-tests/fh1-mods.fh1test` runs both in a scripted route.

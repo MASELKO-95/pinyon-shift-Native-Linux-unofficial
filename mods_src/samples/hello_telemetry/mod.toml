@@ -1,0 +1,11 @@
+# Installed as <state>/mods/hello_telemetry/mod.toml, with the built library
+# in code/hello_telemetry.dll. Enable it with enabled_mods = "hello_telemetry".
+name = "hello_telemetry"
+version = "1.0.0"
+abi = 1
+# The supported default.xex (config/supported-dumps.json); a prefix is enough.
+game_version = "DB40DF605ADE49A6"
+library = "code/hello_telemetry.dll"
+requires = []
+load_after = []
+conflicts = []

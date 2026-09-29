@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <functional>
 #include <memory>
 
@@ -21,6 +22,8 @@ struct SettingsServices {
   std::function<std::unique_ptr<hostui::MenuScreen>()> achievements;
   // Lists and restores save backups under PROFILE; no rows without it.
   SaveBackups* save_backups = nullptr;
+  // <state>/mods: the MODS page lists its folders; no page when empty.
+  std::filesystem::path mods_root;
 };
 
 std::unique_ptr<hostui::MenuScreen> CreateSettingsMenu(hostui::HostUi& host_ui,

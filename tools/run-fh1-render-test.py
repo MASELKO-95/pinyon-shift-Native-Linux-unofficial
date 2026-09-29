@@ -34,7 +34,8 @@ DEFAULT_IMAGE_LIMITS = (12.0, 30.0, 0.60)
 
 def prepare_isolated_state(source: Path, destination: Path) -> None:
     destination.mkdir(parents=True)
-    for name in ("user", "config"):
+    # mods/ and user-modded/ carry a seed's installed mods and modded profile.
+    for name in ("user", "config", "mods", "user-modded"):
         source_directory = source / name
         if source_directory.is_dir():
             shutil.copytree(source_directory, destination / name)

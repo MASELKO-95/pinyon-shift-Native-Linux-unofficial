@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <initializer_list>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -27,5 +28,7 @@ std::optional<std::filesystem::path> EnvironmentPath(const char* name);
 // ReXGlue logger. Values are JSON-escaped and intentionally represented as
 // strings so callers never inject untrusted JSON fragments.
 void RecordEvent(std::string_view event, std::initializer_list<Field> fields = {});
+// The same with fields known only at run time.
+void RecordEvent(std::string_view event, std::span<const Field> fields);
 
 }  // namespace pinyon_shift::diagnostics
