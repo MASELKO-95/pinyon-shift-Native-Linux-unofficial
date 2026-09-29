@@ -6,7 +6,7 @@ param(
     [int]$Anisotropy = 4,
     [ValidateSet('none', 'fxaa', 'fxaa_extreme')]
     [string]$PostEffect = 'none',
-    [ValidateSet(1, 2, 3)]
+    [ValidateSet(1, 2, 3, 4)]
     [int]$ResolutionScale = 1,
     [ValidateSet('custom', 'shipping_1x', 'experimental_2x', 'experimental_3x')]
     [string]$Preset = 'custom',

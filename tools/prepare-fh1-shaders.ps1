@@ -21,12 +21,26 @@ $cache = Join-Path $StateRoot 'cache'
 try { $lock = [IO.File]::Open((Join-Path $cache 'fh1-preparation.lock'), 'OpenOrCreate', 'ReadWrite', 'None') }
 catch { throw 'Another launcher is preparing graphics for this installation. Wait for it to finish.' }
 
+# Replaces or creates $Path with $Temporary. A 500 MB pack just written is
+# often still open in a real-time antivirus scan, so retry briefly.
+function Move-IntoPlace($Temporary, $Path) {
+    for ($attempt = 1; ; $attempt++) {
+        try {
+            if (Test-Path -LiteralPath $Path) { [IO.File]::Replace($Temporary, $Path, [NullString]::Value) }
+            else { [IO.File]::Move($Temporary, $Path) }
+            return
+        } catch [IO.IOException] {
+            if ($attempt -ge 10) { throw }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+}
+
 function Write-AtomicJson($Path, $Value) {
     [void][IO.Directory]::CreateDirectory((Split-Path $Path -Parent))
     $temporary = "$Path.$([Guid]::NewGuid().ToString('N')).tmp"
     [IO.File]::WriteAllText($temporary, ($Value | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
-    if (Test-Path -LiteralPath $Path) { [IO.File]::Replace($temporary, $Path, [NullString]::Value) }
-    else { [IO.File]::Move($temporary, $Path) }
+    Move-IntoPlace $temporary $Path
 }
 
 function Read-Receipt($Path) {
@@ -69,8 +83,8 @@ try {
         }
     }
     $scale = [int]$settings.draw_resolution_scale_x
-    if ($scale -lt 1 -or $scale -gt 3 -or [int]$settings.draw_resolution_scale_y -ne $scale) {
-        throw 'Choose a matching 1x, 2x or 3x graphics resolution before preparing shaders.'
+    if ($scale -lt 1 -or $scale -gt 4 -or [int]$settings.draw_resolution_scale_y -ne $scale) {
+        throw 'Choose a matching 1x, 2x, 3x or 4x graphics resolution before preparing shaders.'
     }
     $inputs = [ordered]@{ scale = $scale; settings = $settings; gpu = @(
         Get-CimInstance Win32_VideoController | Sort-Object PNPDeviceID |
@@ -181,8 +195,7 @@ try {
         $temporary = "$destination.$([Guid]::NewGuid().ToString('N')).tmp"
         [IO.File]::Copy($source, $temporary)
         if ((Get-FileHash -LiteralPath $temporary).Hash -ne $file.sha256) { throw 'Prepared graphics failed the integrity check.' }
-        if (Test-Path -LiteralPath $destination) { [IO.File]::Replace($temporary, $destination, [NullString]::Value) }
-        else { [IO.File]::Move($temporary, $destination) }
+        Move-IntoPlace $temporary $destination
     }
     if (-not (Test-ArtifactSet $ready $cache $key)) { throw 'Graphics activation failed validation.' }
     Write-AtomicJson $activePath $ready

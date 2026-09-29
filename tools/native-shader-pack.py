@@ -574,7 +574,7 @@ def main(argv: list[str] | None = None) -> int:
     stage_parser = subparsers.add_parser("stage", help="stage an FH1 pack for runtime use")
     stage_parser.add_argument("pack", type=pathlib.Path)
     stage_parser.add_argument("--state-root", required=True, type=pathlib.Path)
-    stage_parser.add_argument("--scale", type=int, choices=range(1, 4))
+    stage_parser.add_argument("--scale", type=int, choices=range(1, 5))
     stage_parser.set_defaults(handler=_stage)
     arguments = parser.parse_args(argv)
     try:

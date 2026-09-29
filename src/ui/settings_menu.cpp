@@ -254,7 +254,7 @@ std::unique_ptr<MenuScreen> SettingsPages::Display() {
 std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
   std::vector<MenuRow> rows;
   std::vector<Choice> scales;
-  for (int scale = 1; scale <= 3; ++scale) {
+  for (int scale = 1; scale <= 4; ++scale) {
     const std::string value = std::to_string(scale);
     scales.push_back({value + "X",
                       {{"draw_resolution_scale_x", value}, {"draw_resolution_scale_y", value}}});

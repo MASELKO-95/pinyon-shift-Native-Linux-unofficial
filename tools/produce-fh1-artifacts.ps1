@@ -11,7 +11,7 @@ param(
     [string]$ShaderMissDir,
     [switch]$Hidden,
     [switch]$AllowPipelineDiscovery,
-    [ValidateRange(1, 3)] [int]$Scale = 1,
+    [ValidateRange(1, 4)] [int]$Scale = 1,
     [switch]$IncludeOpeningMovies,
     [switch]$JsonEvents
 )

@@ -230,6 +230,7 @@
                             <ComboBoxItem Tag="1"><TextBlock Text="Native · 1×" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
                             <ComboBoxItem Tag="2"><TextBlock Text="Experimental · 2× (1440p class)" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
                             <ComboBoxItem Tag="3"><TextBlock Text="Experimental · 3× (4K class)" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
+                            <ComboBoxItem Tag="4"><TextBlock Text="Experimental · 4× (5K class)" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
                         </ComboBox>
                     </StackPanel>
                     <DockPanel Grid.Row="3">
