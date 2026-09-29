@@ -54,6 +54,10 @@ REXCVAR_DEFINE_STRING(enabled_mods, "", "Mods",
                       "Mods to load from <state>/mods, in order, separated by commas. With any "
                       "enabled the title plays a separate profile (<state>/user-modded)")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+REXCVAR_DEFINE_BOOL(pinyon_shift_hor_plus, false, "Display",
+                    "Ultrawide: widen the horizontal field of view to the window's aspect "
+                    "(Hor+), shown stretched from the 16:9 image; the HUD stretches with it")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
 REXCVAR_DEFINE_BOOL(pinyon_shift_save_backups, true, "Pinyon Shift",
                     "Copy the save files to <state>/backups/saves after the title writes them "
                     "(restore from SETTINGS > PROFILE > SAVE BACKUPS)")
@@ -607,7 +611,33 @@ void PinyonShiftApp::OpenSettingsMenu() {
   host_ui_->Open(pinyon_shift::ui::CreateSettingsMenu(*host_ui_, *host_config_, services));
 }
 
+void PinyonShiftApp::UpdateHorPlus() {
+  float scale = 1.0f;
+  if (REXCVAR_GET(pinyon_shift_hor_plus) && window()) {
+    const uint32_t width = window()->GetActualPhysicalWidth();
+    const uint32_t height = window()->GetActualPhysicalHeight();
+    if (width && height) {
+      scale = std::max(1.0f, (float(width) / float(height)) / (16.0f / 9.0f));
+    }
+  }
+  PinyonShiftSetViewportAspectScale(scale);
+  pinyon_shift::diagnostics::RecordEvent("display.hor_plus",
+                                         {{"scale", fmt::format("{:.4f}", scale)}});
+}
+
 void PinyonShiftApp::OnPostSetup() {
+  if (window() && !resize_listener_added_) {
+    window()->AddListener(&resize_listener_);
+    resize_listener_added_ = true;
+  }
+  rex::cvar::RegisterChangeCallback("pinyon_shift_hor_plus",
+                                    [this](std::string_view, std::string_view) {
+                                      if (window()) {
+                                        window()->app_context().CallInUIThreadDeferred(
+                                            [this] { UpdateHorPlus(); });
+                                      }
+                                    });
+  UpdateHorPlus();
   rex::ui::RegisterBind("bind_game_menu", "F6", "Open the in-game settings menu",
                         [this] { ToggleGameMenu(); });
   pinyon_shift::cheats::InstallChangeLog();
@@ -815,6 +845,11 @@ bool PinyonShiftApp::OnWindowCloseRequested() {
 void PinyonShiftApp::OnShutdown() {
   pinyon_shift::mod::NotifyShutdown();
   rex::ui::UnregisterBind("bind_game_menu");
+  rex::cvar::UnregisterChangeCallbacks("pinyon_shift_hor_plus");
+  if (resize_listener_added_ && window()) {
+    window()->RemoveListener(&resize_listener_);
+    resize_listener_added_ = false;
+  }
   rex::ui::UnregisterBind("bind_fullscreen");
   rex::ui::UnregisterBind("bind_photo");
   rex::ui::UnregisterBind("bind_trainer");

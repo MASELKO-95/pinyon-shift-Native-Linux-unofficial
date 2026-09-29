@@ -606,6 +606,16 @@ address = 0x82C041A4
 name = "PinyonShiftAcceptModdedFileSize"
 registers = ["r1", "r6", "r31"]
 
+# NP-4.4 Hor+: sub_823E22C8 returns a viewport's width / height (f1; the
+# viewport is r3, width and height at +8 and +12) to the camera, its culling
+# frustum and projection. For the 1280x720 main view a wider window's aspect
+# is returned instead, so the title renders (and culls) a wider horizontal
+# field of view into the same 16:9 buffer, which the presenter stretches.
+[[midasm_hook]]
+address = 0x823E22F4
+name = "PinyonShiftViewportAspect"
+registers = ["r3", "f1"]
+
 # sub_828E2898 is about to read the non-durable per-profile career eligibility
 # byte through sub_8252AA48. Repair the actual byte for a valid durable
 # checkpoint so later progression gates observe the restored eligibility too.

@@ -4358,6 +4358,24 @@ void PinyonShiftAcceptModdedLastBlock(PPCRegister& r3, PPCRegister& r24) {
   PinyonShiftAcceptModdedBlock(r3, r24);
 }
 
+namespace {
+std::atomic<float> g_viewport_aspect_scale{1.0f};
+}  // namespace
+
+void PinyonShiftSetViewportAspectScale(float scale) {
+  g_viewport_aspect_scale.store(scale, std::memory_order_relaxed);
+}
+
+void PinyonShiftViewportAspect(PPCRegister& r3, PPCRegister& f1) {
+  const float scale = g_viewport_aspect_scale.load(std::memory_order_relaxed);
+  // Only the title's main view: render-to-texture views (car thumbnails,
+  // reflections) keep their own aspect.
+  if (scale == 1.0f || LoadGuestU32(r3.u32 + 8u) != 1280u || LoadGuestU32(r3.u32 + 12u) != 720u) {
+    return;
+  }
+  f1.f64 = double(float(f1.f64) * scale);
+}
+
 void PinyonShiftAcceptModdedFileSize(PPCRegister& r1, PPCRegister& r6, PPCRegister& r31) {
   if (r6.u64 == r31.u64 || r6.u64 > 0xFFFFFFFFull) {
     return;

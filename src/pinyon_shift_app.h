@@ -7,6 +7,7 @@
 #include <rex/kernel/xam/ui_provider.h>
 #include <rex/ui/overlay/achievement_icon_cache.h>
 #include <rex/rex_app.h>
+#include <rex/ui/window_listener.h>
 
 namespace pinyon_shift::config {
 class HostConfig;
@@ -59,6 +60,20 @@ class PinyonShiftApp final : public rex::ReXApp {
   // Creates the host UI and installs its XAM dialogs once presentation is
   // ready; UI thread.
   bool EnsureHostUi();
+  // NP-4.4 Hor+: the title's aspect for the window's (pinyon_shift_hor_plus).
+  void UpdateHorPlus();
+
+  // Recomputes Hor+ when the window changes size.
+  class ResizeListener final : public rex::ui::WindowListener {
+   public:
+    explicit ResizeListener(PinyonShiftApp& app) : app_(app) {}
+    void OnResize(rex::ui::UISetupEvent&) override { app_.UpdateHorPlus(); }
+
+   private:
+    PinyonShiftApp& app_;
+  };
+  ResizeListener resize_listener_{*this};
+  bool resize_listener_added_ = false;
 
   std::atomic_bool shutdown_recorded_{false};
   // Created on first use: the presenter and input system it needs exist only

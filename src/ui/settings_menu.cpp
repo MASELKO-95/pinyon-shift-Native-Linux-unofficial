@@ -238,6 +238,14 @@ std::unique_ptr<MenuScreen> SettingsPages::Display() {
                           {"STRETCH", {{"present_letterbox", "false"},
                                        {"present_allow_overscan_cutoff", "false"}}}},
                          true));
+  // Hor+ (NP-4.4): the title renders the window's wider aspect into its 16:9
+  // image, stretched to fill the window; the HUD stretches with it.
+  rows.push_back(Setting("ULTRAWIDE",
+                         {{"OFF", {{"pinyon_shift_hor_plus", "false"}}},
+                          {"WIDER VIEW", {{"pinyon_shift_hor_plus", "true"},
+                                          {"present_letterbox", "false"},
+                                          {"present_allow_overscan_cutoff", "false"}}}},
+                         true));
   rows.push_back(Toggle("VSYNC", "vsync"));
   rows.push_back(Setting("FRAME RATE LIMIT",
                          {{"OFF", {{"host_present_fps_limit", "0"}}},
