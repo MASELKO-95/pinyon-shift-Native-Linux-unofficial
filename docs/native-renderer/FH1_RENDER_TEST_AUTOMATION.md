@@ -192,7 +192,7 @@ except the resolve read-back, which is on by default.
 | `--fh1_native_dump_frames=N,M --fh1_native_dump_dir=<dir>` | Writes the presented front buffer of the listed swaps as PPM |
 | `--fh1_resolve_dump_dir=<dir>` | Writes every resolve's output bytes (the scaled range when scaling) to numbered files, waiting for the GPU after each |
 | `--fh1_frame_census=true --fh1_frame_census_path=<file.jsonl>` | Metadata-only census of surfaces, resolves, textures and primitives per 60-frame window; see the [frame contract](NATIVE_FRAME_CONTRACT.md) |
-| `--fh1_native_gpu_profile=true` | GPU time per phase in the periodic stats: executor transfers, resolves and clears, plus texture cache loads split into `texture_reloads` (data a resolve invalidated) and `texture_loads` (everything else) |
+| `--fh1_native_gpu_profile=true` | GPU time per phase in the periodic stats: executor transfers, resolves and clears, plus texture cache loads split into `texture_reloads` (data a resolve invalidated) and `texture_loads` (everything else); also the executor's CPU time per phase (target preparation and binding, transfers, resolves) |
 | `--fh1_native_readback_new_resolves=false` | Stops copying one-off resolves (such as saved car thumbnails) back to guest memory |
 | `--perf_critical_path_trace=true` | Correlated title/PM4/submission/present trace |
 

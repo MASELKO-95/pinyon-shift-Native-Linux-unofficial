@@ -137,6 +137,43 @@ Each change was measured on `fh1-race-sync` (seed `appdata-2026-09-27`,
 The two sets were taken in different sessions, so their product (about
 -20 % from 24.8 to 19.9 ms) is indicative, not an A/B.
 
+### At the 60 fps cap (NP-9.3)
+
+By 2026-09-29 the race window runs at the title's 60 fps cap: five runs of
+`fh1-race-sync` (same seed and pack, `RelWithDebInfo`, `--hidden`, last 630
+frames less the final 30) give 16.7 ms median and 16.9-18.0 ms mean frames,
+p95 about 20 ms. The GPU is not the limit: `nvidia-smi` reports 35-47 %
+utilization on the RTX 4080 through the race. The GPU commands thread's
+frame, from the per-frame wait counters (means over the window):
+
+| Share of a 17.0 ms frame | ms |
+| --- | ---: |
+| Ring buffer empty, waiting for the title (`gpu_thread_idle_ns`) | 0.09-0.12 |
+| `WAIT_REG_MEM` polls (`gpu_thread_reg_mem_wait_ns`) | 1.5-1.8 |
+| GPU fences and the submission worker (`gpu_thread_fence_wait_ns`) | 0.46-0.54 |
+| Working | about 14.6 |
+| Submission worker busy (`gpu_submission_busy_ns`, another thread) | 3.0-3.4 |
+
+The thread is busy about 86 % of a capped frame, so it is what makes the
+frames that miss the cap, and the title rarely starves it. The thread
+sampler (`--lines 1`, 4,502 samples over 14 s of the race, 14.6 % of them
+waiting) attributes its wall time, inclusive:
+
+| Work | Share | Largest parts |
+| --- | ---: | --- |
+| Draws (`ExecutePacketType3Draw`) | 47.5 % | `UpdateBindings` 10.4 % (float constant gather 3.3 %), `RequestTextures` 8.1 %, `SharedMemory::RequestRanges` 7.0 %, `PrimitiveProcessor::Process` 5.4 %, executor target preparation and binding 5.4 %, `LoadShader` 3.7 %, `ConfigurePipeline` 3.2 % |
+| Type-0 register writes | 16.7 % | `WriteRegistersFromMem` 5.3 %, `copy_and_swap_32_unaligned` 2.3 % |
+| `WAIT_REG_MEM` | 10.7 % | a `Sleep` of at least 1 ms whenever the polled value is not yet there |
+| Swap | 8.7 % | guest output refresh 4.3 %, submission wait 2.4 % |
+| Resolves (`IssueCopy`) | 2.7 % | |
+
+PM4 dispatch itself (`ExecutePacket`, `ExecutePacketType3`, indirect
+buffers, ring reads) is another 9.6 % exclusive. The executor's CPU phase
+timers, two clock reads per timed call and two timed calls per draw, now run
+only with `--fh1_native_gpu_profile=true`; the change is within run-to-run
+noise on the capped race window (median 17.03 ms of five runs, against 17.19
+and 17.25 ms before).
+
 ## Resolution scale
 
 `fh1-race-sync` at 2x and 3x, each renderer with a pack produced at that
