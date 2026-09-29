@@ -113,6 +113,11 @@ so ship a full chain: for a 2x replacement of a 512x512 dump with 10 levels,
 1024x1024 with 11 levels. The game samples it like the original, only
 sharper.
 
+While the game runs, SETTINGS > MODS > RELOAD TEXTURES reads the texture
+folders again and reloads every texture (`texture_replacement_reload`), so
+edited, added or removed replacements show without a restart; the game
+hitches once while its caches refill.
+
 ## Database patches
 
 The game's data (cars, prices, events) is the SQLite database

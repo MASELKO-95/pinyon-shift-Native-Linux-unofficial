@@ -416,9 +416,28 @@ std::unique_ptr<MenuScreen> SettingsPages::Mods() {
     };
     rows.push_back(std::move(row));
   }
+  // Texture replacements (NP-10.3) reload in place, for editing them while
+  // the game runs.
+  const bool texture_reload = !rex::cvar::GetFlagByName("texture_replacement_dirs").empty();
+  if (texture_reload) {
+    MenuRow row;
+    row.label = "RELOAD TEXTURES";
+    row.activate = [] {
+      const std::string current = rex::cvar::GetFlagByName("texture_replacement_reload");
+      const int next = (current.empty() ? 0 : std::atoi(current.c_str())) + 1;
+      rex::cvar::SetFlagByName("texture_replacement_reload", std::to_string(next));
+      diagnostics::RecordEvent("mods.textures_reloaded", {{"generation", std::to_string(next)}});
+    };
+    rows.push_back(std::move(row));
+  }
   auto self = std::make_shared<const MenuScreen*>(nullptr);
-  auto screen = std::make_unique<MenuScreen>("MODS", std::move(rows), [self, names] {
-    if (names.empty()) return std::string("PUT MODS IN THE MODS FOLDER OF THE GAME'S STATE");
+  auto screen = std::make_unique<MenuScreen>("MODS", std::move(rows), [self, names,
+                                                                      texture_reload] {
+    if (size_t((*self)->focus()) >= names.size()) {
+      return std::string(texture_reload
+                             ? "READS THE MODS' TEXTURES FOLDERS AGAIN AND RELOADS EVERY TEXTURE"
+                             : "PUT MODS IN THE MODS FOLDER OF THE GAME'S STATE");
+    }
     const std::string& name = names[(*self)->focus()];
     for (const auto& info : pinyon_shift::mod::Mods()) {
       if (info.name == name) {
