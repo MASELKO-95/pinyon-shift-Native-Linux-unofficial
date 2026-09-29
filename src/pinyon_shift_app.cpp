@@ -33,6 +33,7 @@
 #include "config/host_config.h"
 #include "ui/host_style.h"
 #include "ui/hostui/host_ui.h"
+#include "ui/photo_export.h"
 #include "ui/settings_menu.h"
 
 #include <cstdio>
@@ -526,6 +527,11 @@ void PinyonShiftApp::OpenSettingsMenu() {
 void PinyonShiftApp::OnPostSetup() {
   rex::ui::RegisterBind("bind_game_menu", "F6", "Open the in-game settings menu",
                         [this] { ToggleGameMenu(); });
+  rex::ui::RegisterBind("bind_photo", "F8", "Save the current frame as a PNG photo", [this] {
+    pinyon_shift::ui::SavePhoto(runtime() && runtime()->graphics_system()
+                                    ? runtime()->graphics_system()->presenter()
+                                    : nullptr);
+  });
   rex::ui::RegisterBind("bind_fullscreen", "F11", "Toggle fullscreen", [this] {
     const bool fullscreen = !REXCVAR_GET(fullscreen);
     rex::cvar::SetFlagByName("fullscreen", fullscreen ? "true" : "false");
@@ -617,6 +623,8 @@ bool PinyonShiftApp::OnWindowCloseRequested() {
 void PinyonShiftApp::OnShutdown() {
   rex::ui::UnregisterBind("bind_game_menu");
   rex::ui::UnregisterBind("bind_fullscreen");
+  rex::ui::UnregisterBind("bind_photo");
+  pinyon_shift::ui::WaitForPhoto();
   PinyonShiftSetPauseSettingsHandler(nullptr);
   rex::cvar::UnregisterChangeCallbacks("d3d12_allow_variable_refresh_rate_and_tearing");
   // Before the presenter, drawer and kernel it uses are torn down.

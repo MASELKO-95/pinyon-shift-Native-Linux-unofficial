@@ -108,8 +108,9 @@ uses it to capture the race only after the car moves.
 `hostkey <frame> <key>` presses and releases a key on the game window at
 `<frame>`, through the same window listeners as a real key press, so a route
 can drive host-drawn screens that the scripted controller cannot reach (the
-F6 settings screen). Keys are `f6`, `enter`, `escape`, `up`, `down`, `left`,
-`right` and `space`; each press records `fh1.render_test.hostkey`.
+F6 settings screen, the F8 photo). Keys are `f6`, `f8`, `enter`, `escape`,
+`up`, `down`, `left`, `right` and `space`; each press records
+`fh1.render_test.hostkey`.
 `hostclick <frame> <left|right> <x> <y>` moves the pointer and clicks at
 `(x, y)` in the title's 1280x720 layout space, mapped onto the painted guest
 output, which is the space the host UI lays its rows out in. The host UI

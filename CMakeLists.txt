@@ -32,6 +32,8 @@ if(WIN32)
         src/ui/hostui/vector_font.cpp
         src/ui/hostui/xds_texture.cpp
         src/ui/settings_menu.cpp
+        src/ui/photo_export.cpp
+        src/ui/png_writer.cpp
         src/config/host_config.cpp
         src/native_renderer/graphics_hooks.cpp
         src/native_renderer/guest_output_renderer.cpp
@@ -53,6 +55,8 @@ else()
         src/ui/hostui/vector_font.cpp
         src/ui/hostui/xds_texture.cpp
         src/ui/settings_menu.cpp
+        src/ui/photo_export.cpp
+        src/ui/png_writer.cpp
         src/config/host_config.cpp
         src/native_renderer/graphics_hooks.cpp
         src/native_renderer/guest_output_renderer.cpp

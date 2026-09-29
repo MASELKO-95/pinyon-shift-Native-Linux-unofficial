@@ -79,7 +79,8 @@ struct HostKeyStep {
 rex::ui::VirtualKey ParseHostKey(const std::string& name) {
   using rex::ui::VirtualKey;
   static const std::pair<const char*, VirtualKey> kNames[] = {
-      {"f6", VirtualKey::kF6},       {"enter", VirtualKey::kReturn},
+      {"f6", VirtualKey::kF6},       {"f8", VirtualKey::kF8},
+      {"enter", VirtualKey::kReturn},
       {"escape", VirtualKey::kEscape}, {"up", VirtualKey::kUp},
       {"down", VirtualKey::kDown},   {"left", VirtualKey::kLeft},
       {"right", VirtualKey::kRight}, {"space", VirtualKey::kSpace},
