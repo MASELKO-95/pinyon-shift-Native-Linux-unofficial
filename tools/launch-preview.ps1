@@ -85,6 +85,14 @@ if (-not ($RenderTestScript -or $ShaderCaptureDir -or $DiscShaderCorpusDir -or $
     $stagedNativePipelineCache = Join-Path $resolvedStateRoot 'cache'
 }
 
+# Mods' database patches (NP-10.2) are applied to a copy of the player's own
+# gamedb.slt before each start, so they follow the enabled mods.
+if (Test-Path -LiteralPath (Join-Path $resolvedStateRoot 'mods') -PathType Container) {
+    & (Get-PinyonPython) (Join-Path $PSScriptRoot 'build-mod-patches.py') $resolvedStateRoot `
+        --game-root $resolvedGameRoot | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not build the mods'' database patches.' }
+}
+
 $savedStateRoot = $env:PINYON_SHIFT_STATE_ROOT
 $savedGameRoot = $env:PINYON_SHIFT_GAME_ROOT
 $savedTearing = $env:REX_D3D12_ALLOW_VARIABLE_REFRESH_RATE_AND_TEARING
