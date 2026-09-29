@@ -12,13 +12,13 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 SDK = "thirdparty/shiftglue-sdk"
 GRAPHICS_SOURCES = (
     *(f"{SDK}/include/rex/graphics/{name}.h" for name in (
-        "d3d12/fh1_shader_pack", "d3d12/host_render_config", "d3d12/pipeline_cache",
+        "fh1_shader_pack", "d3d12/host_render_config", "d3d12/pipeline_cache",
         "d3d12/primitive_processor", "d3d12/shader", "flags", "format/ucode",
         "primitive_processor", "registers", "util/draw", "xenos", "pipeline_util",
         "pipeline/render_target/psi_color_format", "pipeline/shader/dxbc_translator")),
     f"{SDK}/include/rex/graphics/register_table.inc",
     *(f"{SDK}/src/graphics/{name}.cpp" for name in (
-        "d3d12/fh1_shader_pack", "d3d12/host_render_config", "d3d12/pipeline_cache",
+        "fh1_shader_pack", "d3d12/host_render_config", "d3d12/pipeline_cache",
         "d3d12/primitive_processor", "d3d12/shader", "flags", "format/ucode",
         "primitive_processor", "registers", "util/draw", "xenos",
         "pipeline/shader/dxbc_translator", "pipeline/shader/spirv_translator")),
@@ -159,7 +159,7 @@ class ShaderPreparationKeyInputTests(unittest.TestCase):
         section = script[start:end]
         names = re.findall(r"'((?:config|tools|src)/[^'$]+)'", section)
         names += [f"{SDK}/{name}" for name in re.findall(r'"\$sdk/([^"$]+)"', section)]
-        sdk_block = section[section.index("'d3d12/fh1_shader_pack'"):
+        sdk_block = section[section.index("'fh1_shader_pack'"):
                             section.index("$graphicsSources.AddRange")]
         for name in re.findall(r"'([a-z0-9_/]+)'", sdk_block):
             names += [f"{SDK}/include/rex/graphics/{name}.h", f"{SDK}/src/graphics/{name}.cpp"]

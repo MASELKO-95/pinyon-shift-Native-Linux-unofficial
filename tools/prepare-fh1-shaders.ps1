@@ -115,7 +115,7 @@ try {
         }
     }
     foreach ($relative in @(
-        'd3d12/fh1_shader_pack', 'd3d12/host_render_config', 'd3d12/pipeline_cache', 'd3d12/primitive_processor',
+        'fh1_shader_pack', 'd3d12/host_render_config', 'd3d12/pipeline_cache', 'd3d12/primitive_processor',
         'd3d12/shader', 'flags', 'format/ucode', 'primitive_processor', 'registers', 'util/draw', 'xenos'
     )) {
         $graphicsSources.Add("$sdk/include/rex/graphics/$relative.h")
