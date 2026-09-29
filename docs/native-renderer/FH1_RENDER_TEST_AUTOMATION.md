@@ -110,6 +110,14 @@ uses it to capture the race only after the car moves.
 can drive host-drawn screens that the scripted controller cannot reach (the
 F6 settings screen). Keys are `f6`, `enter`, `escape`, `up`, `down`, `left`,
 `right` and `space`; each press records `fh1.render_test.hostkey`.
+`hostclick <frame> <left|right> <x> <y>` moves the pointer and clicks at
+`(x, y)` in the title's 1280x720 layout space, mapped onto the painted guest
+output, which is the space the host UI lays its rows out in. The host UI
+records `hostui.open`, `hostui.screen`, `hostui.closed` (drawer, input
+listener and guest input capture released) and, once per screen and output
+size, `hostui.layout` with its drawn extent against the 90 % safe area;
+`tools/check-fh1-settings-gate.py` checks the `fh1-settings-gate` route with
+them.
 
 There is no renderer to choose: `fh1_renderer` was removed with the Xenos
 and `native-shadow` renderers (`a5b28e1`, `bccf126`). Every

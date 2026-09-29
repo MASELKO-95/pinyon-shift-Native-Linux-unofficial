@@ -127,8 +127,8 @@ code every later slice touches, and NP-1 is both the largest remaining
 
 NP-0.7 moved to NP-9.4, which bumps the pack format anyway.
 
-Status on 2026-09-28: NP-0.1 to NP-0.5 and NP-0.8 are done, and NP-1.1 to
-NP-1 is done except its gate runs. NP-0.6's repair of cards saved by older
+Status on 2026-09-29: NP-0.1 to NP-0.5 and NP-0.8 are done, and NP-1 is
+done, gate runs included. NP-0.6's repair of cards saved by older
 builds waits on a product decision, because it would change player save files.
 NP-2.1, NP-2.2 and NP-2.8 are done; NP-2.3 to NP-2.5 were measured and not
 built (NP-2.4 waits for AMD or Intel hardware). NP-3.6 and NP-3.2 are done;
@@ -196,6 +196,22 @@ launcher; `fh1-pause.fh1test` passes three consecutive runs with no access
 violation; hot settings apply within one frame and restart-required ones show
 the badge; the only ImGui windows a player can reach are the XAM dialogs
 pending NP-5.2.
+
+**Gate runs 2026-09-29** (`config/render-tests/fh1-settings-gate.fh1test`,
+checked by `tools/check-fh1-settings-gate.py`): three consecutive passes from
+the `appdata-2026-09-27` seed. Each run opens and closes SETTINGS 100 times
+with F6 and Escape, reaches DISPLAY with only the keyboard, only the pad and
+only the mouse (`hostkey` and `hostclick` route steps), and then resumes free
+roam and drives 112 world units, so no drawer, input listener or guest input
+capture leaks: 103 `hostui.open` and 103 `hostui.closed` events, no settings
+file written. Every `hostui.layout` lies inside the 90 % safe area at a 4K
+fullscreen output (canvas scale 3) and a 1600x900 window at 2x internal
+scale (1.25); the layout follows the painted output rectangle, so the
+internal scale cannot move it. The launcher read-back and the badge are
+covered by `test_host_config.py` and NP-1.4 and NP-1.6, `fh1-pause` by
+NP-1.5. Player-reachable ImGui is now the XAM dialogs (NP-5.2) and the F7
+achievements list and toast (NP-5.3); F3, F4 and the console are developer
+overlays.
 
 ## NP-2 Fast frame, pass 1
 

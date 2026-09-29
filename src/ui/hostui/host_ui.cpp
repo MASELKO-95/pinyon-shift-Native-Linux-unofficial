@@ -15,6 +15,7 @@
 #include <rex/ui/window.h>
 #include <rex/ui/windowed_app_context.h>
 
+#include "pinyon_shift_diagnostics.h"
 #include "ui/hostui/fh1_archive.h"
 #include "ui/hostui/xds_texture.h"
 
@@ -158,6 +159,7 @@ bool HostUi::Open(std::unique_ptr<MenuScreen> screen) {
   }
   screens_.clear();
   screens_.push_back(std::move(screen));
+  diagnostics::RecordEvent("hostui.open", {{"screen", screens_.back()->title()}});
   pad_.Reset();
   draining_ = false;
   if (!registered_) {
@@ -173,6 +175,8 @@ bool HostUi::Open(std::unique_ptr<MenuScreen> screen) {
 void HostUi::Push(std::unique_ptr<MenuScreen> screen) {
   if (is_open() && screen) {
     screens_.push_back(std::move(screen));
+    diagnostics::RecordEvent("hostui.screen", {{"screen", screens_.back()->title()},
+                                               {"depth", std::to_string(screens_.size())}});
     RequestPaint();
   }
 }
@@ -205,6 +209,9 @@ void HostUi::FinishClose() {
   presenter_.RemoveUIDrawerFromUIThread(this);
   window_.RemoveInputListener(this);
   SetGuestUiActive(false);
+  // Unregistered: the drawer, the input listener and the guest input
+  // capture are all released.
+  diagnostics::RecordEvent("hostui.closed");
   RequestPaint();
 }
 
@@ -261,6 +268,8 @@ void HostUi::Apply(NavCommand command) {
       Close();
       return;
     }
+    diagnostics::RecordEvent("hostui.screen", {{"screen", screens_.back()->title()},
+                                               {"depth", std::to_string(screens_.size())}});
   }
   RequestPaint();
 }
@@ -427,6 +436,40 @@ void HostUi::DrawGradient(float x, float y, float width, float height, uint32_t 
   }
 }
 
+void HostUi::RecordLayout(const std::string& title, size_t first_batch, size_t first_vertex) {
+  // Once per screen and output size: where the menu drew, against the
+  // title's 90 % safe area, so scripted routes can check the layout.
+  const std::string key = title + "@" + std::to_string(canvas_.x) + "," +
+                          std::to_string(canvas_.y) + "," + std::to_string(canvas_.scale);
+  if (key == layout_key_) {
+    return;
+  }
+  layout_key_ = key;
+  float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
+  for (size_t b = first_batch; b < batches_.size(); ++b) {
+    const auto& vertices = batches_[b].vertices;
+    for (size_t v = b == first_batch ? first_vertex : 0; v < vertices.size(); ++v) {
+      x0 = std::min(x0, vertices[v].x);
+      y0 = std::min(y0, vertices[v].y);
+      x1 = std::max(x1, vertices[v].x);
+      y1 = std::max(y1, vertices[v].y);
+    }
+  }
+  const float safe_x0 = canvas_.x + kSafeLeft * canvas_.scale;
+  const float safe_y0 = canvas_.y + kSafeTop * canvas_.scale;
+  const float safe_x1 = canvas_.x + kSafeRight * canvas_.scale;
+  const float safe_y1 = canvas_.y + kSafeBottom * canvas_.scale;
+  const bool inside = x0 >= safe_x0 && y0 >= safe_y0 && x1 <= safe_x1 && y1 <= safe_y1;
+  const auto f = [](float value) { return std::to_string(int(std::lround(value))); };
+  diagnostics::RecordEvent("hostui.layout",
+                           {{"screen", title},
+                            {"scale", std::to_string(canvas_.scale)},
+                            {"content", f(x0) + "," + f(y0) + "," + f(x1) + "," + f(y1)},
+                            {"safe", f(safe_x0) + "," + f(safe_y0) + "," + f(safe_x1) + "," +
+                                         f(safe_y1)},
+                            {"inside", inside ? "1" : "0"}});
+}
+
 void HostUi::Flush() {
   for (const Batch& batch : batches_) {
     if (batch.indices.empty()) {
@@ -490,6 +533,8 @@ void HostUi::Draw(rex::ui::UIDrawContext& context) {
   } else {
     DrawGradient(0.0f, 0.0f, kTitleWidth, kTitleHeight, kBackdropLeft, kBackdropRight);
   }
+  const size_t content_batch = batches_.size() - 1;
+  const size_t content_vertex = batches_.back().vertices.size();
 
   DrawText(Face::kDisplay, kTitleSize, screen.title(), kRowsLeft - 16.0f, kTitleBaseline, kWhite);
 
@@ -553,6 +598,7 @@ void HostUi::Draw(rex::ui::UIDrawContext& context) {
   help(button_a_.get(), "SELECT");
   help(button_b_.get(), screens_.size() > 1 ? "BACK" : "RESUME");
 
+  RecordLayout(screen.title(), content_batch, content_vertex);
   Flush();
   drawer_.End();
   // Keep painting while open so the pad is polled even when the title is

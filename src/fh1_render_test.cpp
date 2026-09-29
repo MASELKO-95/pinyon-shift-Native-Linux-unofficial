@@ -66,9 +66,14 @@ struct WaitStep {
 // `hostkey <frame> <key>`: presses and releases a key on the game window at
 // <frame>, through the same listeners as a real key, to drive host-drawn
 // screens (F6 settings) that the scripted controller cannot reach.
+// `hostclick <frame> <left|right> <x> <y>` clicks at (x, y) in the title's
+// 1280x720 space, mapped onto the painted guest output.
 struct HostKeyStep {
   uint64_t frame = 0;
   rex::ui::VirtualKey key = rex::ui::VirtualKey::kNone;
+  rex::ui::MouseEvent::Button button = rex::ui::MouseEvent::Button::kNone;
+  uint32_t x = 0;
+  uint32_t y = 0;
 };
 
 rex::ui::VirtualKey ParseHostKey(const std::string& name) {
@@ -302,6 +307,24 @@ void LoadScript(const std::filesystem::path& path) {
       if (!(row >> frame >> name) || row >> extra) Fail("script_hostkey_columns");
       HostKeyStep step{ParseUnsigned(frame, 10, "hostkey_frame"), ParseHostKey(name)};
       if (step.key == rex::ui::VirtualKey::kNone) Fail("script_hostkey_name");
+      if (!g_test.host_keys.empty() && step.frame <= g_test.host_keys.back().frame) {
+        Fail("script_hostkey_order");
+      }
+      g_test.host_keys.push_back(step);
+    } else if (command == "hostclick") {
+      std::string frame, button, x, y, extra;
+      if (!(row >> frame >> button >> x >> y) || row >> extra) Fail("script_hostclick_columns");
+      HostKeyStep step{ParseUnsigned(frame, 10, "hostclick_frame")};
+      if (button == "left") {
+        step.button = rex::ui::MouseEvent::Button::kLeft;
+      } else if (button == "right") {
+        step.button = rex::ui::MouseEvent::Button::kRight;
+      } else {
+        Fail("script_hostclick_button");
+      }
+      step.x = uint32_t(ParseUnsigned(x, 10, "hostclick_x"));
+      step.y = uint32_t(ParseUnsigned(y, 10, "hostclick_y"));
+      if (step.x >= 1280 || step.y >= 720) Fail("script_hostclick_range");
       if (!g_test.host_keys.empty() && step.frame <= g_test.host_keys.back().frame) {
         Fail("script_hostkey_order");
       }
@@ -695,11 +718,23 @@ bool ObserveOutput(
     diagnostics::RecordEvent("fh1.render_test.hostkey",
                              {{"frame", std::to_string(step.frame)},
                               {"key", std::to_string(int(step.key))},
+                              {"button", std::to_string(int(step.button))},
                               {"output_frame", std::to_string(context.frame_sequence)}});
     auto* window = g_test.window;
-    g_test.app_context->CallInUIThread([window, key = step.key] {
-      window->InjectKey(key, true);
-      window->InjectKey(key, false);
+    auto* presenter = g_test.presenter;
+    g_test.app_context->CallInUIThread([window, presenter, step] {
+      if (step.button == rex::ui::MouseEvent::Button::kNone) {
+        window->InjectKey(step.key, true);
+        window->InjectKey(step.key, false);
+        return;
+      }
+      auto rect = presenter->GetPaintedGuestOutputRectFromUIThread();
+      if (!rect) {
+        return;
+      }
+      window->InjectMouseClick(step.button,
+                               int32_t(rect->x) + int32_t(step.x * rect->width / 1280),
+                               int32_t(rect->y) + int32_t(step.y * rect->height / 720));
     });
   }
   std::unique_lock lock(g_test.mutex);

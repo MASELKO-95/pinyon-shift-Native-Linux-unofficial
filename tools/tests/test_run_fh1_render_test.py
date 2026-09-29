@@ -39,7 +39,11 @@ class Fh1RenderTestRunnerTests(unittest.TestCase):
             script = Path(directory) / "route.fh1test"
             script.write_text(header + "hostkey 5 F6\nhostkey 6 down\n" + tail, encoding="utf-8")
             self.assertEqual([(20, "shot")], MODULE.parse_scenario(script)[0])
-            for keys in ("hostkey 5 f6\nhostkey 5 enter\n", "hostkey 5 tab\n", "hostkey 5\n"):
+            script.write_text(header + "hostkey 5 f6\nhostclick 6 left 300 277\n" + tail,
+                              encoding="utf-8")
+            self.assertEqual([(20, "shot")], MODULE.parse_scenario(script)[0])
+            for keys in ("hostkey 5 f6\nhostkey 5 enter\n", "hostkey 5 tab\n", "hostkey 5\n",
+                         "hostclick 5 middle 1 1\n", "hostclick 5 left 1280 1\n"):
                 script.write_text(header + keys + tail, encoding="utf-8")
                 with self.assertRaises(ValueError):
                     MODULE.parse_scenario(script)
@@ -53,7 +57,7 @@ class Fh1RenderTestRunnerTests(unittest.TestCase):
         scenarios = Path(__file__).parents[2] / "config" / "render-tests"
         for name in (
             "fh1-race-sync", "fh1-modes-sync", "fh1-opening-sync", "fh1-long-drive", "fh1-buy-car",
-            "fh1-rewind-sync",
+            "fh1-rewind-sync", "fh1-settings-gate",
         ):
             self.assertTrue(MODULE.parse_scenario(scenarios / f"{name}.fh1test")[0])
 

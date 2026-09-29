@@ -241,6 +241,15 @@ def parse_scenario(
             if int(fields[1]) <= previous_hostkey:
                 raise ValueError(f"line {number}: host keys must be in increasing frame order")
             previous_hostkey = int(fields[1])
+        elif fields[0] == "hostclick" and len(fields) == 5:
+            # hostclick <frame> <left|right> <x> <y>, in 1280x720 title space.
+            if fields[2] not in ("left", "right"):
+                raise ValueError(f"line {number}: unknown mouse button {fields[2]}")
+            if not (0 <= int(fields[3]) < 1280 and 0 <= int(fields[4]) < 720):
+                raise ValueError(f"line {number}: click outside the 1280x720 title space")
+            if int(fields[1]) <= previous_hostkey:
+                raise ValueError(f"line {number}: host keys must be in increasing frame order")
+            previous_hostkey = int(fields[1])
         elif fields[0] == "capture" and len(fields) == 3:
             captures.append((int(fields[1]), fields[2]))
         elif fields[0] == "stop" and len(fields) == 2:

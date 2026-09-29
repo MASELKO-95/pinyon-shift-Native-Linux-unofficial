@@ -118,6 +118,7 @@ class HostUi final : public rex::ui::UIDrawer, public rex::ui::WindowInputListen
                     uint32_t right_color, rex::ui::ImmediateTexture* texture = nullptr,
                     float skew = 0.0f, UvRect uv = {});
   void Flush();
+  void RecordLayout(const std::string& title, size_t first_batch, size_t first_vertex);
 
   rex::ReXApp& app_;
   rex::ui::Presenter& presenter_;
@@ -161,6 +162,8 @@ class HostUi final : public rex::ui::UIDrawer, public rex::ui::WindowInputListen
     float x0, y0, x1, y1;
   };
   std::vector<RowRect> row_rects_;
+  // Screen and output size of the last recorded layout event.
+  std::string layout_key_;
 };
 
 }  // namespace pinyon_shift::hostui
