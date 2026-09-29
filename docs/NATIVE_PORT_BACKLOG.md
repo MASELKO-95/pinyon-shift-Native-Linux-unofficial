@@ -155,6 +155,9 @@ runs on the development machine (Ryzen 7 5800X, RTX 4080).
 | NP-4.5 | That VARIABLE REFRESH RATE runs the display at the game's rate without tearing artifacts | A VRR (G-SYNC or FreeSync) display |
 | NP-6.3 | DualSense and Steam Input through SDL, a Deck controls layout | Those controllers and a Steam Deck |
 | NP-10.4 | Lua 5.4 for script mods (optional) | Adding Lua as a new vendored dependency: the maintainer's call |
+| NP-12.1, 12.2, 12.7, 12.8 | The Linux build, POSIX host sources, Linux tooling and Steam Deck qualification | A Linux toolchain (the WSL here has no clang or CMake; installing one is the maintainer's call) and a Steam Deck |
+| NP-13 | The macOS port (ARM64 baseline, MoltenVK, app bundle) | A Mac and its toolchain |
+| NP-14 | The Android port (NDK build, fibers, page size, mobile GPU, sideloading) | The Android NDK and a reference device |
 | NP-X | AMD, Intel and lower-end GPU qualification; an unscripted drive before each train | Hardware and a player |
 
 ## NP-0 Clean native baseline
