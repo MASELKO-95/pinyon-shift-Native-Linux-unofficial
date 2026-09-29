@@ -164,6 +164,11 @@ endif()
 target_include_directories(pinyon_shift_fh1_archive_extract PRIVATE
     src ${REXSDK_DIR}/include)
 target_link_libraries(pinyon_shift_fh1_archive_extract PRIVATE rex::runtime)
+if(WIN32)
+    # Non-elevated sampling profiler for named threads (CPU_HOTSPOT_PROFILING.md).
+    add_executable(pinyon_shift_thread_sampler EXCLUDE_FROM_ALL tools/thread_sampler.cpp)
+    target_link_libraries(pinyon_shift_thread_sampler PRIVATE dbghelp)
+endif()
 
 if(NOT PINYON_SHIFT_HOST_TESTS_ONLY)
 pinyon_shift_attach_rexglue(pinyon_shift)

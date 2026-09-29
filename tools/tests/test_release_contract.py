@@ -263,7 +263,8 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         self.assertNotIn("thirdparty/shiftglue-sdk/", cmake)
         self.assertIn("${REXSDK_DIR}/src/graphics/fh1_shader_pack.cpp", cmake)
         for source in ("tests/native_renderer", "tools/fh1_archive_extract.cpp",
-                       "tools/fh1_texture_import.cpp", "tools/extract-fh1-shader-corpus.py",
+                       "tools/fh1_texture_import.cpp", "tools/thread_sampler.cpp",
+                       "tools/extract-fh1-shader-corpus.py",
                        "tools/build-fh1-gpu-prewarm.py", "tools/produce-fh1-artifacts.ps1",
                        "config/render-tests"):
             self.assertIn("'" + source + "'", package)

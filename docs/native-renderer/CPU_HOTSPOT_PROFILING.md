@@ -161,6 +161,48 @@ Xenos renderer before its removal, are summarized in the
 the full report is archived as `CPU_HOTSPOT_RESULTS_2026-09-21.md` at
 checkpoint `02dfad0` (see the [research reference](RESEARCH.md#recovering-exact-historical-evidence)).
 
+## Sample one thread without administrator rights
+
+WPR needs an elevated shell. To see where a single thread's time goes without
+one, build the thread sampler and start it before the route; it waits for the
+game and its threads and stops when the game exits:
+
+```powershell
+cmake --build out/build/win-amd64-relwithdebinfo --target pinyon_shift_thread_sampler
+.\out\build\win-amd64-relwithdebinfo\pinyon_shift_thread_sampler.exe `
+  --process pinyon_shift.exe --thread "GPU Commands" [--thread "GPU Submission"] `
+  [--lines 1] --output .local/thread-samples/<name>
+```
+
+A `--thread` name matches thread descriptions by prefix (guest-visible threads
+end in their handle, as in `GPU Commands (F8000018)`). About every 2 ms, at a
+jittered interval, it suspends each thread just long enough to copy its
+registers and the top 64 KB of its stack, then walks the copy with DbgHelp and
+the modules' PDBs; `--lines 1` adds the leaf's source line. On the race this
+costs the GPU commands thread about 2 % (17.07 against 16.8 ms frames). Then
+print a per-second timeline to find the window, and report it:
+
+```powershell
+python tools/summarize-thread-samples.py .local/thread-samples/<name>
+python tools/summarize-thread-samples.py .local/thread-samples/<name> `
+  --from-s 42 --to-s 56 --output race-gpu-commands.json
+```
+
+Shares are of wall time, with kernel-wait leaves counted as waiting;
+`--weight cycles` weighs samples by the CPU cycles used since the previous one.
+Suspension sampling is not ETW: a function that reads memory other cores are
+writing can be over-sampled. `ResetFrameCounters`, which reads every thread's
+counter block at the swap, gets 2-4 % of the race's samples but measures 8 to
+30 us per frame, so check a surprising hot spot with a timer before acting on
+it.
+
+The per-frame performance CSV splits the GPU commands thread's frame as wall
+time: `gpu_thread_idle_ns` (ring buffer empty, waiting for the title),
+`gpu_thread_reg_mem_wait_ns` (`WAIT_REG_MEM` polls) and
+`gpu_thread_fence_wait_ns` (GPU fences and the submission worker), with the
+submission worker's `gpu_submission_busy_ns` and the thread's CPU time as
+`fh1_gpu_thread_cpu_time_ns` (scheduler-tick resolution, so use means).
+
 ## Escalate only when the trace calls for it
 
 Use PIX timing capture when the sampled trace points to D3D12 submission,
