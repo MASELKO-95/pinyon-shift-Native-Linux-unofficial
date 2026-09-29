@@ -175,7 +175,10 @@ cmake --build out/build/win-amd64-relwithdebinfo --target pinyon_shift_thread_sa
 ```
 
 A `--thread` name matches thread descriptions by prefix (guest-visible threads
-end in their handle, as in `GPU Commands (F8000018)`). About every 2 ms, at a
+end in their handle, as in `GPU Commands (F8000018)`), and matching threads
+that start later are added every 2 s; `--thread "Guest "` samples every guest
+thread (named by start address). Sampling many threads lowers each one's
+rate, so pass a longer `--interval-us` and expect more disturbance. About every 2 ms, at a
 jittered interval, it suspends each thread just long enough to copy its
 registers and the top 64 KB of its stack, then walks the copy with DbgHelp and
 the modules' PDBs; `--lines 1` adds the leaf's source line. On the race this
