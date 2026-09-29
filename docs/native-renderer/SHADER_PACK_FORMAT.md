@@ -151,6 +151,34 @@ Packs are produced per integer scale (1x to 4x) and must be produced with the na
 produced with the removed Xenos renderer lacked the native depth-rectangle
 clear vertex shader `1E6883FCCDE1F688` (`79e072a`).
 
+## Vulkan packs
+
+The Vulkan runtime keeps its SPIR-V translator, so a Vulkan pack only
+saves translation time (NP-12.6): `VulkanPipelineCache` looks each
+translation up in
+`4D5309C9.fh1-native-v3.vulkan.<features>.<flags>.<scale>.pnsp` first
+and translates misses as before, logging the first 64 with the hit count.
+`<features>` is a hash of what the SPIR-V translator's output depends on
+(the device's SPIR-V version and storage buffer range, its shader features,
+2x MSAA without attachments); `<flags>` are the manifest flags (EDRAM
+through fragment shader interlock, 8-bit gamma, native 2x MSAA).
+
+Every translation is also sent to the shader translation observer, so a
+pack comes from any Vulkan session with a capture:
+
+```powershell
+python .	oolsun-fh1-render-test.py .\configender-testsh1-race-sync.fh1test `
+  --state-root <seed> --output <out> --build-directory <vulkan build> `
+  --shader-capture-dir .\.localk-capture --game-argument=--gpu_backend=vulkan
+python .	ools
+ative-shader-pack.py build .\.localk-capture\shader-manifest.json `
+  --output .\.localk.pnsp
+```
+
+A later session's capture adds its misses. A pack captured from
+`fh1-race-sync` on the RTX 4080 held 479 shaders; `fh1-buy-car` then hit
+377 and translated only the showroom's new ones.
+
 ## Pack misses and self-repair
 
 The title generates some shaders at runtime (disc shaders it patches with
