@@ -22,7 +22,8 @@ def percentile(values, fraction):
     return ordered[min(len(ordered) - 1, int((len(ordered) - 1) * fraction))]
 
 
-def summarize(markers_path, samples_path, waits_path=None, start_frame=None, end_frame=None):
+def summarize(markers_path, samples_path, waits_path=None, start_frame=None, end_frame=None,
+              ready_path=None):
     markers = sorted(
         (float(row["timestamp_ms"]), int(row["source_frame"]))
         for row in rows(markers_path)
@@ -57,6 +58,11 @@ def summarize(markers_path, samples_path, waits_path=None, start_frame=None, end
     threads = defaultdict(float)
     wait_threads = defaultdict(float)
     waits = defaultdict(float)
+    # Guest code (map-generated-lines.py), waking threads and scheduler delay.
+    guest_functions = defaultdict(float)
+    guest_addresses = defaultdict(float)
+    wakers = defaultdict(float)
+    ready_by_thread = defaultdict(list)
     unmatched = {"samples": 0, "waits": 0}
 
     for row in rows(samples_path):
@@ -72,6 +78,9 @@ def summarize(markers_path, samples_path, waits_path=None, start_frame=None, end
             project_callers[row["project_caller"]] += cost
         if row.get("thread_id"):
             threads[row["thread_id"]] += cost
+        if row.get("guest_function"):
+            guest_functions[row["guest_function"]] += cost
+            guest_addresses[f"{row['guest_function']}+{row['guest_address']}"] += cost
 
     if waits_path:
         for row in rows(waits_path):
@@ -90,10 +99,21 @@ def summarize(markers_path, samples_path, waits_path=None, start_frame=None, end
                     waits[row["wait_reason"] or "<unknown>"] += cost
                     if row.get("thread_id"):
                         wait_threads[row["thread_id"]] += cost
+                    if row.get("waker_thread_id"):
+                        waker = row["waker_thread_id"]
+                        if row.get("waker_in_process") == "0":
+                            waker = f"{waker} (other process)"
+                        wakers[waker] += cost
                     attributed = True
                 index += 1
             if not attributed:
                 unmatched["waits"] += 1
+
+    if ready_path:
+        for row in rows(ready_path):
+            if frame_at(float(row["timestamp_ms"])) is None:
+                continue
+            ready_by_thread[row["thread_id"]].append(float(row["ready_ms"]))
 
     def ranked(values):
         return [
@@ -128,6 +148,17 @@ def summarize(markers_path, samples_path, waits_path=None, start_frame=None, end
         "top_threads": ranked(threads),
         "top_wait_threads": ranked(wait_threads),
         "top_wait_reasons": ranked(waits),
+        "top_wakers": ranked(wakers),
+        "top_guest_functions": ranked(guest_functions),
+        "top_guest_addresses": ranked(guest_addresses),
+        # Scheduler delay (ready to running) per thread, by total.
+        "ready_delay_threads": [
+            {"name": thread, "ms": round(sum(delays), 3),
+             "median_ms": round(statistics.median(delays), 4),
+             "p95_ms": round(percentile(delays, 0.95), 4), "count": len(delays)}
+            for thread, delays in sorted(ready_by_thread.items(),
+                                         key=lambda item: sum(item[1]), reverse=True)
+        ],
         "frames": per_frame,
     }
 
@@ -150,11 +181,23 @@ def markdown(report, limit=20):
         ("Threads", "top_threads"),
         ("Blocked threads", "top_wait_threads"),
         ("Wait reasons", "top_wait_reasons"),
+        ("Threads that woke waiters", "top_wakers"),
+        ("Guest functions", "top_guest_functions"),
+        ("Guest instructions", "top_guest_addresses"),
     ):
         lines += ["", f"## {title}", "", "| Rank | Name | Total ms |", "|---:|---|---:|"]
         lines += [
             f"| {index} | `{item['name']}` | {item['ms']:.3f} |"
             for index, item in enumerate(report[key][:limit], 1)
+        ]
+    if report["ready_delay_threads"]:
+        lines += ["", "## Scheduler delay (ready to running)", "",
+                  "| Rank | Thread | Total ms | Median ms | p95 ms | Count |",
+                  "|---:|---|---:|---:|---:|---:|"]
+        lines += [
+            f"| {index} | `{item['name']}` | {item['ms']:.3f} | {item['median_ms']:.4f} | "
+            f"{item['p95_ms']:.4f} | {item['count']} |"
+            for index, item in enumerate(report["ready_delay_threads"][:limit], 1)
         ]
     return "\n".join(lines) + "\n"
 
@@ -164,11 +207,13 @@ def main():
     parser.add_argument("markers", type=Path)
     parser.add_argument("samples", type=Path)
     parser.add_argument("--waits", type=Path)
+    parser.add_argument("--ready", type=Path, help="ready.csv of profile-etl-export")
     parser.add_argument("--start-frame", type=int)
     parser.add_argument("--end-frame", type=int)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    report = summarize(args.markers, args.samples, args.waits, args.start_frame, args.end_frame)
+    report = summarize(args.markers, args.samples, args.waits, args.start_frame, args.end_frame,
+                       args.ready)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     args.output.with_suffix(".md").write_text(markdown(report), encoding="utf-8")
 

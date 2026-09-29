@@ -75,7 +75,8 @@ Open `pinyon-shift.etl` in WPA and add these tables:
    capture's `symbols` directory.
 2. **CPU Usage (Precise)**, grouped by process, thread, wait reason, and stack.
    Use this view to distinguish blocked time from scheduler delay. The CSV
-   exporter below includes blocked intervals only.
+   exporter below writes both: blocked intervals with the thread that woke
+   them, and scheduler delay (ready to running) per wake.
 3. **Generic Events**, restricted to provider
    `PinyonShift-CriticalPath`. `SourceFrame` identifies title frame boundaries;
    `CriticalPath` gives the consumed-swap ordinal, other existing phase
@@ -91,28 +92,55 @@ To export the ETL directly with Microsoft's TraceEvent reader:
 
 ```powershell
 dotnet run --project tools/profile-etl-export -- `
-  .local/cpu-profile/<capture-directory>
+  .local/cpu-profile/<capture-directory> [--microsoft-symbols]
 ```
 
-This writes `markers.csv`, `critical-path.csv`, `samples.csv`, and `waits.csv`
-beside the ETL and
+This writes `markers.csv`, `critical-path.csv`, `samples.csv`, `waits.csv`
+and `ready.csv` beside the ETL and
 fails if the capture lost events or more than 1% of game CPU samples lack
 stacks. The same CSV contract can also be produced from WPA:
 
 ```text
 markers.csv: timestamp_ms,source_frame,thread_id
 critical-path.csv: timestamp_ms,event,source_frame,thread_id,value0,value1,value2
-samples.csv: timestamp_ms,cpu_ms,module,function,thread_id,project_caller,ip,rva,stack
-waits.csv:   timestamp_ms,wait_ms,wait_reason,thread_id
+samples.csv: timestamp_ms,cpu_ms,module,function,thread_id,project_caller,ip,rva,stack,source_file,source_line
+waits.csv:   timestamp_ms,wait_ms,wait_reason,thread_id,waker_thread_id,waker_in_process
+ready.csv:   timestamp_ms,ready_ms,thread_id
 ```
 
-Then run:
+`source_file` and `source_line` are the leaf's source line in project
+modules. `--microsoft-symbols` also resolves Windows, CRT and graphics
+runtime modules (`ntdll`, `kernelbase`, `ucrtbase`, `d3d12`, `dxgi`,
+`vulkan-1` and others) through Microsoft's symbol server, downloading their
+PDBs into the capture's `symbols/microsoft`, so kernel and CRT time is named
+by function; it is off by default because it needs the network.
+
+Recompiled guest code is one function per guest function in the generated
+`pinyon_shift_recomp.*.cpp` files, with one comment per guest instruction.
+Map samples there to guest instructions right after exporting, while
+`.local/generated/default` still holds the sources the profiled build
+compiled (the capture records their codegen fingerprint and the mapper
+refuses another unless given `--force`):
+
+```powershell
+python tools/map-generated-lines.py .local/cpu-profile/<capture-directory>
+```
+
+It adds `guest_function` (`sub_<address>`) and `guest_address` columns to
+`samples.csv`. Then run:
 
 ```powershell
 python tools/summarize-cpu-hotspots.py markers.csv samples.csv `
-  --waits waits.csv --start-frame 4200 --end-frame 4590 `
+  --waits waits.csv --ready ready.csv --start-frame 4200 --end-frame 4590 `
   --output race-hotspots.json
 ```
+
+The report ranks guest functions and guest instructions next to host
+functions, the threads that woke blocked threads (a waker in another process
+is marked so), and each thread's scheduler delay (total, median and p95).
+The per-frame performance CSV also counts `clock_mutex_contentions` (the guest
+clock's ratio lock found held), `timer_queue_wakeups` and
+`timer_queue_callbacks`.
 
 Choose a contiguous range from `markers.csv`; the frame numbers above reproduce
 the 2026-09-21 **pre-driving** sample. Script ticks and SourceFrame IDs have

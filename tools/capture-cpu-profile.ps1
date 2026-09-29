@@ -131,8 +131,16 @@ $perfCapture = Get-ChildItem -LiteralPath (Join-Path $runState 'logs') -Filter '
 if ($perfCapture) {
     Copy-Item -LiteralPath $perfCapture.FullName -Destination (Join-Path $Output 'frames.perf.csv')
 }
+# The generated sources' fingerprint: map-generated-lines.py only attributes
+# samples to guest instructions against the sources this build compiled.
+$codegenFingerprint = $null
+$codegenStamp = Join-Path $root '.local/generated/default/codegen.stamp'
+if (Test-Path -LiteralPath $codegenStamp -PathType Leaf) {
+    $codegenFingerprint = (Get-Content -LiteralPath $codegenStamp -Raw | ConvertFrom-Json).fingerprint
+}
 $manifest = [ordered]@{
     schema = 'pinyon-shift.cpu-profile-capture.v1'
+    codegen_fingerprint = $codegenFingerprint
     created_utc = [DateTime]::UtcNow.ToString('o')
     markers_only = $MarkersOnly.IsPresent
     route = (Resolve-Path -LiteralPath $RenderTestScript).Path
