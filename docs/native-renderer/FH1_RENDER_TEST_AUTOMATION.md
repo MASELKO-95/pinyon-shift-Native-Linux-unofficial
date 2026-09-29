@@ -105,6 +105,12 @@ records `fh1.render_test.wait` with the frames waited; exceeding
 `<max-frames>` fails the run with `wait_timeout`. `fh1-race-start-wait`
 uses it to capture the race only after the car moves.
 
+`hostkey <frame> <key>` presses and releases a key on the game window at
+`<frame>`, through the same window listeners as a real key press, so a route
+can drive host-drawn screens that the scripted controller cannot reach (the
+F6 settings screen). Keys are `f6`, `enter`, `escape`, `up`, `down`, `left`,
+`right` and `space`; each press records `fh1.render_test.hostkey`.
+
 There is no renderer to choose: `fh1_renderer` was removed with the Xenos
 and `native-shadow` renderers (`a5b28e1`, `bccf126`). Every
 `fh1.render_test.capture` event still records `presenter` and

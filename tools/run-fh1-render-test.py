@@ -16,6 +16,8 @@ from pathlib import Path
 
 SCHEMA = "pinyon-shift.fh1-render-test-result.v1"
 HEADER = "pinyon-shift-fh1-render-test-v1"
+# Keys a `hostkey` step may press (src/fh1_render_test.cpp ParseHostKey).
+HOST_KEYS = {"f6", "enter", "escape", "up", "down", "left", "right", "space"}
 PASS_FAMILY = re.compile(
     r"FH1 V5 pass family (?P<family>[0-9A-F]{16}): attachment "
     r"(?P<attachment>[0-9A-F]{16}), first family (?P<first_family>[0-9A-F]{16}), "
@@ -130,6 +132,7 @@ def parse_scenario(
     race_hud_any_groups: list[set[str]] = []
     previous_input = -1
     previous_wait = 0
+    previous_hostkey = -1
     first_input = None
     for number, line in enumerate(lines[1:], 2):
         if line.startswith("# expect-image "):
@@ -231,6 +234,13 @@ def parse_scenario(
             previous_wait = int(fields[1])
             if fields[3] == "vehicle-moved" and int(fields[4]) <= 0:
                 raise ValueError(f"line {number}: invalid wait distance")
+        elif fields[0] == "hostkey" and len(fields) == 3:
+            # hostkey <frame> <key>: a key press on the window for host UI.
+            if fields[2].lower() not in HOST_KEYS:
+                raise ValueError(f"line {number}: unknown host key {fields[2]}")
+            if int(fields[1]) <= previous_hostkey:
+                raise ValueError(f"line {number}: host keys must be in increasing frame order")
+            previous_hostkey = int(fields[1])
         elif fields[0] == "capture" and len(fields) == 3:
             captures.append((int(fields[1]), fields[2]))
         elif fields[0] == "stop" and len(fields) == 2:

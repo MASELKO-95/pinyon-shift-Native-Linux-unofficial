@@ -32,6 +32,18 @@ class Fh1RenderTestRunnerTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     MODULE.parse_scenario(script)
 
+    def test_accepts_host_keys_in_order(self):
+        header = MODULE.HEADER + "\ninput 0 0000 0 0 0 0 0 0\n"
+        tail = "capture 20 shot\nstop 30\n"
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "route.fh1test"
+            script.write_text(header + "hostkey 5 F6\nhostkey 6 down\n" + tail, encoding="utf-8")
+            self.assertEqual([(20, "shot")], MODULE.parse_scenario(script)[0])
+            for keys in ("hostkey 5 f6\nhostkey 5 enter\n", "hostkey 5 tab\n", "hostkey 5\n"):
+                script.write_text(header + keys + tail, encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    MODULE.parse_scenario(script)
+
     def test_race_start_wait_route_parses(self):
         scenarios = Path(__file__).parents[2] / "config" / "render-tests"
         captures = MODULE.parse_scenario(scenarios / "fh1-race-start-wait.fh1test")[0]

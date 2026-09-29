@@ -1,6 +1,7 @@
 #include "fh1_render_test.h"
 
 #include <algorithm>
+#include <cctype>
 #include <atomic>
 #include <condition_variable>
 #include <chrono>
@@ -62,6 +63,31 @@ struct WaitStep {
   std::string text;       // kMovie, kFile: substring of the lower-case guest path.
 };
 
+// `hostkey <frame> <key>`: presses and releases a key on the game window at
+// <frame>, through the same listeners as a real key, to drive host-drawn
+// screens (F6 settings) that the scripted controller cannot reach.
+struct HostKeyStep {
+  uint64_t frame = 0;
+  rex::ui::VirtualKey key = rex::ui::VirtualKey::kNone;
+};
+
+rex::ui::VirtualKey ParseHostKey(const std::string& name) {
+  using rex::ui::VirtualKey;
+  static const std::pair<const char*, VirtualKey> kNames[] = {
+      {"f6", VirtualKey::kF6},       {"enter", VirtualKey::kReturn},
+      {"escape", VirtualKey::kEscape}, {"up", VirtualKey::kUp},
+      {"down", VirtualKey::kDown},   {"left", VirtualKey::kLeft},
+      {"right", VirtualKey::kRight}, {"space", VirtualKey::kSpace},
+  };
+  std::string lower = name;
+  std::transform(lower.begin(), lower.end(), lower.begin(),
+                 [](unsigned char c) { return char(std::tolower(c)); });
+  for (const auto& [key_name, key] : kNames) {
+    if (lower == key_name) return key;
+  }
+  return VirtualKey::kNone;
+}
+
 struct Capture {
   uint64_t frame = 0;
   std::string name;
@@ -87,6 +113,8 @@ struct TestState {
   std::vector<InputStep> inputs;
   std::vector<WaitStep> waits;
   size_t next_wait = 0;
+  std::vector<HostKeyStep> host_keys;
+  size_t next_host_key = 0;
   // Output frames spent in completed and active waits.
   uint64_t wait_offset = 0;
   bool wait_active = false;
@@ -269,6 +297,15 @@ void LoadScript(const std::filesystem::path& path) {
         Fail("script_wait_order");
       }
       g_test.waits.push_back(std::move(wait));
+    } else if (command == "hostkey") {
+      std::string frame, name, extra;
+      if (!(row >> frame >> name) || row >> extra) Fail("script_hostkey_columns");
+      HostKeyStep step{ParseUnsigned(frame, 10, "hostkey_frame"), ParseHostKey(name)};
+      if (step.key == rex::ui::VirtualKey::kNone) Fail("script_hostkey_name");
+      if (!g_test.host_keys.empty() && step.frame <= g_test.host_keys.back().frame) {
+        Fail("script_hostkey_order");
+      }
+      g_test.host_keys.push_back(step);
     } else if (command == "capture") {
       std::string frame, name, extra;
       if (!(row >> frame >> name) || row >> extra || name.empty() ||
@@ -652,6 +689,19 @@ bool ObserveOutput(
         g_test.clock_hz / 1000;
   }
   g_test.frame.store(frame, std::memory_order_release);
+  while (g_test.next_host_key < g_test.host_keys.size() &&
+         frame >= g_test.host_keys[g_test.next_host_key].frame) {
+    const HostKeyStep step = g_test.host_keys[g_test.next_host_key++];
+    diagnostics::RecordEvent("fh1.render_test.hostkey",
+                             {{"frame", std::to_string(step.frame)},
+                              {"key", std::to_string(int(step.key))},
+                              {"output_frame", std::to_string(context.frame_sequence)}});
+    auto* window = g_test.window;
+    g_test.app_context->CallInUIThread([window, key = step.key] {
+      window->InjectKey(key, true);
+      window->InjectKey(key, false);
+    });
+  }
   std::unique_lock lock(g_test.mutex);
   if (!g_test.clock_hz && g_test.next_capture < g_test.captures.size() &&
       sequence > g_test.captures[g_test.next_capture].frame + 1) {
