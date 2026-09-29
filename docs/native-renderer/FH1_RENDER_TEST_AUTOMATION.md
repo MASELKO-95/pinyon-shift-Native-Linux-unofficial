@@ -199,6 +199,9 @@ except the resolve read-back, which is on by default.
 | `--fh1_frame_census=true --fh1_frame_census_path=<file.jsonl>` | Metadata-only census of surfaces, resolves, textures and primitives per 60-frame window; see the [frame contract](NATIVE_FRAME_CONTRACT.md) |
 | `--fh1_native_gpu_profile=true` | GPU time per phase in the periodic stats: executor transfers, resolves and clears, plus texture cache loads split into `texture_reloads` (data a resolve invalidated) and `texture_loads` (everything else); also the executor's CPU time per phase (target preparation and binding, transfers, resolves) |
 | `--fh1_native_readback_new_resolves=false` | Stops copying one-off resolves (such as saved car thumbnails) back to guest memory |
+| `--fh1_debug_log_draws=true` | Logs every draw (copies included) with its index in the frame, EDRAM mode, primitive, shaders, render target, blend, copy registers and the pixel shader's texture fetch constants; use it on a frame replay |
+| `--fh1_debug_skip_draws=<first>-<last>` | Skips those draw indices in every frame: bisect a replayed frame for the draw that causes a fault |
+| `--fh1_debug_null_fetch=<draw>:<slot>` | That draw sees the texture fetch constant as invalid (a null texture), to tell texture faults from shader math |
 | `--perf_critical_path_trace=true` | Correlated title/PM4/submission/present trace |
 
 The executor logs its skip counters, memory (`FH1 native executor memory
