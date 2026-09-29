@@ -127,6 +127,10 @@ code every later slice touches, and NP-1 is both the largest remaining
 
 NP-0.7 moved to NP-9.4, which bumps the pack format anyway.
 
+Status on 2026-09-28: NP-0.1 to NP-0.5 and NP-0.8 are done, and NP-1.1 is
+done. NP-0.6's repair of cards saved by older builds waits on a product
+decision, because it would change player save files. Next is NP-1.2.
+
 ## NP-0 Clean native baseline
 
 **Why first.** The user-facing "renderer preview" caveat comes from carrying
