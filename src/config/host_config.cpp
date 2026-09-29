@@ -7,12 +7,7 @@
 #include <sstream>
 #include <system_error>
 
-#if defined(_WIN32)
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
-#endif
+#include "platform/host_platform.h"
 
 namespace pinyon_shift::config {
 namespace {
@@ -153,20 +148,7 @@ bool WriteAtomically(const std::filesystem::path& path, std::string_view text) {
       return false;
     }
   }
-#if defined(_WIN32)
-  if (!MoveFileExW(temporary.c_str(), path.c_str(),
-                   MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-    std::filesystem::remove(temporary, error);
-    return false;
-  }
-#else
-  std::filesystem::rename(temporary, path, error);
-  if (error) {
-    std::filesystem::remove(temporary, error);
-    return false;
-  }
-#endif
-  return true;
+  return platform::ReplaceFileAtomically(temporary, path);
 }
 
 std::optional<std::filesystem::path> Backup(const std::filesystem::path& path) {

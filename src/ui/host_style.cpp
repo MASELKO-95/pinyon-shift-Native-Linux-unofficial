@@ -8,6 +8,8 @@
 
 #include <rex/logging.h>
 
+#include "platform/host_platform.h"
+
 namespace pinyon_shift::ui {
 namespace {
 
@@ -17,13 +19,10 @@ constexpr float kFontLogicalSize = 16.0f;
 std::vector<std::filesystem::path> SystemFontCandidates() {
   std::vector<std::filesystem::path> candidates;
 #if defined(_WIN32)
-  char* windows_directory = nullptr;
-  size_t length = 0;
   std::filesystem::path fonts = "C:\\Windows\\Fonts";
-  if (_dupenv_s(&windows_directory, &length, "WINDIR") == 0 && windows_directory) {
-    fonts = std::filesystem::path(windows_directory) / "Fonts";
+  if (const auto windows_directory = platform::EnvironmentPath("WINDIR")) {
+    fonts = *windows_directory / "Fonts";
   }
-  std::free(windows_directory);
   candidates.push_back(fonts / "segoeui.ttf");
   candidates.push_back(fonts / "arial.ttf");
 #elif defined(__APPLE__)

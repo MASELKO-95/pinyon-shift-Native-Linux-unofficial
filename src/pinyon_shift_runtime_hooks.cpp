@@ -27,6 +27,7 @@
 #include <rex/system/xmemory.h>
 
 #include "pinyon_shift_diagnostics.h"
+#include "platform/host_platform.h"
 #include "fh1_render_test.h"
 #include "pinyon_shift_runtime_hooks.h"
 #include "cheats.h"
@@ -246,57 +247,21 @@ void StoreVehiclePose(uint32_t position_address, uint32_t forward_address,
 
 bool FrameTelemetryEnabled() {
   static const bool enabled = [] {
-#if defined(_WIN32)
-    char* value = nullptr;
-    size_t value_size = 0;
-    if (_dupenv_s(&value, &value_size, "PINYON_SHIFT_M4_TELEMETRY") != 0) {
-      return false;
-    }
-    const bool result = value && std::string_view(value) == "1";
-    std::free(value);
-    return result;
-#else
-    const char* value = std::getenv("PINYON_SHIFT_M4_TELEMETRY");
-    return value && std::string_view(value) == "1";
-#endif
+    return pinyon_shift::platform::EnvironmentFlag("PINYON_SHIFT_M4_TELEMETRY");
   }();
   return enabled;
 }
 
 bool SaveTraceEnabled() {
   static const bool enabled = [] {
-#if defined(_WIN32)
-    char* value = nullptr;
-    size_t value_size = 0;
-    if (_dupenv_s(&value, &value_size, "PINYON_SHIFT_M5_SAVE_TRACE") != 0) {
-      return false;
-    }
-    const bool result = value && std::string_view(value) == "1";
-    std::free(value);
-    return result;
-#else
-    const char* value = std::getenv("PINYON_SHIFT_M5_SAVE_TRACE");
-    return value && std::string_view(value) == "1";
-#endif
+    return pinyon_shift::platform::EnvironmentFlag("PINYON_SHIFT_M5_SAVE_TRACE");
   }();
   return enabled;
 }
 
 bool UiTraceEnabled() {
   static const bool enabled = [] {
-#if defined(_WIN32)
-    char* value = nullptr;
-    size_t value_size = 0;
-    if (_dupenv_s(&value, &value_size, "PINYON_SHIFT_UI_TRACE") != 0) {
-      return false;
-    }
-    const bool result = value && std::string_view(value) == "1";
-    std::free(value);
-    return result;
-#else
-    const char* value = std::getenv("PINYON_SHIFT_UI_TRACE");
-    return value && std::string_view(value) == "1";
-#endif
+    return pinyon_shift::platform::EnvironmentFlag("PINYON_SHIFT_UI_TRACE");
   }();
   return enabled;
 }
@@ -320,19 +285,9 @@ enum class UiExperimentMode {
 
 UiExperimentMode ComputeUiExperimentMode() {
   std::string_view requested;
-#if defined(_WIN32)
-  char* value = nullptr;
-  size_t value_size = 0;
-  if (_dupenv_s(&value, &value_size, "PINYON_SHIFT_UI_EXPERIMENT") != 0) {
-    return UiExperimentMode::kNone;
-  }
-  const std::string owned = value ? std::string(value) : std::string();
-  std::free(value);
+  const std::string owned =
+      pinyon_shift::platform::EnvironmentVariable("PINYON_SHIFT_UI_EXPERIMENT").value_or("");
   requested = owned;
-#else
-  const char* value = std::getenv("PINYON_SHIFT_UI_EXPERIMENT");
-  requested = value ? std::string_view(value) : std::string_view();
-#endif
   if (requested == "hide_first") {
     return UiExperimentMode::kHideFirst;
   }
@@ -364,20 +319,10 @@ UiExperimentMode ComputeUiExperimentMode() {
 // located string, so no allocation or length field is touched.
 std::string_view UiLabelWriteLiteral() {
   static const std::string value = [] {
-#if defined(_WIN32)
-    char* raw = nullptr;
-    size_t size = 0;
-    if (_dupenv_s(&raw, &size, "PINYON_SHIFT_UI_LABEL_WRITE") != 0) {
-      return std::string("PINYONSHIFT");
-    }
-    const std::string owned =
-        raw && raw[0] != '\0' ? std::string(raw) : std::string("PINYONSHIFT");
-    std::free(raw);
-    return owned;
-#else
-    const char* raw = std::getenv("PINYON_SHIFT_UI_LABEL_WRITE");
+    const std::optional<std::string> raw_owned =
+        pinyon_shift::platform::EnvironmentVariable("PINYON_SHIFT_UI_LABEL_WRITE");
+    const char* raw = raw_owned ? raw_owned->c_str() : nullptr;
     return raw && raw[0] != '\0' ? std::string(raw) : std::string("PINYONSHIFT");
-#endif
   }();
   return value;
 }
@@ -385,20 +330,10 @@ std::string_view UiLabelWriteLiteral() {
 // Optional literal for the label scan, so the probe is not tied to one screen.
 std::string_view UiLabelScanLiteral() {
   static const std::string value = [] {
-#if defined(_WIN32)
-    char* raw = nullptr;
-    size_t size = 0;
-    if (_dupenv_s(&raw, &size, "PINYON_SHIFT_UI_LABEL_SCAN") != 0) {
-      return std::string("MULTIPLAYER");
-    }
-    const std::string owned = raw && raw[0] != '\0' ? std::string(raw)
-                                                    : std::string("MULTIPLAYER");
-    std::free(raw);
-    return owned;
-#else
-    const char* raw = std::getenv("PINYON_SHIFT_UI_LABEL_SCAN");
+    const std::optional<std::string> raw_owned =
+        pinyon_shift::platform::EnvironmentVariable("PINYON_SHIFT_UI_LABEL_SCAN");
+    const char* raw = raw_owned ? raw_owned->c_str() : nullptr;
     return raw && raw[0] != '\0' ? std::string(raw) : std::string("MULTIPLAYER");
-#endif
   }();
   return value;
 }
@@ -410,26 +345,9 @@ UiExperimentMode UiExperimentModeValue() {
 
 uint32_t CareerCheckpointSeedStage() {
   static const uint32_t stage = [] {
-#if defined(_WIN32)
-    char* value = nullptr;
-    size_t value_size = 0;
-    if (_dupenv_s(&value, &value_size,
-                  "PINYON_SHIFT_M5_TEST_CAREER_CHECKPOINT") != 0) {
-      return 0u;
-    }
-    const std::string_view requested = value ? std::string_view(value)
-                                             : std::string_view();
-    const uint32_t result =
-        requested == "2"  ? 2u
-        : requested == "3" ? 3u
-        : requested == "7" ? 7u
-        : requested == "10" ? 10u
-                              : 0u;
-    std::free(value);
-    return result;
-#else
-    const char* value =
-        std::getenv("PINYON_SHIFT_M5_TEST_CAREER_CHECKPOINT");
+    const std::optional<std::string> value_owned =
+        pinyon_shift::platform::EnvironmentVariable("PINYON_SHIFT_M5_TEST_CAREER_CHECKPOINT");
+    const char* value = value_owned ? value_owned->c_str() : nullptr;
     const std::string_view requested = value ? std::string_view(value)
                                              : std::string_view();
     return requested == "2"  ? 2u
@@ -437,7 +355,6 @@ uint32_t CareerCheckpointSeedStage() {
            : requested == "7" ? 7u
            : requested == "10" ? 10u
                                  : 0u;
-#endif
   }();
   return stage;
 }
@@ -516,7 +433,9 @@ void SnapshotSavePayload(std::string_view kind, uint32_t address, uint32_t size,
 // the new balance show up), which is why the editor works at load time.
 void ScanLiveProfile(uint32_t address, uint32_t size) {
   static const bool enabled = [] {
-    const char* value = std::getenv("PINYON_SHIFT_PROFILE_SCAN");
+    const std::optional<std::string> value_owned =
+        pinyon_shift::platform::EnvironmentVariable("PINYON_SHIFT_PROFILE_SCAN");
+    const char* value = value_owned ? value_owned->c_str() : nullptr;
     return value && std::string_view(value) == "1";
   }();
   // The title has just written the body here, so the range is mapped.
@@ -599,19 +518,7 @@ bool OpeningMovieSkipRequested() {
   if (REXCVAR_GET(pinyon_shift_skip_opening_movies)) {
     return true;
   }
-#if defined(_WIN32)
-  char* value = nullptr;
-  size_t value_size = 0;
-  if (_dupenv_s(&value, &value_size, "PINYON_SHIFT_SKIP_OPENING_MOVIES") != 0) {
-    return false;
-  }
-  const bool result = value && std::string_view(value) == "1";
-  std::free(value);
-  return result;
-#else
-  const char* value = std::getenv("PINYON_SHIFT_SKIP_OPENING_MOVIES");
-  return value && std::string_view(value) == "1";
-#endif
+  return pinyon_shift::platform::EnvironmentFlag("PINYON_SHIFT_SKIP_OPENING_MOVIES");
 }
 
 }  // namespace
@@ -2450,19 +2357,10 @@ std::atomic<uint32_t> g_ui_owner_dump_count{};
 uint32_t UiInsertOrdinal() {
   static const uint32_t ordinal = [] {
     std::string_view requested;
-#if defined(_WIN32)
-    char* value = nullptr;
-    size_t value_size = 0;
-    if (_dupenv_s(&value, &value_size, "PINYON_SHIFT_UI_INSERT_ORDINAL") != 0) {
-      return 1u;
-    }
-    const std::string owned = value ? std::string(value) : std::string();
-    std::free(value);
-    requested = owned;
-#else
-    const char* value = std::getenv("PINYON_SHIFT_UI_INSERT_ORDINAL");
+    const std::optional<std::string> value_owned =
+        pinyon_shift::platform::EnvironmentVariable("PINYON_SHIFT_UI_INSERT_ORDINAL");
+    const char* value = value_owned ? value_owned->c_str() : nullptr;
     requested = value ? std::string_view(value) : std::string_view();
-#endif
     uint32_t parsed = 0u;
     for (const char character : requested) {
       if (character < '0' || character > '9') {
@@ -2483,20 +2381,10 @@ uint32_t UiInsertOrdinal() {
 // stock record intact.
 bool UiInsertSharesRecord() {
   static const bool shares = [] {
-#if defined(_WIN32)
-    char* value = nullptr;
-    size_t value_size = 0;
-    if (_dupenv_s(&value, &value_size, "PINYON_SHIFT_UI_INSERT_SHARE_RECORD") !=
-        0) {
-      return false;
-    }
-    const bool result = value != nullptr && std::string_view(value) == "1";
-    std::free(value);
-    return result;
-#else
-    const char* value = std::getenv("PINYON_SHIFT_UI_INSERT_SHARE_RECORD");
+    const std::optional<std::string> value_owned =
+        pinyon_shift::platform::EnvironmentVariable("PINYON_SHIFT_UI_INSERT_SHARE_RECORD");
+    const char* value = value_owned ? value_owned->c_str() : nullptr;
     return value != nullptr && std::string_view(value) == "1";
-#endif
   }();
   return shares;
 }
@@ -2807,19 +2695,10 @@ void DumpUiElementOwner(PPCContext& context, uint8_t* base, uint32_t owner) {
 // for comparison.
 bool UiInsertLinksTree() {
   static const bool links = [] {
-#if defined(_WIN32)
-    char* value = nullptr;
-    size_t value_size = 0;
-    if (_dupenv_s(&value, &value_size, "PINYON_SHIFT_UI_INSERT_LINK_TREE") != 0) {
-      return true;
-    }
-    const bool result = value == nullptr || std::string_view(value) != "0";
-    std::free(value);
-    return result;
-#else
-    const char* value = std::getenv("PINYON_SHIFT_UI_INSERT_LINK_TREE");
+    const std::optional<std::string> value_owned =
+        pinyon_shift::platform::EnvironmentVariable("PINYON_SHIFT_UI_INSERT_LINK_TREE");
+    const char* value = value_owned ? value_owned->c_str() : nullptr;
     return value == nullptr || std::string_view(value) != "0";
-#endif
   }();
   return links;
 }
@@ -2838,22 +2717,10 @@ const UiInsertIdentity& UiInsertIdentityValue() {
   static const UiInsertIdentity identity = [] {
     UiInsertIdentity parsed;
     std::string_view text;
-#if defined(_WIN32)
-    char* raw = nullptr;
-    size_t raw_size = 0;
-    if (_dupenv_s(&raw, &raw_size, "PINYON_SHIFT_UI_INSERT_IDENTITY") != 0) {
-      return parsed;
-    }
-    const std::string owned = raw ? std::string(raw) : std::string();
-    std::free(raw);
-    text = owned;
-    if (text.empty()) {
-      return parsed;
-    }
-#else
-    const char* raw = std::getenv("PINYON_SHIFT_UI_INSERT_IDENTITY");
+    const std::optional<std::string> raw_owned =
+        pinyon_shift::platform::EnvironmentVariable("PINYON_SHIFT_UI_INSERT_IDENTITY");
+    const char* raw = raw_owned ? raw_owned->c_str() : nullptr;
     text = raw ? std::string_view(raw) : std::string_view();
-#endif
     if (text.size() > 2u && text[0] == '0' &&
         (text[1] == 'x' || text[1] == 'X')) {
       text.remove_prefix(2u);
@@ -2890,19 +2757,10 @@ const UiInsertIdentity& UiInsertIdentityValue() {
 uint32_t UiInsertSteps() {
   static const uint32_t steps = [] {
     std::string_view text;
-#if defined(_WIN32)
-    char* raw = nullptr;
-    size_t raw_size = 0;
-    if (_dupenv_s(&raw, &raw_size, "PINYON_SHIFT_UI_INSERT_STEPS") != 0) {
-      return 0xFFu;
-    }
-    const std::string owned = raw ? std::string(raw) : std::string();
-    std::free(raw);
-    text = owned;
-#else
-    const char* raw = std::getenv("PINYON_SHIFT_UI_INSERT_STEPS");
+    const std::optional<std::string> raw_owned =
+        pinyon_shift::platform::EnvironmentVariable("PINYON_SHIFT_UI_INSERT_STEPS");
+    const char* raw = raw_owned ? raw_owned->c_str() : nullptr;
     text = raw ? std::string_view(raw) : std::string_view();
-#endif
     if (text.empty()) {
       return 0xFFu;
     }
@@ -2957,19 +2815,10 @@ struct UiInsertProperty {
 const UiInsertProperty& UiInsertPropertyValue() {
   static const UiInsertProperty property = [] {
     UiInsertProperty parsed;
-#if defined(_WIN32)
-    char* raw = nullptr;
-    size_t raw_size = 0;
-    if (_dupenv_s(&raw, &raw_size, "PINYON_SHIFT_UI_INSERT_PROPERTY") != 0) {
-      return parsed;
-    }
-    const std::string owned = raw ? std::string(raw) : std::string();
-    std::free(raw);
-    const std::string_view text = owned;
-#else
-    const char* raw = std::getenv("PINYON_SHIFT_UI_INSERT_PROPERTY");
+    const std::optional<std::string> raw_owned =
+        pinyon_shift::platform::EnvironmentVariable("PINYON_SHIFT_UI_INSERT_PROPERTY");
+    const char* raw = raw_owned ? raw_owned->c_str() : nullptr;
     const std::string_view text = raw ? std::string_view(raw) : std::string_view();
-#endif
     const size_t split = text.find(':');
     if (split == std::string_view::npos) {
       return parsed;
@@ -3081,19 +2930,10 @@ constexpr uint32_t kUiSectionRecordPush = 0x82F2EA38u;
 // stock record and re-run the builder.
 bool UiInsertReplaysItem() {
   static const bool replays = [] {
-#if defined(_WIN32)
-    char* value = nullptr;
-    size_t value_size = 0;
-    if (_dupenv_s(&value, &value_size, "PINYON_SHIFT_UI_INSERT_MODE") != 0) {
-      return true;
-    }
-    const bool result = value == nullptr || std::string_view(value) != "copy";
-    std::free(value);
-    return result;
-#else
-    const char* value = std::getenv("PINYON_SHIFT_UI_INSERT_MODE");
+    const std::optional<std::string> value_owned =
+        pinyon_shift::platform::EnvironmentVariable("PINYON_SHIFT_UI_INSERT_MODE");
+    const char* value = value_owned ? value_owned->c_str() : nullptr;
     return value == nullptr || std::string_view(value) != "copy";
-#endif
   }();
   return replays;
 }
@@ -4956,19 +4796,7 @@ std::map<uint32_t, UiSceneInsertStreamState> g_ui_scene_insert_streams;
 std::map<uint32_t, UiSceneInsertReadRequest> g_ui_scene_insert_requests;
 
 std::string UiSceneInsertEnvironment(const char* name) {
-#if defined(_WIN32)
-  char* value = nullptr;
-  size_t value_size = 0;
-  if (_dupenv_s(&value, &value_size, name) != 0) {
-    return {};
-  }
-  const std::string owned = value ? std::string(value) : std::string();
-  std::free(value);
-  return owned;
-#else
-  const char* value = std::getenv(name);
-  return value ? std::string(value) : std::string();
-#endif
+  return pinyon_shift::platform::EnvironmentVariable(name).value_or(std::string());
 }
 
 uint32_t UiSceneInsertEnvironmentWord(const char* name) {

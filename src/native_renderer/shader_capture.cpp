@@ -17,16 +17,11 @@
 #include <tuple>
 #include <vector>
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
-#include <bcrypt.h>
-
 #include <fmt/format.h>
 #include <rex/system/interfaces/graphics.h>
 
 #include "pinyon_shift_diagnostics.h"
+#include "platform/host_platform.h"
 
 namespace {
 
@@ -89,45 +84,12 @@ CaptureState g_capture;
 
 bool ComputeSha256(std::span<const std::byte> source,
                    std::array<std::byte, 32> *digest) {
-  if (!digest || source.size() > std::numeric_limits<ULONG>::max()) {
+  if (!digest) {
     return false;
   }
-  BCRYPT_ALG_HANDLE algorithm = nullptr;
-  BCRYPT_HASH_HANDLE hash = nullptr;
-  DWORD object_size = 0;
-  DWORD returned_size = 0;
-  std::vector<UCHAR> object;
-  bool succeeded = false;
-  if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(
-          &algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0)) ||
-      !BCRYPT_SUCCESS(BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH,
-                                        reinterpret_cast<PUCHAR>(&object_size),
-                                        sizeof(object_size), &returned_size,
-                                        0))) {
-    goto cleanup;
-  }
-  object.resize(object_size);
-  if (!BCRYPT_SUCCESS(BCryptCreateHash(algorithm, &hash, object.data(),
-                                       object_size, nullptr, 0, 0)) ||
-      !BCRYPT_SUCCESS(BCryptHashData(
-          hash,
-          const_cast<PUCHAR>(reinterpret_cast<const UCHAR *>(source.data())),
-          static_cast<ULONG>(source.size()), 0)) ||
-      !BCRYPT_SUCCESS(
-          BCryptFinishHash(hash, reinterpret_cast<PUCHAR>(digest->data()),
-                           static_cast<ULONG>(digest->size()), 0))) {
-    goto cleanup;
-  }
-  succeeded = true;
-
-cleanup:
-  if (hash) {
-    BCryptDestroyHash(hash);
-  }
-  if (algorithm) {
-    BCryptCloseAlgorithmProvider(algorithm, 0);
-  }
-  return succeeded;
+  const auto bytes = pinyon_shift::platform::Sha256(source);
+  std::memcpy(digest->data(), bytes.data(), bytes.size());
+  return true;
 }
 
 std::string DigestHex(const std::array<std::byte, 32> &digest) {
@@ -145,20 +107,19 @@ bool IsCaptureRoot(const std::filesystem::path &path) {
     return false;
   }
   return std::any_of(path.begin(), path.end(), [](const auto &component) {
-    return component.native() == L".local";
+    return component == ".local";
   });
 }
 
 bool ReplaceFile(const std::filesystem::path &temporary,
                  const std::filesystem::path &destination) {
-  return MoveFileExW(temporary.c_str(), destination.c_str(),
-                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+  return pinyon_shift::platform::ReplaceFileAtomically(temporary, destination);
 }
 
 bool WriteFileAtomically(const std::filesystem::path &destination,
                          std::span<const std::byte> bytes) {
   std::filesystem::path temporary = destination;
-  temporary += L".tmp";
+  temporary += ".tmp";
   std::error_code error;
   std::filesystem::remove(temporary, error);
   std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
@@ -258,7 +219,7 @@ bool WriteManifestLocked() {
   }
   document += "  ]\n}\n";
   return WriteFileAtomically(
-      g_capture.root / L"shader-manifest.json",
+      g_capture.root / "shader-manifest.json",
       std::as_bytes(std::span<const char>(document.data(), document.size())));
 }
 
@@ -389,18 +350,12 @@ void ObserveShaderTranslation(
 namespace pinyon_shift::native_renderer {
 
 void InstallShaderCapture(rex::system::IGraphicsSystem *graphics_system) {
-  char *raw_path = nullptr;
-  size_t raw_path_length = 0;
-  if (_dupenv_s(&raw_path, &raw_path_length,
-                "PINYON_SHIFT_NATIVE_SHADER_CAPTURE_DIR") != 0 ||
-      !raw_path || raw_path_length <= 1) {
-    std::free(raw_path);
+  const auto capture_root =
+      platform::EnvironmentPath("PINYON_SHIFT_NATIVE_SHADER_CAPTURE_DIR");
+  if (!capture_root) {
     return;
   }
-  const std::filesystem::path root =
-      std::filesystem::absolute(std::filesystem::path(raw_path))
-          .lexically_normal();
-  std::free(raw_path);
+  const std::filesystem::path &root = *capture_root;
   if (!graphics_system || !IsCaptureRoot(root)) {
     diagnostics::RecordEvent(
         "native_renderer.shader_capture.failure",
@@ -411,7 +366,7 @@ void InstallShaderCapture(rex::system::IGraphicsSystem *graphics_system) {
   std::filesystem::create_directories(root, error);
   std::ofstream bytecode_file;
   if (!error) {
-    bytecode_file.open(root / L"dxil.blob", std::ios::binary | std::ios::trunc);
+    bytecode_file.open(root / "dxil.blob", std::ios::binary | std::ios::trunc);
   }
   if (error || !bytecode_file) {
     diagnostics::RecordEvent(

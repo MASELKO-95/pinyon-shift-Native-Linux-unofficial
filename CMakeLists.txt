@@ -25,6 +25,7 @@ elseif(WIN32)
         src/fh1_render_test.cpp
         src/pinyon_shift_app.cpp
         src/pinyon_shift_diagnostics.cpp
+        src/crash_reporter_win.cpp
         src/pinyon_shift_runtime_hooks.cpp
         src/save_backups.cpp
         src/cheats.cpp
@@ -47,6 +48,9 @@ elseif(WIN32)
         src/ui/xam_dialogs.cpp
         src/ui/achievements_menu.cpp
         src/config/host_config.cpp
+        src/platform/host_platform.cpp
+        src/platform/sha256.cpp
+        ${REXSDK_DIR}/thirdparty/crypto/sha256.cpp
         src/native_renderer/graphics_hooks.cpp
         src/native_renderer/guest_output_renderer.cpp
         src/native_renderer/shader_capture.cpp
@@ -58,6 +62,7 @@ else()
         src/fh1_render_test.cpp
         src/pinyon_shift_app.cpp
         src/pinyon_shift_diagnostics.cpp
+        src/crash_reporter_posix.cpp
         src/pinyon_shift_runtime_hooks.cpp
         src/save_backups.cpp
         src/cheats.cpp
@@ -80,6 +85,9 @@ else()
         src/ui/xam_dialogs.cpp
         src/ui/achievements_menu.cpp
         src/config/host_config.cpp
+        src/platform/host_platform.cpp
+        src/platform/sha256.cpp
+        ${REXSDK_DIR}/thirdparty/crypto/sha256.cpp
         src/native_renderer/graphics_hooks.cpp
         src/native_renderer/guest_output_renderer.cpp
         src/native_renderer/shader_capture.cpp
@@ -117,6 +125,7 @@ target_link_libraries(pinyon_shift_hostui_tests PRIVATE rex::runtime)
 add_executable(pinyon_shift_host_config_tests EXCLUDE_FROM_ALL
     tests/config/host_config_test.cpp
     src/config/host_config.cpp
+    src/platform/host_platform.cpp
 )
 target_include_directories(pinyon_shift_host_config_tests PRIVATE src)
 
@@ -191,7 +200,8 @@ endif()
 # The mod ABI header (NP-7) and the TOML parser mod.toml is read with.
 target_include_directories(pinyon_shift PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${REXSDK_DIR}/thirdparty/tomlplusplus/include)
+    ${REXSDK_DIR}/thirdparty/tomlplusplus/include
+    ${REXSDK_DIR})
 endif()  # NOT PINYON_SHIFT_HOST_TESTS_ONLY
 
 # Sample mods (NP-7.6): plain C libraries against include/pinyon_mod.h. Not

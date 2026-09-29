@@ -2,9 +2,6 @@
 #include "pinyon_shift_init.h"
 #include "fh1_render_test.h"
 
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
-
 #include <filesystem>
 #include <fstream>
 #include <regex>
@@ -29,6 +26,7 @@
 #include "native_renderer/guest_output_renderer.h"
 #include "native_renderer/shader_capture.h"
 #include "pinyon_shift_diagnostics.h"
+#include "platform/host_platform.h"
 #include "pinyon_shift_runtime_hooks.h"
 #include "config/host_config.h"
 #include "ui/host_style.h"
@@ -150,7 +148,7 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
     }
 
     std::filesystem::path backup = path;
-    backup += L".schema" + std::to_wstring(schema) + L".bak";
+    backup += ".schema" + std::to_string(schema) + ".bak";
     std::error_code backup_error;
     std::filesystem::copy_file(path, backup,
                                std::filesystem::copy_options::skip_existing,
@@ -327,7 +325,7 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
     }
 
     std::filesystem::path temporary = path;
-    temporary += L".migrating";
+    temporary += ".migrating";
     {
       std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
       if (!output) {
@@ -338,10 +336,7 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
         return false;
       }
     }
-    if (!MoveFileExW(temporary.c_str(), path.c_str(),
-                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-      std::error_code error;
-      std::filesystem::remove(temporary, error);
+    if (!pinyon_shift::platform::ReplaceFileAtomically(temporary, path)) {
       return false;
     }
     migrated = true;
@@ -406,11 +401,12 @@ void PinyonShiftApp::OnConfigurePaths(rex::PathConfig& paths) {
     diagnostics::RecordEvent("config.unsupported",
                              {{"path", paths.config_path.string()},
                               {"required_schema", std::to_string(kConfigSchema)}});
-    MessageBoxW(nullptr,
-                L"Pinyon Shift could not create the host configuration, or its schema is "
-                L"unsupported. Remove or migrate pinyon_shift.toml before retrying.",
-                L"Unsupported configuration", MB_OK | MB_ICONERROR);
-    ExitProcess(ERROR_REVISION_MISMATCH);
+    pinyon_shift::platform::ShowFatalError(
+        "Unsupported configuration",
+        "Pinyon Shift could not create the host configuration, or its schema is "
+        "unsupported. Remove or migrate pinyon_shift.toml before retrying.");
+    // ERROR_REVISION_MISMATCH, the code this exit has always had.
+    pinyon_shift::platform::ExitImmediately(1306);
   }
 
   if (REXCVAR_GET(log_file).empty()) {
@@ -434,21 +430,12 @@ std::optional<rex::PathConfig> PinyonShiftApp::OnFinalizePaths(
     const rex::PathConfig& defaults,
     std::function<void(rex::PathConfig)> resume) {
   (void)resume;
-  DEVMODEW mode{};
-  mode.dmSize = sizeof(mode);
-  MONITORINFOEXW monitor_info{};
-  monitor_info.cbSize = sizeof(monitor_info);
-  const HWND hwnd = window() ? static_cast<HWND>(window()->GetNativeWindowHandle())
-                             : nullptr;
-  const HMONITOR monitor =
-      hwnd ? MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) : nullptr;
-  if (monitor && GetMonitorInfoW(monitor, &monitor_info) &&
-      EnumDisplaySettingsW(monitor_info.szDevice, ENUM_CURRENT_SETTINGS, &mode) &&
-      mode.dmDisplayFrequency >= 24 && mode.dmDisplayFrequency <= 240) {
-    REXCVAR_SET(video_mode_refresh_rate, double(mode.dmDisplayFrequency));
-    pinyon_shift::diagnostics::RecordEvent(
-        "display.refresh.detected",
-        {{"hz", std::to_string(mode.dmDisplayFrequency)}});
+  const auto refresh = pinyon_shift::platform::DisplayRefreshRate(
+      window() ? window()->GetNativeWindowHandle() : nullptr);
+  if (refresh && *refresh >= 24 && *refresh <= 240) {
+    REXCVAR_SET(video_mode_refresh_rate, double(*refresh));
+    pinyon_shift::diagnostics::RecordEvent("display.refresh.detected",
+                                           {{"hz", std::to_string(*refresh)}});
   }
   return defaults;
 }
@@ -521,7 +508,7 @@ void PinyonShiftApp::OnPostInitLogging() {
 
 void PinyonShiftApp::OnPreSetup(rex::RuntimeConfig& config) {
   config.gpu_plugin =
-      GetEnvironmentVariableW(L"PINYON_SHIFT_FH1_DISC_SHADER_CORPUS_DIR", nullptr, 0)
+      pinyon_shift::platform::EnvironmentVariable("PINYON_SHIFT_FH1_DISC_SHADER_CORPUS_DIR")
           ? "fh1-producer"
           : "fh1";
   pinyon_shift::fh1_render_test::Configure(config);

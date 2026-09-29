@@ -453,7 +453,10 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         for retired in re.findall(r'"([a-z0-9_]+)"', retired_block):
             self.assertIn(f"'{retired}'", tool_retired)
         self.assertIn("display.refresh.detected", app)
-        self.assertIn("EnumDisplaySettingsW", app)
+        # The refresh query lives in the platform layer (NP-12.2).
+        self.assertIn("platform::DisplayRefreshRate", app)
+        platform = (ROOT / "src/platform/host_platform.cpp").read_text(encoding="utf-8")
+        self.assertIn("EnumDisplaySettingsW", platform)
         graphics = (
             ROOT / "thirdparty/shiftglue-sdk/src/graphics/graphics_system.cpp"
         ).read_text(encoding="utf-8")

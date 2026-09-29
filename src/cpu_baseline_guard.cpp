@@ -2,18 +2,12 @@
 // stops with a message on a CPU without FMA3, instead of crashing on the
 // first fused multiply-add. tools/build-preview.ps1 only picks that baseline
 // on a CPU that has it, so this matters when a build is copied elsewhere.
-#if defined(PINYON_SHIFT_CPU_BASELINE_FMA) && defined(_WIN32)
+#if defined(PINYON_SHIFT_CPU_BASELINE_FMA) && (defined(__x86_64__) || defined(_M_X64))
 
 #include <cpuid.h>
 #include <cstdint>
 
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
+#include "platform/host_platform.h"
 
 namespace {
 
@@ -30,12 +24,12 @@ bool CpuRunsFma() {
 
 const bool g_cpu_checked = [] {
   if (!CpuRunsFma()) {
-    MessageBoxW(nullptr,
-                L"This build of Pinyon Shift uses FMA3 instructions, which this CPU does "
-                L"not have. Build it again on this PC; the build chooses the instructions "
-                L"the CPU supports.",
-                L"Unsupported CPU", MB_OK | MB_ICONERROR);
-    ExitProcess(ERROR_NOT_SUPPORTED);
+    pinyon_shift::platform::ShowFatalError(
+        "Unsupported CPU",
+        "This build of Pinyon Shift uses FMA3 instructions, which this CPU does not have. "
+        "Build it again on this PC; the build chooses the instructions the CPU supports.");
+    // ERROR_NOT_SUPPORTED, the code this exit has always had.
+    pinyon_shift::platform::ExitImmediately(50);
   }
   return true;
 }();
