@@ -1,6 +1,6 @@
 # Carson geometry cache follow-up (2026-09-10)
 
-Historical: describes the Xenos-era renderer's owned geometry cache, removed in `6b75238`; kept for reference.
+Historical: describes the Xenos-era renderer's owned geometry cache, removed in `bccf126`; kept for reference.
 
 The reported Carson race slowdown reproduces in **Hot Hatch Hustle**, reached
 from the current AppData save. Native reflection mipmaps disabled still produce

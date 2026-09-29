@@ -1,6 +1,6 @@
 # A6 owned depth-clear retention — 2026-09-09
 
-Historical: describes the Xenos-era renderer's owned depth clear, removed with the Xenos renderer in `6b75238`; kept for reference.
+Historical: describes the Xenos-era renderer's owned depth clear, removed with the Xenos renderer in `bccf126`; kept for reference.
 
 Status: **A6 complete; A epic closed for the retained 1x chain.**
 

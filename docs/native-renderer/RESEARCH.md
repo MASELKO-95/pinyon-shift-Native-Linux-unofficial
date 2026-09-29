@@ -8,7 +8,7 @@ features. The FH1 native executor is now the only renderer; the
 replaced Xenos and what is still open, and
 [development findings](../DEVELOPMENT.md) is the current starting point.
 Everything below describes work done while the Xenos-era renderer existed
-(removed in `6b75238`).
+(removed in `bccf126`).
 
 The old NR-00–NR-05 and prototype Phase C labels describe historical milestones;
 they are not the current resource-migration A/B/C completion gates. Many of
@@ -209,7 +209,7 @@ That order, not its semantic capture, carried into the Rayman-style plan.
 
 **Performance program PERF-00–15 (2026-09-20 to 21).** Measured on the
 Xenos renderer. Retained then: PERF-02 owned depth clear at 1x only (removed
-with Xenos in `6b75238`), PERF-05 direct reflection-cube import, PERF-09 one
+with Xenos in `bccf126`), PERF-05 direct reflection-cube import, PERF-09 one
 submission per frame, PERF-11 correlated critical-path trace and PERF-14
 deadline-driven vblank; see [retained changes](../DEVELOPMENT.md#retained-changes).
 PERF-01 measured no repeated geometry-admission rejections, so its memo
@@ -264,11 +264,11 @@ suppression, shadow-caster and NR-02 contract tools with their RenderDoc
 exporters. 101 scripts (90 Python, 11 PowerShell), their 81 tests under
 `tools/tests` and the three census classifiers under `config/native-renderer`
 were removed. Recover any of them from the parent of the deletion commit
-with `git show 3970a6a:tools/<name>`, for example:
+with `git show b59061f:tools/<name>`, for example:
 
 ```powershell
-git show 3970a6a:tools/summarize-native-renderer-visibility.py
-git show 3970a6a:tools/tests/test_native_renderer_visibility.py
+git show b59061f:tools/summarize-native-renderer-visibility.py
+git show b59061f:tools/tests/test_native_renderer_visibility.py
 ```
 
 ## Recovering exact historical evidence

@@ -82,7 +82,7 @@ being reported as a successful visual gate.
 rate, and the permitted main-loop-rate range. The legacy telemetry field is
 named `simulation_tick_count`, but the measured hook is the FH1 application
 loop and must not be interpreted as an individual physics-step counter.
-`# require-native` belonged to the removed race pilot (`c83e42f`); a script
+`# require-native` belonged to the removed race pilot (`0e88456`); a script
 line with it is now an ordinary comment. A run fails for missing or wrong-frame
 captures, blank output, renderer/GPU/device-loss errors, a missed capture frame,
 or an abnormal process exit. The PowerShell launcher owns the exact child PID
@@ -106,7 +106,7 @@ records `fh1.render_test.wait` with the frames waited; exceeding
 uses it to capture the race only after the car moves.
 
 There is no renderer to choose: `fh1_renderer` was removed with the Xenos
-and `native-shadow` renderers (`8fb4ee4`, `6b75238`). Every
+and `native-shadow` renderers (`a5b28e1`, `bccf126`). Every
 `fh1.render_test.capture` event still records `presenter` and
 `session_renderer`; both are always `native`.
 

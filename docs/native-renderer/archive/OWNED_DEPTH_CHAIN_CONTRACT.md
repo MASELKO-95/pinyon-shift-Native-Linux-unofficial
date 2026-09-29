@@ -1,6 +1,6 @@
 # Owned depth-clear chain contract
 
-Historical: describes the Xenos-era renderer's owned depth clear, removed with the Xenos renderer in `6b75238`; kept for reference.
+Historical: describes the Xenos-era renderer's owned depth clear, removed with the Xenos renderer in `bccf126`; kept for reference.
 
 Status: retained at symmetric 1x draw resolution; A1–A6 complete for that scope.
 2x uses compatibility clears after failing performance retention. See

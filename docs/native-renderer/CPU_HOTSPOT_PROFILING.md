@@ -36,7 +36,7 @@ The performance CSV still has the columns `fh1_issue_draw_cpu_time_ns`,
 `fh1_material_snapshot_cpu_time_ns`, `fh1_material_snapshot_calls`,
 `fh1_native_output_cpu_time_ns`, `fh1_title_thread_cpu_time_ns` and
 `fh1_gpu_thread_cpu_time_ns`. They were written by the removed native race
-pilot and its draw observers (`a75be82`, `6b75238`) and stay zero on the
+pilot and its draw observers (`2f1f1a4`, `bccf126`) and stay zero on the
 current build; use the sampled trace for CPU attribution. The executor's own
 GPU phase times come from `--fh1_native_gpu_profile=true` in its periodic
 stats, including `texture_reloads`, the untile and copy of texture data a

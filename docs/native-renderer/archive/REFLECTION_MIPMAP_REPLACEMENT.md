@@ -1,6 +1,6 @@
 # Experimental reflection mipmap replacement — 2026-09-10
 
-Historical: describes the Xenos-era renderer's reflection mip replacement, removed in `6b75238` and `327be88`; kept for reference.
+Historical: describes the Xenos-era renderer's reflection mip replacement, removed in `bccf126` and `f6492b7`; kept for reference.
 
 Status: **focused mipmap implementation complete; enabled by default at symmetric
 1x/2x/3x with compatibility fallback.** The remaining B epic is deferred and open.

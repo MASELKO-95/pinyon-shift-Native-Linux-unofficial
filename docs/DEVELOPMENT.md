@@ -3,8 +3,8 @@
 Consolidated from the development records at `53f9bf9` (2026-09-10) and
 updated for the removal of the Xenos renderer (2026-09-28). This is the
 current starting point for development, not a release announcement. At `dev`
-checkpoint `e9c7ba7`, the source pins ShiftGlue
-`1a67f90d941d0a4dc11c7d92aac1b0ef8effdda7`; older binary hashes in individual
+checkpoint `e5dc399`, the source pins ShiftGlue
+`aff6202fcb159721a96d9ce791d280d59703ec9a`; older binary hashes in individual
 experiment reports describe those experiments.
 
 ## Documentation map
@@ -34,13 +34,13 @@ current renderer, formats and procedures; they are not competing roadmaps.
 ## What the renderer actually does
 
 FH1 CPU code is recompiled. `rexgpu-fh1.dll` runs the FH1 native executor,
-the only renderer since `6b75238`: the PM4 command processor consumes the
+the only renderer since `bccf126`: the PM4 command processor consumes the
 guest's command stream and the executor runs every draw, clear, resolve and
 swap in guest order with the original shaders from a locally produced
 offline shader pack. It owns EDRAM surfaces, resolves write the guest texture
 layout into the guest-memory GPU mirror, and textures are decoded from that
 mirror. No Xenos render target cache or EDRAM emulation is linked
-(`e9c7ba7`). The [frame contract](native-renderer/NATIVE_FRAME_CONTRACT.md)
+(`e5dc399`). The [frame contract](native-renderer/NATIVE_FRAME_CONTRACT.md)
 lists what it covers.
 
 - **Resolution scale:** symmetric 1x, 2x and 3x. Any other scale fails
@@ -50,7 +50,7 @@ lists what it covers.
   shader is missing from the pack is dropped. Each miss is recorded under the
   state's `cache/fh1-shader-misses`, and the next launch's graphics
   preparation sees the new record and produces the pack again with those
-  shaders (`be7d537`). A missing shader is therefore dropped at most until
+  shaders (`96693e9`). A missing shader is therefore dropped at most until
   the next launch. See the [shader pack contract](native-renderer/SHADER_PACK_FORMAT.md#pack-misses-and-self-repair).
 - **Guest-visible resolves:** with `readback_resolve = none`, one-off captures
   the game reads on the CPU (for example the car thumbnails it saves) are
@@ -85,7 +85,7 @@ cache or title code that the native executor still uses.
   with 17.390 ms median frame time and 17.241 ms median GPU span. Later heavy
   1x runs measured 15.808–16.426 ms. These are different historical
   workloads, not a current FPS guarantee or a matched Xenia comparison. The
-  hash-based execution allowlists of that period were removed in `327be88`.
+  hash-based execution allowlists of that period were removed in `f6492b7`.
 - **Direct reflection-cube import (PERF-05):** changed cubes are written
   directly into the persistent 256×256, six-face, nine-level R10G10B10A2
   texture array with nine compute dispatches instead of a scratch untile and
@@ -115,7 +115,7 @@ cache or title code that the native executor still uses.
   publication, deferred replay, submission/fence completion, guest vblank and
   present across rotated logs.
 
-Removed with the Xenos renderer (`a75be82` to `e9c7ba7`): the owned depth,
+Removed with the Xenos renderer (`2f1f1a4` to `e5dc399`): the owned depth,
 tile and rectangle clears, the reflection mip replacement, the Carson owned
 geometry cache, the tone-map and velocity-dilate replacements and the opt-in
 six-family native race pilot. Their documents are
@@ -158,7 +158,7 @@ result:
   work without skipping storage finalization. Thread-creation failure uses the
   remaining workers/processor thread; cancellation stops adding work. An empty
   requested set is distinguished from missing requested pipeline hashes.
-- Validation: `tools/check-fh1-startup.py` (removed in `327be88` with the other
+- Validation: `tools/check-fh1-startup.py` (removed in `f6492b7` with the other
   Xenos-era source checks) compiled the production methods/selection block with
   deterministic failure fakes. Release renderer
   build and installed-AppData startup/shutdown pass (session

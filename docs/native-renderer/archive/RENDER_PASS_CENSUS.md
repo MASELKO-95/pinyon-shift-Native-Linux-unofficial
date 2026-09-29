@@ -1,6 +1,6 @@
 # Forza Horizon renderer census
 
-Historical: describes the Xenos-era renderer removed in `6b75238`; kept for reference.
+Historical: describes the Xenos-era renderer removed in `bccf126`; kept for reference.
 
 This is a bounded historical qualification contract, not the current migration
 status. See [current findings](../../DEVELOPMENT.md) and the

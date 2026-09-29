@@ -3,7 +3,7 @@
 `native` results per route, with the Xenos baselines they were measured
 against for the Xenos retirement backlog (XR-00, XR-07, XR-09). The Xenos
 rows are historical measurements taken before the Xenos renderer was
-removed (`6b75238`); they cannot be rerun on the current build. Compare new
+removed (`bccf126`); they cannot be rerun on the current build. Compare new
 native runs with the native rows, run back to back with a control on the
 same build where possible. Runs come from seed `appdata-2026-09-27`
 through `tools/run-fh1-render-test.py --configuration RelWithDebInfo --hidden

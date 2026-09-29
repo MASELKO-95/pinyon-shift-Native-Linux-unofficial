@@ -4,7 +4,7 @@ Status: **done; closed 2026-09-28.** The Xenos backend is removed and the
 FH1 native executor is the only renderer (XR-10). Two items stay open
 because they need a person or hardware this project does not have: an
 unscripted human drive (XR-08) and AMD, Intel and lower-end GPU measurements
-(XR-09). The rollback point is the tag `xenos-rollback` on `a8c1f34`, the
+(XR-09). The rollback point is the tag `xenos-rollback` on `ce58ed1`, the
 last commit with the Xenos renderer.
 
 The plan was created 2026-09-27 at `dev` checkpoint `02dfad0`. It superseded
@@ -46,8 +46,8 @@ presenter, and the deferred command list and submission code.
 ## Starting point (analysis, 2026-09-27)
 
 Historical: this is the analysis the plan started from. The race pilot, its
-settings and hooks were removed in `a75be82` and the Xenos renderer in
-`6b75238`; none of the settings named here exist any more.
+settings and hooks were removed in `2f1f1a4` and the Xenos renderer in
+`bccf126`; none of the settings named here exist any more.
 
 ### What works
 
@@ -174,7 +174,7 @@ PM4 command processor (kept)
   off (null). No per-frame switching between renderers in this mode.
 
 The modes shipped as `fh1_renderer`. `native-shadow` was removed in
-`8fb4ee4` and `xenos` with the setting itself in `6b75238`, so `native` is
+`a5b28e1` and `xenos` with the setting itself in `bccf126`, so `native` is
 the only renderer and there is no mode to select.
 
 The executor is also built as a library for an **offline replayer** of
@@ -316,7 +316,7 @@ Sizes are relative scope, not time estimates. XR-08 and XR-09 can overlap.
   XMedia wrapper `sub_82E5D868`) to `media/ui/videos/splash_intros/`. It
   completed every movie, so scripted runs showed a solid green Press Start
   screen and pink noise behind the single-player menu. A kernel file-open
-  observer now tracks the playing movie (`041d541`): the splash intros are
+  observer now tracks the playing movie (`fa5079d`): the splash intros are
   skipped, `PressStart.wmv` plays, and Press Start is still up by frame 400.
 - [x] Bound native diagnostics: no per-draw INFO JSON by default, and stop
   the "absent from the offline analysis catalog" error flood that native
@@ -413,7 +413,7 @@ types, and every new surface, resolve and texture configuration runs in
   binds it (no per-draw vertex copies, no fetch-address rebasing). The
   pipeline cache and catalog prewarm are shared; the Xenos-side family
   pipelines are off with the executor (prewarm cached failed family
-  pipelines and dropped 6.4M draws until `2414d8b`).
+  pipelines and dropped 6.4M draws until `66b4a8e`).
 - [x] During bring-up only, borrow guest-memory textures from the Xenos
   texture cache at the same draw, counted as `borrowed_xenos_texture`.
   Everything else is native. Never needed: the executor decodes textures
@@ -426,7 +426,7 @@ types, and every new surface, resolve and texture configuration runs in
   texture mirrors in the frames before each dump (`..._verify_draws` adds
   per-draw before/after checks); skips and stats print every 600 frames.
   DRED breadcrumbs and page faults come with the D3D12 debug layer.
-  `native-shadow` and its verification were removed in `8fb4ee4`; the
+  `native-shadow` and its verification were removed in `a5b28e1`; the
   front-buffer dumps remain as `fh1_native_dump_frames` /
   `fh1_native_dump_dir`.
 - [x] Frame dump (event stream plus referenced guest memory and shader
@@ -546,7 +546,7 @@ resolve kind runs natively, and no family code is involved.
   never saved a photo, and the save screen does not take A in scripted runs;
   its old slot thumbnail is noise for the same reason.) `full` gives the
   real image but triples frame time; `fast` hands the game previous-frame
-  data and it never reaches free roam. SDK `e9b293b` reads back one-off
+  data and it never reaches free roam. SDK `0bf0658` reads back one-off
   captures by default in `native` (`fh1_native_readback_new_resolves`):
   ranges of 256 KiB and up that are new or idle for seconds, for the first
   frames of each run while new, copied into guest memory before the command
@@ -599,7 +599,7 @@ and no fallback, and passes the route acceptance against Xenos captures.
   ZPD end without a blocking GPU-thread wait — Xenos `legacy` mode waits on
   a fence today — or prove the fake-count policy is visually equivalent per
   consumer. Keep the ZPD fixes recorded in `EPIC_04` and `EPIC_05` (retired
-  in NP-0.3; `git show ca3281a:config/rexglue/EPIC_04_ZPD_LIFECYCLE_D3D12.md`).
+  in NP-0.3; `git show 5c1fb88:config/rexglue/EPIC_04_ZPD_LIFECYCLE_D3D12.md`).
   Proven equivalent rather than reimplemented: `native` answers ZPD through
   the same `legacy` host-query path as Xenos (host occlusion queries count
   samples of the command processor's draws whatever target is bound), and
@@ -712,7 +712,7 @@ or proven unused on every matrix route, with overflow-safe accounting.
   extractor does not know, relinked exports). Shipping builds now record
   each pack miss's microcode under the state's `cache/fh1-shader-misses`,
   and graphics preparation reruns once to translate every recorded pair
-  (SDK `feat(renderer): record FH1 shader pack misses`, app `be7d537`).
+  (SDK `feat(renderer): record FH1 shader pack misses`, app `96693e9`).
   Two rounds from the recorded misses took `fh1-race-sync`,
   `fh1-buy-car` and `fh1-rewind-sync` to zero pack misses. A draw of a
   shader the pack lacks is still dropped the first time it is seen.
@@ -726,12 +726,12 @@ list of accepted differences.
 ### XR-09 — Scaling, performance and hardware
 
 - [x] Native 2x/3x scaling (surfaces and resolves at scale; pack per scale).
-  SDK `927bdc3`, app `64c9deb`: `native` runs at symmetric 1x, 2x and 3x
+  SDK `7444136`, app `bd0ced7`: `native` runs at symmetric 1x, 2x and 3x
   (`native-shadow` stays 1x). Surfaces are scale x scale host pixels per
   guest pixel, capped at 16384 host rows; transfers and resolves scale
   guest rectangles at use, and resolves write the texture cache's scaled
   resolve range. Packs must be produced with the native renderer
-  (`96943bc`): a Xenos-produced pack lacks the native depth-rectangle clear
+  (`79e072a`): a Xenos-produced pack lacks the native depth-rectangle clear
   vertex shader 1E6883FCCDE1F688, which showed as a green glow on car
   reflections. On `fh1-race-sync`, native 2x is 14.11/28.53 ms (median/p95)
   against Xenos 14.51/29.81, and native 3x 17.08/29.72 against Xenos
@@ -766,9 +766,9 @@ and vendor tested.
 ### XR-10 — Native by default; remove Xenos
 
 - [x] Make `native` the default for one release with `xenos` as the rollback.
-  Config schema 23 (`0949d10`): new and migrated configs select `native`
+  Config schema 23 (`8b219f4`): new and migrated configs select `native`
   (schema 22's `xenos` was the old default), the launcher lists "Native ·
-  default" first and "Xenos · rollback"; since `64c9deb` scaled sessions
+  default" first and "Xenos · rollback"; since `bd0ced7` scaled sessions
   also run native. The release that ships it starts the one-release clock the next
   two items wait for. The user waived that one-release gate on 2026-09-28,
   so the removal below did not wait for a release.
@@ -778,34 +778,34 @@ and vendor tested.
   capture, SNR probes and fixture parsers; ordered UI capture; the pre-UI
   hook; HUD masks; the 153 SNR guest hooks and the race admission hook; the
   obsolete cvars. Done in order:
-  - app `a75be82`: the six-family race pilot, HUD masks, ordered UI capture
+  - app `2f1f1a4`: the six-family race pilot, HUD masks, ordered UI capture
     and replay, the pre-UI clear, the SNR-01..04 and SNR-M02 probes with
     their fixture parsers, the race admission hook and 149 title hooks. The
     VdSwap source-frame hook, the PERF-11 title-draw probes, the GPU corpus
     observers and the render-test output callback stay.
-  - app `c83e42f`: the pilot and SNR verifiers, probe scripts and routes,
+  - app `0e88456`: the pilot and SNR verifiers, probe scripts and routes,
     and the render-test `# require-native` check.
-  - SDK `246cf5c`, app `8fb4ee4`: `native-shadow` with its private mirror,
+  - SDK `6030067`, app `a5b28e1`: `native-shadow` with its private mirror,
     same-frame verification and the `fh1_native_shadow*` settings; the
     front-buffer dumps are renamed `fh1_native_dump_frames` /
     `fh1_native_dump_dir`.
-  - SDK `add1116`, app `6b75238`: the Xenos draw and resolve paths of the
+  - SDK `22a8f65`, app `bccf126`: the Xenos draw and resolve paths of the
     command processor, `fh1_renderer`, the owned depth, tile and rectangle
     clears, the tone-map and velocity-dilate replacements, the owned
     geometry cache, the reflection-mip replacement and the draw observers.
     Unsupported resolution scales now fail setup instead of falling back.
-  - SDK `dc65ce9`, app `327be88`: the Xenos-only FH1 shader families,
+  - SDK `52a0d70`, app `f6492b7`: the Xenos-only FH1 shader families,
     reflection mip generation, CPU BC3 import, execution-key plumbing and
     the tests and check scripts that read them.
 - [x] Clean build with no Xenos backend linked; the offline shader producer
-  stays separate; tag the rollback release. SDK `1a67f90`, app `e9c7ba7`:
+  stays separate; tag the rollback release. SDK `aff6202`, app `e5dc399`:
   the D3D12 render target cache is replaced by a host configuration object,
   so no Xenos EDRAM code is linked into the FH1 graphics plugin; the shader
   producer still builds separately. The rollback point is the tag
-  `xenos-rollback` on app `a8c1f34` (SDK `0f432e1`, tagged the same), the
+  `xenos-rollback` on app `ce58ed1` (SDK `3986ece`, tagged the same), the
   last commit with the Xenos renderer. Each step passed `fh1-race-sync` in
-  `native` with zero executor skips and the golden frame replays (`8fb4ee4`
-  and later). The final build (`02dc9a6`, Release rebuilt, 1x pack produced
+  `native` with zero executor skips and the golden frame replays (`a5b28e1`
+  and later). The final build (`012bc60`, Release rebuilt, 1x pack produced
   with the recorded pack misses) passes every synchronized route of the
   matrix in `native`: `fh1-fmv` (with opening movies), `fh1-opening-sync`,
   `fh1-rewind-sync`, `fh1-race-sync`, `fh1-modes-sync` and `fh1-buy-car`,
@@ -822,7 +822,7 @@ Originally recorded at `02dfad0`, when every mode was Xenos-only or pilot.
 The native status below comes from same-frame `native-shadow` pairs (share
 of pixels differing, largest channel difference out of 255) and full
 `native` runs. The pairs are historical measurements taken before
-`native-shadow` and Xenos were removed (`8fb4ee4`, `6b75238`); they cannot
+`native-shadow` and Xenos were removed (`a5b28e1`, `bccf126`); they cannot
 be repeated on the current build. `fh1-native-race-mode-boundary` was
 written for the removed race pilot; only its scripted inputs remain
 meaningful.

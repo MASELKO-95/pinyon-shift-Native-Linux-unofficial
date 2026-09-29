@@ -1,6 +1,6 @@
 # Rayman Origins native renderer: lessons for FH1
 
-Historical: research written while the Xenos-era renderer was the default; that renderer was removed in `6b75238`. Kept for reference as the source of the native executor's architecture.
+Historical: research written while the Xenos-era renderer was the default; that renderer was removed in `bccf126`. Kept for reference as the source of the native executor's architecture.
 
 Reviewed 2026-09-25. Local reference: `.local/RaymanOriginsRecomp`, checked out
 at `0046cc11fbc95a5d3942c52c0130236f2065df9f`. This is a source and public

@@ -217,7 +217,7 @@ texels, more DXT/DXN sizes and mip ranges). None needs new executor code:
 
 Each record carries `cost_ns`, the time spent inside the census (including
 the window flush and two clock reads per event). On the mode-boundary route
-at the default log level (SDK `b51e15a`): 172 ns per draw, median
+at the default log level (SDK `a440732`): 172 ns per draw, median
 0.41 ms per frame, p95 0.92 ms, worst 60-frame window 1.005 ms at 6,500
 draws per frame (race). The target was under 1 ms per frame; only the
 heaviest race windows reach it. The census is off by default.

@@ -3,7 +3,7 @@
 This is a bounded historical qualification contract, not the current
 renderer status. It asked which Xenos render-target work could be
 suppressed; that question ended when the Xenos renderer was removed
-(`6b75238`), and "suppression" and "Gate B" below refer to that renderer.
+(`bccf126`), and "suppression" and "Gate B" below refer to that renderer.
 See [current findings](../DEVELOPMENT.md) and the
 [consolidated research](RESEARCH.md). The census settings were removed from
 the runtime at `e91a1cf`, so the capture workflow below no longer runs as

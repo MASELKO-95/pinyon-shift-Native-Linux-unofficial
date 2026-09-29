@@ -188,7 +188,7 @@ def record(args):
     window_start = 0.0
     window_first = 0
     rows, windows, markers = [], [], []
-    # The native renderer records no GPU execution corpus (6b75238).
+    # The native renderer records no GPU execution corpus (bccf126).
     coverage = {'status': 'not recorded by the native renderer'}
     status = 'recording'
     files = {name: (output / (name + '.jsonl')).open('a', encoding='utf-8', buffering=1)

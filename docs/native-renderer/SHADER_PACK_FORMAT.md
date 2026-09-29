@@ -124,7 +124,7 @@ expected scene completed.
 Packs are produced per integer scale (1x, 2x or 3x; the native executor
 supports no others) and must be produced with the native renderer: a pack
 produced with the removed Xenos renderer lacked the native depth-rectangle
-clear vertex shader `1E6883FCCDE1F688` (`96943bc`).
+clear vertex shader `1E6883FCCDE1F688` (`79e072a`).
 
 ## Pack misses and self-repair
 
@@ -134,14 +134,14 @@ preparation route, `fh1-shader-preparation` from an empty profile, never
 reaches. A shipping build records each such miss once per session: the
 guest microcode is written as `<stage>-<hash>-<modification>.bin` (for
 example `vertex-37EBBE47900A46F5-0000000000000007.bin`) under the state's
-`cache/fh1-shader-misses` (SDK `0f432e1`).
+`cache/fh1-shader-misses` (SDK `3986ece`).
 
 Graphics preparation (`tools/prepare-fh1-shaders.ps1`, run by
 `launch-preview.ps1` and the launcher) includes the hashes of those records
 in its preparation key. A new record therefore makes the next launch prepare
 the pack again, passing the directory to `produce-fh1-artifacts.ps1
 -ShaderMissDir`; the producer translates every recorded pair after the disc
-corpus (`be7d537`). A shader missing from the pack is dropped only until the
+corpus (`96693e9`). A shader missing from the pack is dropped only until the
 next launch. Two rounds from recorded misses took `fh1-race-sync`,
 `fh1-buy-car` and `fh1-rewind-sync` to zero pack misses. The records are
 game-derived microcode and stay in the local state like the pack.
@@ -223,7 +223,7 @@ last qualified ReXGlue capture into those native startup inputs. Graphics
 production passes `--all-stored-pipelines`: since the native executor became
 the only renderer the GPU execution corpus names no pipelines, so the
 allowlist is every pipeline the preparation route created (379 at 1x on
-2026-09-28; preparations between `6b75238` and `3970a6a` wrote an empty
+2026-09-28; preparations between `bccf126` and `b59061f` wrote an empty
 allowlist and created every pipeline during play). The v2 shader
 catalog stores each FH1 shader's raw identity plus the constant maps, vertex
 binding strides, output masks, register requirements and memory-export facts

@@ -9,7 +9,7 @@ sampled pass/texture timings. Per-frame CSV measurement continues on all frames.
 Brief effects can fall between coverage samples; repeated visits help. Coverage
 counts are sample counts and must not be reported as whole-session totals.
 
-Since the Xenos renderer was removed (`6b75238`), nothing fed the GPU
+Since the Xenos renderer was removed (`bccf126`), nothing fed the GPU
 corpus or the sampled pass records: they came from the Xenos draw and copy
 observers, which the native renderer does not have. NP-0.5 removed the
 corpus writer, its coverage files and `rank-fh1-gpu-corpus.py`; recordings
@@ -92,7 +92,7 @@ rotation identity rejection, frame-window calculations and report serialization.
 The compiled
 CSV-writer and family-coverage checks (`check-fh1-discovery-csv.py`,
 `check-fh1-family-coverage.py`) were removed with the other Xenos-era source
-checks in `327be88`.
+checks in `f6492b7`.
 
 The automated smoke option `-RenderTestScript <script>`
 is for developer validation only. It uses the existing render-test runner and
