@@ -98,6 +98,24 @@ class BuildFh1GpuPrewarmTests(unittest.TestCase):
                 b"XEPS" + bytes(8) + first,
             )
 
+    def test_all_stored_pipelines_prewarm_the_producer_route(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            legacy = root / "legacy"
+            shareable = legacy / "shaders/shareable"
+            shareable.mkdir(parents=True)
+            records = [value.to_bytes(8, "little") + bytes(64)
+                       for value in (5, 4, 0x6E456C111D3FA84D)]
+            (shareable / "4D5309C9.rtv.d3d12.xpso").write_bytes(b"XEPS" + bytes(8) + b"".join(records))
+            corpus = root / "corpus.json"
+            corpus.write_text(json.dumps({
+                "schema": "pinyon-shift.fh1-gpu-corpus.v3", "key_version": 2, "entries": []}))
+            output = root / "manifest.txt"
+            extra = MODULE.stored_pipelines(legacy)
+            self.assertEqual(MODULE.build(corpus, output, extra), (2, 0, 0))
+            self.assertEqual(output.read_text().splitlines()[1:],
+                             ["P 0000000000000004", "P 0000000000000005"])
+
     def test_owned_native_pipeline_keeps_draw_without_guest_descriptor(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

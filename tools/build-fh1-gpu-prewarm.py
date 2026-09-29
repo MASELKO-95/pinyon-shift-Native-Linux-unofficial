@@ -13,6 +13,22 @@ SCHEMA = "pinyon-shift.fh1-gpu-prewarm.v3"
 NATIVE_PIPELINES = {"6E456C111D3FA84D"}
 
 
+def read_pipeline_storage(legacy_cache: Path) -> bytes:
+    data = (legacy_cache / "shaders/shareable/4D5309C9.rtv.d3d12.xpso").read_bytes()
+    if data[:4] != b"XEPS" or len(data) < 12 or (len(data) - 12) % 72:
+        raise ValueError(f"invalid legacy FH1 catalog: {legacy_cache}")
+    return data
+
+
+def stored_pipelines(legacy_cache: Path) -> set[str]:
+    """Every pipeline the producer created while replaying its route."""
+    data = read_pipeline_storage(legacy_cache)
+    return {
+        f"{int.from_bytes(data[offset:offset + 8], 'little'):016X}"
+        for offset in range(12, len(data), 72)
+    } - NATIVE_PIPELINES
+
+
 def stage_native_catalog(legacy_cache: Path, manifest: Path, output_root: Path) -> None:
     shader_source = legacy_cache / "fh1-native-shaders-v2.bin"
     header = shader_source.read_bytes()[:16]
@@ -22,10 +38,7 @@ def stage_native_catalog(legacy_cache: Path, manifest: Path, output_root: Path) 
         raise ValueError(f"invalid FH1 analysis catalog: {shader_source}")
     shutil.copyfile(shader_source, output_root / "fh1-native-shaders-v2.bin")
 
-    pipeline_source = legacy_cache / "shaders/shareable/4D5309C9.rtv.d3d12.xpso"
-    data = pipeline_source.read_bytes()
-    if data[:4] != b"XEPS" or len(data) < 12 or (len(data) - 12) % 72:
-        raise ValueError(f"invalid legacy FH1 catalog: {pipeline_source}")
+    data = read_pipeline_storage(legacy_cache)
     allowed = {
         int(line[2:], 16)
         for line in manifest.read_text(encoding="ascii").splitlines()
@@ -40,9 +53,10 @@ def stage_native_catalog(legacy_cache: Path, manifest: Path, output_root: Path) 
     )
 
 
-def build(corpus: Path | list[Path], output: Path) -> tuple[int, int, int]:
+def build(corpus: Path | list[Path], output: Path,
+          extra_pipelines: set[str] = frozenset()) -> tuple[int, int, int]:
     sources = [corpus] if isinstance(corpus, Path) else corpus
-    pipelines, draws, copies = set(), set(), set()
+    pipelines, draws, copies = set(extra_pipelines), set(), set()
     for source in sources:
         text = source.read_text(encoding="utf-8")
         if text.startswith(SCHEMA + "\n"):
@@ -93,8 +107,14 @@ def main() -> None:
     parser.add_argument("output", type=Path)
     parser.add_argument("--merge", type=Path, action="append", default=[])
     parser.add_argument("--legacy-cache", type=Path)
+    # The native renderer records no per-draw execution keys, so the corpus
+    # names no pipelines; prewarm everything the producer's route created.
+    parser.add_argument("--all-stored-pipelines", action="store_true")
     args = parser.parse_args()
-    pipelines, draws, copies = build([args.corpus, *args.merge], args.output)
+    if args.all_stored_pipelines and not args.legacy_cache:
+        parser.error("--all-stored-pipelines requires --legacy-cache")
+    extra = stored_pipelines(args.legacy_cache) if args.all_stored_pipelines else set()
+    pipelines, draws, copies = build([args.corpus, *args.merge], args.output, extra)
     if args.legacy_cache:
         stage_native_catalog(args.legacy_cache, args.output, args.output.parent)
     print(f"pipelines={pipelines} draws={draws} copies={copies}")

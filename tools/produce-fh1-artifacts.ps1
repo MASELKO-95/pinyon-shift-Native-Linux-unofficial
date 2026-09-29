@@ -109,7 +109,8 @@ $strictState = Join-Path $work 'strict-state'
 $corpora = @(Get-ChildItem (Join-Path $producerState 'cache/fh1-gpu-corpus') -Filter '*.json')
 if ($corpora.Count -ne 1) { throw 'Expected one producer execution corpus.' }
 & $python (Join-Path $PSScriptRoot 'build-fh1-gpu-prewarm.py') $corpora[0].FullName `
-    (Join-Path $strictState 'cache/fh1-gpu-prewarm-v3.txt') --legacy-cache (Join-Path $producerState 'cache') *> (Join-Path $work 'catalog.log')
+    (Join-Path $strictState 'cache/fh1-gpu-prewarm-v3.txt') --legacy-cache (Join-Path $producerState 'cache') `
+    --all-stored-pipelines *> (Join-Path $work 'catalog.log')
 if ($LASTEXITCODE) { throw 'Startup catalog construction failed.' }
 & $python (Join-Path $PSScriptRoot 'native-shader-pack.py') stage $packPath --state-root $strictState --scale $Scale *> (Join-Path $work 'stage.json')
 if ($LASTEXITCODE) { throw 'Shader pack staging failed.' }
