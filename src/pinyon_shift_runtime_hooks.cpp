@@ -42,6 +42,10 @@ REXCVAR_DEFINE_BOOL(pinyon_shift_skip_opening_movies, false, "Pinyon Shift",
 REXCVAR_DEFINE_BOOL(
     pinyon_shift_stabilize_vehicle_presentation, false, "Pinyon Shift",
     "Suppress isolated implausible player-vehicle presentation transforms");
+REXCVAR_DEFINE_DOUBLE(pinyon_shift_fov_scale, 1.0, "Display",
+                      "Multiply the cameras' vertical field of view (0.8 to 1.3)")
+    .range(0.8, 1.3)
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
 REXCVAR_DEFINE_BOOL(pinyon_shift_pause_settings, true, "Pinyon Shift",
                     "Turn the offline pause menu's MULTIPLAYER row into SETTINGS, which opens "
                     "the in-game settings screen (takes effect at the next start)");
@@ -4364,6 +4368,11 @@ std::atomic<float> g_viewport_aspect_scale{1.0f};
 
 void PinyonShiftSetViewportAspectScale(float scale) {
   g_viewport_aspect_scale.store(scale, std::memory_order_relaxed);
+}
+
+void PinyonShiftCameraFieldOfView(PPCRegister& f1) {
+  const double scale = REXCVAR_GET(pinyon_shift_fov_scale);
+  if (scale != 1.0) f1.f64 = double(float(f1.f64 * scale));
 }
 
 void PinyonShiftViewportAspect(PPCRegister& r3, PPCRegister& f1) {

@@ -1,6 +1,7 @@
 #include "ui/settings_menu.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <optional>
 #include <memory>
@@ -246,6 +247,15 @@ std::unique_ptr<MenuScreen> SettingsPages::Display() {
                                           {"present_letterbox", "false"},
                                           {"present_allow_overscan_cutoff", "false"}}}},
                          true));
+  // Every camera's vertical field of view, applied at once (NP-4.4).
+  {
+    std::vector<Choice> fov;
+    for (const char* value : {"0.9", "1.0", "1.1", "1.2", "1.3"}) {
+      const int percent = int(std::lround(std::stod(value) * 100));
+      fov.push_back({std::to_string(percent) + "%", {{"pinyon_shift_fov_scale", value}}});
+    }
+    rows.push_back(Setting("FIELD OF VIEW", std::move(fov), false));
+  }
   rows.push_back(Toggle("VSYNC", "vsync"));
   rows.push_back(Setting("FRAME RATE LIMIT",
                          {{"OFF", {{"host_present_fps_limit", "0"}}},
