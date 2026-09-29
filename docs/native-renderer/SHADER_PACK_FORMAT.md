@@ -219,7 +219,12 @@ Ordinary launches also stage the FH1-only startup catalog from
 read-only `fh1-native-shaders-v2.bin`, `fh1-native-pipelines-v1.bin`, and
 `fh1-gpu-prewarm-v3.txt` allowlist; all three files are required and verified
 by SHA-256 while staging. `build-fh1-gpu-prewarm.py --legacy-cache` converts the
-last qualified ReXGlue capture into those native startup inputs. The v2 shader
+last qualified ReXGlue capture into those native startup inputs. Graphics
+production passes `--all-stored-pipelines`: since the native executor became
+the only renderer the GPU execution corpus names no pipelines, so the
+allowlist is every pipeline the preparation route created (379 at 1x on
+2026-09-28; preparations between `6b75238` and `3970a6a` wrote an empty
+allowlist and created every pipeline during play). The v2 shader
 catalog stores each FH1 shader's raw identity plus the constant maps, vertex
 binding strides, output masks, register requirements and memory-export facts
 that drawing still needs. Each bounded record has its own XXH3 checksum and the
