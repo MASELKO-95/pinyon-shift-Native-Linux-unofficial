@@ -67,6 +67,29 @@ instructions should build its files from the player's own copy, as
 `tools/install-sample-mod.py english_strings` does. Each replaced file the
 title opens is logged as `mod.file.override`.
 
+The title checks some game files block by block against SHA-256 digests of
+the originals and stops with a dirty-disc error on a mismatch. For a file a
+loaded mod replaces, the host accepts the mismatch (logged once as
+`mod.file.hash_accepted`); every other file is still checked.
+
+## Database patches
+
+The game's data (cars, prices, events) is the SQLite database
+`media/db/gamedb.slt`. A mod may ship SQL scripts in `db/*.sql`:
+
+```sql
+-- mods/cheap_jaguar/db/10-price.sql
+update Data_Car set BaseCost = 1000 where Id = 1496;
+```
+
+Before each start, `tools/build-mod-patches.py` (run by
+`launch-preview.ps1`) copies the player's own database, applies every
+enabled mod's scripts in load order and file-name order, and serves the
+result as the generated mod `zz-db-patches`, listed first so it wins. With no
+scripts left the generated mod is removed and the stock database returns.
+`zz-db-patches/patches.json` records the base and patched hashes and every
+script applied.
+
 ## Native mods
 
 A native mod is a DLL built against the C header

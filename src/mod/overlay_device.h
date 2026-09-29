@@ -3,12 +3,20 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <rex/filesystem/device.h>
 #include <rex/filesystem/devices/host_path_device.h>
 
 namespace pinyon_shift::mod {
+
+// Whether the title has opened a mod's replacement for the game file at
+// `guest_path` ("game:\media\x", "\media\x" or a trailing part such as
+// "db\gamedb.slt", any case). The title checks
+// each block it reads of some game files against a SHA-256 table for the
+// original, which a replacement cannot match.
+bool IsOverriddenGamePath(std::string_view guest_path);
 
 // The game files with mods' files over them (NP-7.4): a file a mod ships under
 // mods/<name>/game/ replaces the base file with the same path, earlier mods in

@@ -12,6 +12,7 @@
 #include <functional>
 #include <map>
 #include <mutex>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -29,6 +30,7 @@
 #include "pinyon_shift_runtime_hooks.h"
 #include "cheats.h"
 #include "mod/mod_host.h"
+#include "mod/overlay_device.h"
 #include "save/live_profile.h"
 #include "save/profile_body.h"
 #include "ui/fh1_ui_api.h"
@@ -4286,6 +4288,28 @@ void PinyonShiftObserveSaveDecrypted(PPCRegister& r24, PPCRegister& r30) {
   auto* kernel_state = rex::system::kernel_state();
   pinyon_shift::cheats::EditLoadedProfile(
       kernel_state->memory()->TranslateVirtual<uint8_t*>(address), size);
+}
+
+void PinyonShiftAcceptModdedBlock(PPCRegister& r3, PPCRegister& r24) {
+  if ((r3.u32 & 0xFFu) != 0) {
+    return;  // the block matched
+  }
+  const std::string path = PinyonShiftReadGuestAscii(LoadGuestU32(r24.u32 + 32u), 260u);
+  // The table names the file relative to its root ("db\gamedb.slt").
+  if (path.empty() || !pinyon_shift::mod::IsOverriddenGamePath(path)) {
+    return;
+  }
+  r3.u64 = 1;
+  static std::mutex logged_mutex;
+  static std::set<std::string> logged;
+  std::lock_guard lock(logged_mutex);
+  if (logged.insert(path).second) {
+    pinyon_shift::diagnostics::RecordEvent("mod.file.hash_accepted", {{"path", path}});
+  }
+}
+
+void PinyonShiftAcceptModdedLastBlock(PPCRegister& r3, PPCRegister& r24) {
+  PinyonShiftAcceptModdedBlock(r3, r24);
 }
 
 void PinyonShiftRestoreCareerEligibility(PPCRegister& r3, PPCRegister& r4,

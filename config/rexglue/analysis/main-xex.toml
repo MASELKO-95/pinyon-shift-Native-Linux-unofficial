@@ -572,6 +572,21 @@ address = 0x82C66594
 name = "PinyonShiftObserveSaveDecrypted"
 registers = ["r24", "r30"]
 
+# sub_82C05530 reads game-file blocks and checks each with sub_82BFFDA0
+# against a per-file SHA-256 table ([r24+28], 32 bytes a block; the path is
+# [r24+32]); a mismatch ends in the dirty-disc error. These run on the
+# check's result for whole blocks and for the last partial block, and
+# accept it only for files an enabled mod replaces (NP-10.2).
+[[midasm_hook]]
+address = 0x82C057D0
+name = "PinyonShiftAcceptModdedBlock"
+registers = ["r3", "r24"]
+
+[[midasm_hook]]
+address = 0x82C0580C
+name = "PinyonShiftAcceptModdedLastBlock"
+registers = ["r3", "r24"]
+
 # sub_828E2898 is about to read the non-durable per-profile career eligibility
 # byte through sub_8252AA48. Repair the actual byte for a valid durable
 # checkpoint so later progression gates observe the restored eligibility too.

@@ -1,5 +1,8 @@
 #include "mod/overlay_device.h"
 
+#include <mutex>
+#include <set>
+
 #include <rex/filesystem/entry.h>
 #include <rex/logging.h>
 
@@ -37,6 +40,44 @@ void OverlayDevice::Dump(rex::string::StringBuffer* string_buffer) {
   base_->Dump(string_buffer);
 }
 
+namespace {
+
+std::mutex g_overridden_mutex;
+std::set<std::string, std::less<>> g_overridden;
+
+// "\media\db\gamedb.slt" for "game:\media\DB\gamedb.slt" or "media/db/gamedb.slt".
+std::string NormalizeGamePath(std::string_view path) {
+  if (const size_t colon = path.find(':'); colon != std::string_view::npos) {
+    path.remove_prefix(colon + 1);
+  }
+  std::string normal;
+  normal.reserve(path.size() + 1);
+  for (const char c : path) {
+    const char slash = c == '/' ? '\\' : c;
+    if (slash == '\\' && !normal.empty() && normal.back() == '\\') continue;
+    normal.push_back(slash >= 'A' && slash <= 'Z' ? char(slash - 'A' + 'a') : slash);
+  }
+  if (normal.empty() || normal.front() != '\\') normal.insert(normal.begin(), '\\');
+  return normal;
+}
+
+}  // namespace
+
+bool IsOverriddenGamePath(std::string_view guest_path) {
+  // The title's hash table names files relative to a root ("db\gamedb.slt"
+  // under media), so a replaced path matches when it ends with this one at a
+  // separator.
+  const std::string normal = NormalizeGamePath(guest_path);
+  std::lock_guard lock(g_overridden_mutex);
+  for (const auto& overridden : g_overridden) {
+    if (overridden.size() >= normal.size() &&
+        overridden.compare(overridden.size() - normal.size(), normal.size(), normal) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 rex::filesystem::Entry* OverlayDevice::ResolvePath(std::string_view path) {
   if (!path.empty()) {
     for (const auto& overlay : overlays_) {
@@ -45,6 +86,10 @@ rex::filesystem::Entry* OverlayDevice::ResolvePath(std::string_view path) {
       if (entry && !(entry->attributes() & rex::filesystem::kFileAttributeDirectory)) {
         diagnostics::RecordEvent("mod.file.override",
                                  {{"path", path}, {"from", overlay->host_path().string()}});
+        {
+          std::lock_guard lock(g_overridden_mutex);
+          g_overridden.insert(NormalizeGamePath(path));
+        }
         return entry;
       }
     }
