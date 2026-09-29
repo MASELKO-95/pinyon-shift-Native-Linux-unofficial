@@ -517,6 +517,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     ]
     if args.configuration:
         command += ["-Configuration", args.configuration]
+    if args.game_root:
+        command += ["-GameRoot", str(args.game_root.resolve())]
     if args.hidden:
         command.append("-Hidden")
     if args.collect_pass_inventory:
@@ -837,6 +839,10 @@ def main() -> int:
     parser.add_argument(
         "--hidden", action="store_true",
         help="hide the window; frame pacing then matches routes recorded hidden",
+    )
+    parser.add_argument(
+        "--game-root", type=Path,
+        help="game files to run instead of .local/game/base (e.g. a link mirror)",
     )
     parser.add_argument("--game-argument", action="append", default=[])
     args = parser.parse_args()
