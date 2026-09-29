@@ -621,6 +621,8 @@ void PinyonShiftApp::UpdateHorPlus() {
     }
   }
   PinyonShiftSetViewportAspectScale(scale);
+  // The HUD keeps 16:9 proportions in the stretched image.
+  rex::cvar::SetFlagByName("fh1_hud_squeeze", fmt::format("{:.6f}", scale));
   pinyon_shift::diagnostics::RecordEvent("display.hor_plus",
                                          {{"scale", fmt::format("{:.4f}", scale)}});
 }
