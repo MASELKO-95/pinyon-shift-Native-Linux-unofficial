@@ -195,6 +195,9 @@ add_custom_target(pinyon_shift_stage_controller_mappings ALL
 
 if(WIN32)
     target_link_libraries(pinyon_shift PRIVATE bcrypt d3d12 dbghelp dxgi rex::gpu-fh1)
+else()
+    find_package(Threads REQUIRED)
+    target_link_libraries(pinyon_shift PRIVATE Threads::Threads ${CMAKE_DL_LIBS} rex::gpu-fh1)
 endif()
 
 # The mod ABI header (NP-7) and the TOML parser mod.toml is read with.

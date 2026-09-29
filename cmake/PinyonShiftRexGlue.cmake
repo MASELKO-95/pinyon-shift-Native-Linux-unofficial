@@ -63,7 +63,7 @@ if(PINYON_SHIFT_CAPTURE_PERFORMANCE)
     add_compile_definitions(REXGLUE_ENABLE_PERF_COUNTERS)
 endif()
 
-if(WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
     if(NOT PINYON_SHIFT_CPU_BASELINE MATCHES "^(sse4\\.1|fma)$")
         message(FATAL_ERROR
             "Pinyon Shift supports the audited SSE4.1 AMD64 baseline and its FMA3 "
@@ -72,8 +72,8 @@ if(WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
     if(NOT CMAKE_C_FLAGS MATCHES "(^| )-msse4\\.1($| )" OR
        NOT CMAKE_CXX_FLAGS MATCHES "(^| )-msse4\\.1($| )")
         message(FATAL_ERROR
-            "The Windows AMD64 source build must explicitly compile C and C++ "
-            "with -msse4.1; use the checked-in CMake presets")
+            "The AMD64 source build must explicitly compile C and C++ with "
+            "-msse4.1; use the checked-in CMake presets")
     endif()
     # NP-3.5: the FMA3 baseline lowers the std::fma the generated code uses for
     # the Xenon's fused multiply-adds to one instruction instead of a CRT call;
@@ -91,7 +91,7 @@ if(WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
     elseif(CMAKE_C_FLAGS MATCHES "(^| )-mfma($| )" OR CMAKE_CXX_FLAGS MATCHES "(^| )-mfma($| )")
         message(FATAL_ERROR "-mfma needs PINYON_SHIFT_CPU_BASELINE=fma")
     endif()
-    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         # LLD otherwise writes the wall clock into each PE/COFF image. Combined
         # with the wrapper's locked SOURCE_DATE_EPOCH, /Brepro makes identical
         # source and generated trees produce byte-identical linked artifacts.
@@ -107,8 +107,23 @@ if(REXSDK_DIR)
         "${CMAKE_CURRENT_BINARY_DIR}/rexglue-artifacts"
         CACHE PATH "ReXGlue artifacts for the Pinyon Shift host build" FORCE)
     add_subdirectory("${REXSDK_DIR}" rexglue-sdk EXCLUDE_FROM_ALL)
+    # The generator runs on the build host, from the SDK's standalone build
+    # for that host (out/<os>-<arch>/Release).
+    if(CMAKE_HOST_WIN32)
+        set(_codegen_os win)
+    elseif(CMAKE_HOST_APPLE)
+        set(_codegen_os mac)
+    else()
+        set(_codegen_os linux)
+    endif()
+    if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+        set(_codegen_arch amd64)
+    else()
+        set(_codegen_arch arm64)
+    endif()
     set(PINYON_SHIFT_REXGLUE_CODEGEN
-        "${REXSDK_DIR}/out/win-amd64/Release/rexglue.exe")
+        "${REXSDK_DIR}/out/${_codegen_os}-${_codegen_arch}/Release/rexglue${CMAKE_HOST_EXECUTABLE_SUFFIX}"
+        CACHE FILEPATH "The standalone ReXGlue generator")
     if(NOT EXISTS "${PINYON_SHIFT_REXGLUE_CODEGEN}" AND NOT PINYON_SHIFT_HOST_TESTS_ONLY)
         message(FATAL_ERROR
             "The standalone ReXGlue generator is missing. Run tools/build-preview.ps1 "
