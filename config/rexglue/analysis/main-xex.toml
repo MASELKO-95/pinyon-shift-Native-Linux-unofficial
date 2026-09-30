@@ -1042,3 +1042,11 @@ size = 0x38
 # 0x8314120C, and ends immediately before PDATA function 0x83141210.
 [functions."831411E8"]
 size = 0x28
+
+# The title's CRT memory routines, served by the SDK's host natives
+# (kernel/crt/memory.cpp). memmove's forward path branches into memcpy's
+# entry, which is a whole-function call in the generated code.
+[rexcrt]
+memcpy = 0x82A7D730
+memmove = 0x82A7DCA0
+memset = 0x82A7F140
