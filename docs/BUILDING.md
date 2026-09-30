@@ -1,8 +1,8 @@
 # Building
 
 The supported build environment is 64-bit Windows 10 or 11 with PowerShell 5.1
-or newer, a DirectX 12-capable GPU, an internet connection, and about 25 GB of
-free disk space.
+or newer, a GPU with Vulkan 1.3 (the default graphics API) or Direct3D 12, an
+internet connection, and about 25 GB of free disk space.
 
 Run:
 
@@ -17,13 +17,17 @@ The script performs six reproducible stages:
    tools whose hashes are recorded in `config/release-toolchain.json`;
 3. initializes the pinned ShiftGlue submodule, or clones the same revision for a packaged launcher;
 4. extracts the disc and generates translated source under `.local/`;
-5. configures and compiles `out/build/win-amd64-release/pinyon_shift.exe`; and
-6. prepares shaders from your local game files and validates them in a hidden,
-   muted startup run before enabling play.
+5. configures and compiles `out/build/win-amd64-release/pinyon_shift.exe`, with
+   both the Vulkan and the Direct3D 12 backends; and
+6. when Direct3D 12 is the chosen graphics API, prepares its shader packs from
+   your local game files and validates them in a hidden, muted startup run
+   before enabling play. Vulkan, the default, translates shaders as the game
+   runs and needs no preparation.
 
-The launcher also checks graphics on every launch, including existing installs.
-Valid artifacts are reused; missing, damaged or outdated artifacts are prepared
-automatically for the selected resolution and graphics driver. Preparation uses
+For Direct3D 12 the launcher also checks graphics on every launch, including
+existing installs. Valid artifacts are reused; missing, damaged or outdated
+artifacts are prepared automatically for the selected resolution and graphics
+driver. Preparation uses
 separate temporary game states and never copies or resets your save. If it is
 interrupted, reopening the launcher retries it. No shader commands are needed.
 
