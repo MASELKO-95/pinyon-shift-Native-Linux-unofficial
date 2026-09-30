@@ -639,6 +639,22 @@ void PinyonShiftApp::OpenSettingsMenu() {
     auto* graphics = runtime() ? runtime()->graphics_system() : nullptr;
     return graphics ? graphics->draw_resolution_scale() : 0;
   };
+  services.output_size = [this]() -> std::optional<std::pair<uint32_t, uint32_t>> {
+    // The window, letterboxed to the title's 16:9 unless the image is
+    // stretched to fill it (the FH1 source presentation paints no guest
+    // output rectangle to read back).
+    const uint32_t width = window() ? window()->GetActualPhysicalWidth() : 0;
+    const uint32_t height = window() ? window()->GetActualPhysicalHeight() : 0;
+    if (!width || !height) {
+      return std::nullopt;
+    }
+    if (!REXCVAR_GET(present_letterbox) || REXCVAR_GET(pinyon_shift_hor_plus)) {
+      return std::pair{width, height};
+    }
+    return uint64_t(width) * 9 > uint64_t(height) * 16
+               ? std::pair{height * 16 / 9, height}
+               : std::pair{width, width * 9 / 16};
+  };
   host_ui_->Open(pinyon_shift::ui::CreateSettingsMenu(*host_ui_, *host_config_, services));
 }
 

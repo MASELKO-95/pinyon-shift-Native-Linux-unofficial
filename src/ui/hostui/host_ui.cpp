@@ -756,12 +756,15 @@ void HostUi::DrawMenu(rex::ui::UIDrawContext& context) {
   }
 
   const auto& rows = screen.rows();
+  // A note takes the last row's place, above the button help.
+  const std::string note = screen.note();
+  const size_t visible_rows = note.empty() ? kVisibleRows : kVisibleRows - 1;
   size_t first = 0;
-  if (rows.size() > kVisibleRows && screen.focus() >= kVisibleRows / 2) {
-    first = std::min(screen.focus() - kVisibleRows / 2, rows.size() - kVisibleRows);
+  if (rows.size() > visible_rows && screen.focus() >= visible_rows / 2) {
+    first = std::min(screen.focus() - visible_rows / 2, rows.size() - visible_rows);
   }
   row_rects_.assign(rows.size(), RowRect{0, 0, -1, -1});
-  for (size_t i = first; i < rows.size() && i < first + kVisibleRows; ++i) {
+  for (size_t i = first; i < rows.size() && i < first + visible_rows; ++i) {
     const MenuRow& row = rows[i];
     const bool focused = i == screen.focus();
     const bool enabled = row.is_enabled();
@@ -799,9 +802,8 @@ void HostUi::DrawMenu(rex::ui::UIDrawContext& context) {
                             canvas_.y + (top + kRowPitch) * canvas_.scale};
   }
 
-  const std::string note = screen.note();
   if (!note.empty()) {
-    const float note_top = rows_top + float(std::min(rows.size(), kVisibleRows)) * kRowPitch;
+    const float note_top = rows_top + float(std::min(rows.size(), visible_rows)) * kRowPitch;
     DrawText(Face::kLabel, kValueSize, note, kRowsLeft, note_top + 44.0f, kOrange);
   }
 

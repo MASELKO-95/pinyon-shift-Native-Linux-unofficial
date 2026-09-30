@@ -67,6 +67,19 @@ bool SameValue(std::string_view a, std::string_view b) {
          });
 }
 
+// Settings the running game cannot take: the graphics API and its recorder
+// thread are chosen when the renderer starts, the language and the cheats'
+// separate profile when the title boots, the save edits when the profile
+// loads, and shader preparation runs before the game starts.
+bool NeedsRestart(std::string_view name) {
+  static constexpr std::string_view kNames[] = {
+      "gpu_backend",       "gpu_record_thread",        "user_language",
+      "user_country",      "pinyon_shift_cheats",      "cheat_set_credits",
+      "cheat_set_profile_fields", "pinyon_shift_prepare_all_scales",
+  };
+  return std::find(std::begin(kNames), std::end(kNames), name) != std::end(kNames);
+}
+
 std::string Upper(std::string text) {
   std::transform(text.begin(), text.end(), text.begin(),
                  [](unsigned char c) { return char(std::toupper(c)); });
@@ -104,8 +117,13 @@ class SettingsPages : public std::enable_shared_from_this<SettingsPages> {
     return -1;
   }
 
-  MenuRow Setting(std::string label, std::vector<Choice> choices, bool restart);
-  MenuRow Toggle(std::string label, std::string name, bool restart = false, bool inverted = false);
+  // A row needs a restart only for the settings in NeedsRestart; the rest of
+  // a choice applies at once.
+  MenuRow Setting(std::string label, std::vector<Choice> choices);
+  MenuRow Toggle(std::string label, std::string name, bool inverted = false);
+  // What the renderer draws and what reaches the window, for the display
+  // and graphics pages' notes.
+  std::string ResolutionLine() const;
   MenuRow Page(std::string label, std::unique_ptr<MenuScreen> (SettingsPages::*page)());
   std::function<std::string()> RestartNote(std::vector<MenuRow>& rows);
   void Save();
@@ -139,23 +157,42 @@ class SettingsPages : public std::enable_shared_from_this<SettingsPages> {
   SettingsServices services_;
 };
 
-MenuRow SettingsPages::Setting(std::string label, std::vector<Choice> choices, bool restart) {
+MenuRow SettingsPages::Setting(std::string label, std::vector<Choice> choices) {
   MenuRow row;
   row.label = std::move(label);
-  row.restart_required = restart;
+  // The badge shows when choosing between the choices needs a restart; a
+  // row whose choices all keep the same restart setting (the presets'
+  // Vulkan) is marked only while a saved change is pending.
+  bool restart = false;
+  for (const auto& choice : choices) {
+    for (const auto& [name, literal] : choice.values) {
+      if (!NeedsRestart(name)) {
+        continue;
+      }
+      restart = true;
+      for (const auto& other : choices) {
+        const auto same = std::find_if(other.values.begin(), other.values.end(),
+                                       [&](const auto& value) {
+                                         return value.first == name &&
+                                                SameValue(value.second, literal);
+                                       });
+        row.restart_required = row.restart_required || same == other.values.end();
+      }
+    }
+  }
   auto shared = std::make_shared<std::vector<Choice>>(std::move(choices));
   row.value = [this, shared] {
     const int index = Find(*shared, [this](const std::string& name) { return Saved(name); });
     return index >= 0 ? (*shared)[size_t(index)].label : std::string("CUSTOM");
   };
-  row.adjust = [this, shared, restart](int direction) {
+  row.adjust = [this, shared](int direction) {
     const auto& choices = *shared;
     const int count = int(choices.size());
     const int current = Find(choices, [this](const std::string& name) { return Saved(name); });
     const int next = current < 0 ? 0 : (current + direction + count) % count;
     for (const auto& [name, literal] : choices[size_t(next)].values) {
       config_.Set(name, literal);
-      if (!restart) {
+      if (!NeedsRestart(name)) {
         rex::cvar::SetFlagByName(name, Unquote(literal));
       }
     }
@@ -163,18 +200,23 @@ MenuRow SettingsPages::Setting(std::string label, std::vector<Choice> choices, b
   };
   if (restart) {
     row.restart_pending = [this, shared] {
-      const auto saved = Find(*shared, [this](const std::string& name) { return Saved(name); });
-      const auto live = Find(*shared, [](const std::string& name) { return Live(name); });
-      return saved != live;
+      for (const auto& choice : *shared) {
+        for (const auto& [name, literal] : choice.values) {
+          if (NeedsRestart(name) && !SameValue(Unquote(Saved(name)), Live(name))) {
+            return true;
+          }
+        }
+      }
+      return false;
     };
   }
   return row;
 }
 
-MenuRow SettingsPages::Toggle(std::string label, std::string name, bool restart, bool inverted) {
+MenuRow SettingsPages::Toggle(std::string label, std::string name, bool inverted) {
   const char* on = inverted ? "false" : "true";
   const char* off = inverted ? "true" : "false";
-  return Setting(std::move(label), {{"OFF", {{name, off}}}, {"ON", {{name, on}}}}, restart);
+  return Setting(std::move(label), {{"OFF", {{name, off}}}, {"ON", {{name, on}}}});
 }
 
 MenuRow SettingsPages::Page(std::string label,
@@ -205,6 +247,37 @@ std::function<std::string()> SettingsPages::RestartNote(std::vector<MenuRow>& ro
   };
 }
 
+std::string SettingsPages::ResolutionLine() const {
+  const auto number = [](const std::string& text, uint32_t fallback) {
+    const auto value = Number(text);
+    return value && *value >= 1 ? uint32_t(*value) : fallback;
+  };
+  uint32_t scale = services_.draw_resolution_scale ? services_.draw_resolution_scale() : 0;
+  if (!scale) {
+    scale = number(Unquote(Saved("draw_resolution_scale_x")), 1);
+  }
+  const uint32_t render_width = number(Live("video_mode_width"), 1280) * scale;
+  const uint32_t render_height = number(Live("video_mode_height"), 720) * scale;
+  const auto size = [](uint32_t width, uint32_t height) {
+    return std::to_string(width) + "X" + std::to_string(height);
+  };
+  std::string line = "RENDERS " + size(render_width, render_height);
+  const auto output = services_.output_size ? services_.output_size() : std::nullopt;
+  if (!output || !output->first || !output->second) {
+    return line;
+  }
+  const auto [output_width, output_height] = *output;
+  if (output_width == render_width && output_height == render_height) {
+    return line + ", SHOWN AT THAT SIZE";
+  }
+  const bool fsr = SameValue(Unquote(Saved("present_effect")), "fsr");
+  if (output_width * output_height > render_width * render_height) {
+    return line + (fsr ? ", FSR 1 UPSCALES TO " : ", STRETCHED TO ") +
+           size(output_width, output_height);
+  }
+  return line + ", DOWNSCALED TO " + size(output_width, output_height);
+}
+
 void SettingsPages::Save() {
   if (!config_.Save()) {
     REXLOG_ERROR("Settings: could not write {}", config_.path().string());
@@ -218,8 +291,7 @@ std::unique_ptr<MenuScreen> SettingsPages::Display() {
                          {{"DEFAULT", {{"monitor", "0"}}},
                           {"1", {{"monitor", "1"}}},
                           {"2", {{"monitor", "2"}}},
-                          {"3", {{"monitor", "3"}}}},
-                         true));
+                          {"3", {{"monitor", "3"}}}}));
   std::vector<Choice> sizes = {{"DEFAULT", {{"window_width", "0"}, {"window_height", "0"}}}};
   for (const auto& [width, height] : {std::pair{1280, 720}, std::pair{1600, 900},
                                       std::pair{1920, 1080}, std::pair{2560, 1440},
@@ -228,7 +300,7 @@ std::unique_ptr<MenuScreen> SettingsPages::Display() {
                      {{"window_width", std::to_string(width)},
                       {"window_height", std::to_string(height)}}});
   }
-  rows.push_back(Setting("WINDOW SIZE", std::move(sizes), true));
+  rows.push_back(Setting("WINDOW SIZE", std::move(sizes)));
   // Letterbox keeps the guest's aspect with bars, crop fills the window by
   // cutting into the title's overscan margin, stretch fills it by scaling.
   rows.push_back(Setting("ASPECT RATIO",
@@ -237,16 +309,14 @@ std::unique_ptr<MenuScreen> SettingsPages::Display() {
                           {"CROP", {{"present_letterbox", "true"},
                                     {"present_allow_overscan_cutoff", "true"}}},
                           {"STRETCH", {{"present_letterbox", "false"},
-                                       {"present_allow_overscan_cutoff", "false"}}}},
-                         true));
+                                       {"present_allow_overscan_cutoff", "false"}}}}));
   // Hor+ (NP-4.4): the title renders the window's wider aspect into its 16:9
   // image, stretched to fill the window; the HUD stretches with it.
   rows.push_back(Setting("ULTRAWIDE",
                          {{"OFF", {{"pinyon_shift_hor_plus", "false"}}},
                           {"WIDER VIEW", {{"pinyon_shift_hor_plus", "true"},
                                           {"present_letterbox", "false"},
-                                          {"present_allow_overscan_cutoff", "false"}}}},
-                         true));
+                                          {"present_allow_overscan_cutoff", "false"}}}}));
   // Every camera's vertical field of view, applied at once (NP-4.4).
   {
     std::vector<Choice> fov;
@@ -254,7 +324,7 @@ std::unique_ptr<MenuScreen> SettingsPages::Display() {
       const int percent = int(std::lround(std::stod(value) * 100));
       fov.push_back({std::to_string(percent) + "%", {{"pinyon_shift_fov_scale", value}}});
     }
-    rows.push_back(Setting("FIELD OF VIEW", std::move(fov), false));
+    rows.push_back(Setting("FIELD OF VIEW", std::move(fov)));
   }
   rows.push_back(Toggle("VSYNC", "vsync"));
   rows.push_back(Setting("FRAME RATE LIMIT",
@@ -262,23 +332,24 @@ std::unique_ptr<MenuScreen> SettingsPages::Display() {
                           {"30", {{"host_present_fps_limit", "30"}}},
                           {"60", {{"host_present_fps_limit", "60"}}},
                           {"120", {{"host_present_fps_limit", "120"}}},
-                          {"240", {{"host_present_fps_limit", "240"}}}},
-                         false));
+                          {"240", {{"host_present_fps_limit", "240"}}}}));
   rows.push_back(Toggle("VARIABLE REFRESH RATE", "d3d12_allow_variable_refresh_rate_and_tearing"));
   // How the rendered image is scaled to the window: FSR 1 and CAS keep 2x
-  // on a 4K display and 3x on 1440p sharp where bilinear blurs.
+  // on a 4K display and 3x on 1440p sharp where bilinear blurs. The page's
+  // note gives both sizes.
   rows.push_back(Setting("OUTPUT SCALING",
                          {{"BILINEAR", {{"present_effect", "\"bilinear\""}}},
                           {"CAS", {{"present_effect", "\"cas\""}}},
-                          {"FSR 1", {{"present_effect", "\"fsr\""}}}},
-                         true));
+                          {"FSR 1", {{"present_effect", "\"fsr\""}}}}));
   rows.push_back(Setting("GAME FRAME RATE LIMIT",
                          {{"OFF", {{"pinyon_shift_fh1_render_fps_limit", "0"}}},
                           {"30", {{"pinyon_shift_fh1_render_fps_limit", "30"}}},
                           {"60", {{"pinyon_shift_fh1_render_fps_limit", "60"}}},
-                          {"120", {{"pinyon_shift_fh1_render_fps_limit", "120"}}}},
-                         false));
-  auto note = RestartNote(rows);
+                          {"120", {{"pinyon_shift_fh1_render_fps_limit", "120"}}}}));
+  auto note = [this, restart = RestartNote(rows)] {
+    const std::string pending = restart ? restart() : std::string();
+    return pending.empty() ? ResolutionLine() : pending;
+  };
   return std::make_unique<MenuScreen>("DISPLAY", std::move(rows), std::move(note));
 }
 
@@ -303,55 +374,52 @@ std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
                             {"draw_resolution_scale_x", "2"},
                             {"draw_resolution_scale_y", "2"},
                             {"present_effect", "\"bilinear\""},
-                            {"pinyon_shift_fh1_render_fps_limit", "60"}}}},
-                         true));
+                            {"pinyon_shift_fh1_render_fps_limit", "60"}}}}));
   // Vulkan (the default since config schema 27) records draws on a second
   // thread; Direct3D 12 loads prebuilt shader packs and keeps one thread.
   rows.push_back(Setting("GRAPHICS API",
                          {{"VULKAN", {{"gpu_backend", "\"vulkan\""}, {"gpu_record_thread", "true"}}},
                           {"DIRECT3D 12",
-                           {{"gpu_backend", "\"d3d12\""}, {"gpu_record_thread", "false"}}}},
-                         true));
+                           {{"gpu_backend", "\"d3d12\""}, {"gpu_record_thread", "false"}}}}));
   std::vector<Choice> scales;
   for (int scale = 1; scale <= 4; ++scale) {
     const std::string value = std::to_string(scale);
     scales.push_back({value + "X",
                       {{"draw_resolution_scale_x", value}, {"draw_resolution_scale_y", value}}});
   }
+  // Both renderers switch between frames; D3D12 only to a scale with a
+  // prepared shader pack, so a restart after preparation is asked for then.
+  MenuRow resolution = Setting("RESOLUTION SCALE", std::move(scales));
   if (services_.draw_resolution_scale) {
-    // D3D12 switches between frames to a scale with a prepared shader pack.
-    MenuRow row = Setting("RESOLUTION SCALE", std::move(scales), false);
-    row.restart_pending = [this] {
+    resolution.restart_pending = [this] {
       return std::to_string(services_.draw_resolution_scale()) !=
              Unquote(Saved("draw_resolution_scale_x"));
     };
-    rows.push_back(std::move(row));
-  } else {
-    rows.push_back(Setting("RESOLUTION SCALE", std::move(scales), true));
   }
+  rows.push_back(std::move(resolution));
   // Read by graphics preparation before the next start.
-  rows.push_back(Toggle("PREPARE ALL SCALES", "pinyon_shift_prepare_all_scales", true));
+  rows.push_back(Toggle("PREPARE ALL SCALES", "pinyon_shift_prepare_all_scales"));
   // anisotropic_override holds the Xenos filter: 3, 4 and 5 are 4x, 8x, 16x.
   rows.push_back(Setting("ANISOTROPIC FILTERING",
                          {{"4X", {{"anisotropic_override", "3"}}},
                           {"8X", {{"anisotropic_override", "4"}}},
-                          {"16X", {{"anisotropic_override", "5"}}}},
-                         false));
+                          {"16X", {{"anisotropic_override", "5"}}}}));
   rows.push_back(Toggle("TRILINEAR FILTERING", "force_trilinear_filtering"));
   rows.push_back(Setting("TEXTURE DETAIL",
                          {{"SOFT", {{"texture_mip_lod_bias", "0.5"}}},
                           {"DEFAULT", {{"texture_mip_lod_bias", "0.0"}}},
                           {"SHARP", {{"texture_mip_lod_bias", "-0.5"}}},
-                          {"SHARPEST", {{"texture_mip_lod_bias", "-1.0"}}}},
-                         true));
+                          {"SHARPEST", {{"texture_mip_lod_bias", "-1.0"}}}}));
   rows.push_back(Setting("ANTI-ALIASING",
                          {{"OFF", {{"swap_post_effect", "\"none\""}}},
                           {"FXAA", {{"swap_post_effect", "\"fxaa\""}}},
-                          {"FXAA EXTREME", {{"swap_post_effect", "\"fxaa_extreme\""}}}},
-                         false));
-  rows.push_back(Toggle("MOTION BLUR", "disable_motion_blur", false, true));
-  rows.push_back(Toggle("DEPTH OF FIELD", "disable_depth_of_field", false, true));
-  auto note = RestartNote(rows);
+                          {"FXAA EXTREME", {{"swap_post_effect", "\"fxaa_extreme\""}}}}));
+  rows.push_back(Toggle("MOTION BLUR", "disable_motion_blur", true));
+  rows.push_back(Toggle("DEPTH OF FIELD", "disable_depth_of_field", true));
+  auto note = [this, restart = RestartNote(rows)] {
+    const std::string pending = restart ? restart() : std::string();
+    return pending.empty() ? ResolutionLine() : pending;
+  };
   return std::make_unique<MenuScreen>("GRAPHICS", std::move(rows), std::move(note));
 }
 
@@ -362,7 +430,7 @@ std::unique_ptr<MenuScreen> SettingsPages::Audio() {
     volumes.push_back({std::to_string(volume), {{"pinyon_shift_master_volume",
                                                  std::to_string(volume)}}});
   }
-  rows.push_back(Setting("MASTER VOLUME", std::move(volumes), false));
+  rows.push_back(Setting("MASTER VOLUME", std::move(volumes)));
   rows.push_back(Toggle("MUTE", "audio_mute"));
   return std::make_unique<MenuScreen>("AUDIO", std::move(rows));
 }
@@ -508,7 +576,7 @@ std::unique_ptr<MenuScreen> SettingsPages::ModActions() {
 
 std::unique_ptr<MenuScreen> SettingsPages::Cheats() {
   std::vector<MenuRow> rows;
-  rows.push_back(Toggle("TRAINER", "pinyon_shift_cheats", true));
+  rows.push_back(Toggle("TRAINER", "pinyon_shift_cheats"));
   return std::make_unique<MenuScreen>("CHEATS", std::move(rows), [] {
     return std::string("F10 OPENS THE TRAINER; CHEATS PLAY THE SEPARATE MODDED PROFILE");
   });
@@ -541,7 +609,7 @@ std::unique_ptr<MenuScreen> SettingsPages::TrainerPlayer() {
            {"20,000,000", "20000000"}}) {
     credits.push_back({label, {{"cheat_set_credits", value}}});
   }
-  rows.push_back(Setting("SET CREDITS", std::move(credits), true));
+  rows.push_back(Setting("SET CREDITS", std::move(credits)));
   // Any scalar profile field goes through cheat_set_profile_fields; the
   // wristband level also unlocks the events it gates.
   std::vector<Choice> wristbands;
@@ -551,7 +619,7 @@ std::unique_ptr<MenuScreen> SettingsPages::TrainerPlayer() {
         {std::string("LEVEL ") + level,
          {{"cheat_set_profile_fields", std::string("Main/WristbandLevel=") + level}}});
   }
-  rows.push_back(Setting("SET WRISTBAND", std::move(wristbands), true));
+  rows.push_back(Setting("SET WRISTBAND", std::move(wristbands)));
   return std::make_unique<MenuScreen>("PLAYER", std::move(rows), [] {
     return std::string("APPLIED ONCE WHEN THE PROFILE NEXT LOADS: RESTART THE GAME");
   });
@@ -563,14 +631,14 @@ std::unique_ptr<MenuScreen> SettingsPages::TrainerWorld() {
   for (const char* value : {"0.25", "0.5", "0.75", "1.0", "1.25", "1.5", "2.0"}) {
     speeds.push_back({std::string(value) + "X", {{"cheat_time_scale", value}}});
   }
-  rows.push_back(Setting("GAME SPEED", std::move(speeds), false));
+  rows.push_back(Setting("GAME SPEED", std::move(speeds)));
   std::vector<Choice> times;
   times.push_back({"RUNNING", {{"cheat_time_of_day", "-1"}}});
   for (const char* hour : {"0", "3", "6", "9", "12", "15", "18", "21"}) {
     const std::string label = std::string(hour[1] ? "" : "0") + hour + ":00";
     times.push_back({label, {{"cheat_time_of_day", hour}}});
   }
-  rows.push_back(Setting("TIME OF DAY", std::move(times), false));
+  rows.push_back(Setting("TIME OF DAY", std::move(times)));
   rows.push_back(Toggle("FREE CAMERA", "cheat_free_camera"));
   return std::make_unique<MenuScreen>("WORLD", std::move(rows));
 }
@@ -592,8 +660,8 @@ std::unique_ptr<MenuScreen> SettingsPages::TrainerVehicle() {
 
 std::unique_ptr<MenuScreen> SettingsPages::TrainerGraphics() {
   std::vector<MenuRow> rows;
-  rows.push_back(Toggle("MOTION BLUR", "disable_motion_blur", false, true));
-  rows.push_back(Toggle("DEPTH OF FIELD", "disable_depth_of_field", false, true));
+  rows.push_back(Toggle("MOTION BLUR", "disable_motion_blur", true));
+  rows.push_back(Toggle("DEPTH OF FIELD", "disable_depth_of_field", true));
   rows.push_back(Toggle("TRILINEAR FILTERING", "force_trilinear_filtering"));
   return std::make_unique<MenuScreen>("GRAPHICS", std::move(rows));
 }
@@ -615,19 +683,17 @@ std::unique_ptr<MenuScreen> SettingsPages::Controls() {
                           {"25%", {{"pad_rumble_strength", "25"}}},
                           {"50%", {{"pad_rumble_strength", "50"}}},
                           {"75%", {{"pad_rumble_strength", "75"}}},
-                          {"100%", {{"pad_rumble_strength", "100"}}}},
-                         false));
+                          {"100%", {{"pad_rumble_strength", "100"}}}}));
   rows.push_back(Toggle("MOUSE AND KEYBOARD", "mnk_mode"));
   rows.push_back(Setting("MOUSE",
                          {{"OFF", {{"mnk_mouse", "false"}, {"mnk_mouse_steering", "false"}}},
                           {"CAMERA", {{"mnk_mouse", "true"}, {"mnk_mouse_steering", "false"}}},
-                          {"STEERING", {{"mnk_mouse", "false"}, {"mnk_mouse_steering", "true"}}}},
-                         false));
+                          {"STEERING", {{"mnk_mouse", "false"}, {"mnk_mouse_steering", "true"}}}}));
   std::vector<Choice> sensitivities;
   for (const char* value : {"0.25", "0.5", "0.75", "1.0", "1.5", "2.0", "3.0"}) {
     sensitivities.push_back({value, {{"mnk_sensitivity", value}}});
   }
-  rows.push_back(Setting("MOUSE SENSITIVITY", std::move(sensitivities), false));
+  rows.push_back(Setting("MOUSE SENSITIVITY", std::move(sensitivities)));
   // The keys each pad control maps to in mouse-and-keyboard mode. Editing
   // them is NP-6.1.
   const std::pair<const char*, const char*> binds[] = {
@@ -755,7 +821,7 @@ std::unique_ptr<MenuScreen> SettingsPages::Profile() {
                        {{"user_language", std::to_string(language)},
                         {"user_country", std::to_string(country)}}});
   }
-  rows[1] = Setting("LANGUAGE", std::move(choices), true);
+  rows[1] = Setting("LANGUAGE", std::move(choices));
   if (services_.save_backups) {
     MenuRow backups;
     backups.label = "SAVE BACKUPS";

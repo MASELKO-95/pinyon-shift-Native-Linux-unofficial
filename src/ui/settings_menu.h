@@ -2,6 +2,8 @@
 
 #include <filesystem>
 #include <functional>
+#include <optional>
+#include <utility>
 #include <memory>
 
 #include "config/host_config.h"
@@ -25,9 +27,12 @@ struct SettingsServices {
   // <state>/mods: the MODS page lists its folders; no page when empty.
   std::filesystem::path mods_root;
   // The draw resolution scale the renderer uses (0 when unknown). With it,
-  // RESOLUTION SCALE applies at once and asks for a restart only when the
-  // renderer could not switch (Vulkan, or no shader pack for that scale).
+  // RESOLUTION SCALE asks for a restart only when the renderer could not
+  // switch (D3D12 without a shader pack for that scale).
   std::function<uint32_t()> draw_resolution_scale;
+  // Where the latest frame reached the window, in pixels (after output
+  // scaling and letterboxing); the display and graphics notes give it.
+  std::function<std::optional<std::pair<uint32_t, uint32_t>>()> output_size;
 };
 
 std::unique_ptr<hostui::MenuScreen> CreateSettingsMenu(hostui::HostUi& host_ui,
