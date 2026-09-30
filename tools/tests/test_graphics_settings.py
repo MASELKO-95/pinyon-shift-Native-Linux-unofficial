@@ -121,6 +121,27 @@ class GraphicsSettingsTests(unittest.TestCase):
             self.assertIn('gpu_backend = "d3d12"', text)
             self.assertIn("gpu_record_thread = false", text)
 
+    def test_graphics_api_choice_sets_backend_and_record_thread(self):
+        with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:
+            state = pathlib.Path(temporary)
+            config = state / "config/pinyon_shift.toml"
+            config.parent.mkdir(parents=True)
+            config.write_text("pinyon_shift_config_schema = 27\nanisotropic_override = 5\n",
+                              encoding="utf-8")
+            self.assertEqual(self.run_tool(state, "-Action", "Get")["settings"]["graphics_api"],
+                             "vulkan")
+            result = self.run_tool(state, "-Action", "Apply", "-GraphicsApi", "d3d12")
+            text = config.read_text(encoding="utf-8")
+            self.assertIn('gpu_backend = "d3d12"', text)
+            self.assertIn("gpu_record_thread = false", text)
+            self.assertIn("anisotropic_override = 5", text)
+            self.assertEqual(result["settings"]["graphics_api"], "d3d12")
+            result = self.run_tool(state, "-Action", "Apply", "-GraphicsApi", "vulkan")
+            text = config.read_text(encoding="utf-8")
+            self.assertIn('gpu_backend = "vulkan"', text)
+            self.assertIn("gpu_record_thread = true", text)
+            self.assertEqual(result["settings"]["graphics_api"], "vulkan")
+
     def test_reset_writes_supported_defaults_and_preserves_backup(self):
         with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:
             state = pathlib.Path(temporary)

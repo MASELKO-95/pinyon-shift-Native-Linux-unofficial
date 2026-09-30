@@ -513,6 +513,9 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         self.assertNotIn("AnisotropyComboBox", launcher_xaml)
         self.assertNotIn('"-Anisotropy"', launcher)
         self.assertIn('"-ResolutionScale", SelectedTag(ResolutionComboBox)', launcher)
+        # Schema 27: the graphics API (Vulkan by default) is chosen before start.
+        self.assertIn('"-GraphicsApi", SelectedTag(GraphicsApiComboBox)', launcher)
+        self.assertIn("GraphicsApiComboBox", launcher_xaml)
         self.assertNotIn("NativeRendererComboBox", launcher_xaml)
         self.assertNotIn("ResetRendererButton", launcher_xaml)
         # The renderer choice is gone: native is the only renderer.

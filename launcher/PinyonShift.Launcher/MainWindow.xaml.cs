@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -19,9 +20,12 @@ public partial class MainWindow : Window
         new("VERIFY", "Disc image", "Exact size and SHA-256", "1"),
         new("TOOLS", "Windows toolchain", "Provisioned when missing", "2"),
         new("EXTRACT", "Local game files", "Never uploaded or modified", "3"),
-        new("BUILD", "Local preparation", "Game and graphics prepared here", "4"),
+        new("BUILD", "Local preparation", "Game and graphics built here", "4"),
         new("PLAY", "Ready to drive", "Launch from this screen", "5")
     ];
+
+    // The content area shows one of these at a time.
+    private enum View { Setup, Ready, Log, Crash, Graphics }
 
     private CancellationTokenSource? _cancellation;
     private string? _repositoryRoot;
@@ -31,14 +35,16 @@ public partial class MainWindow : Window
     private CrashReport? _pendingReport;
     private bool _busy;
     private bool _canChooseInstallRoot;
+    private View _panel = View.Setup;
+    private View _panelBeforeGraphics = View.Setup;
 
     private static readonly string InstallRootPreference = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "PinyonShift", "install-root.txt");
 
-    private static readonly Brush WaitingBrush = new SolidColorBrush(Color.FromRgb(57, 64, 57));
+    private static readonly Brush WaitingBrush = new SolidColorBrush(Color.FromRgb(52, 73, 59));
     private static readonly Brush ActiveBrush = new SolidColorBrush(Color.FromRgb(241, 174, 54));
-    private static readonly Brush CompleteBrush = new SolidColorBrush(Color.FromRgb(115, 185, 137));
+    private static readonly Brush CompleteBrush = new SolidColorBrush(Color.FromRgb(92, 208, 138));
     private static readonly Brush FailedBrush = new SolidColorBrush(Color.FromRgb(225, 110, 95));
 
     public MainWindow()
@@ -47,7 +53,18 @@ public partial class MainWindow : Window
         RouteList.ItemsSource = _steps;
         BuildLocationText.Text = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PinyonShift");
+        VersionText.Text = $"Pinyon Shift launcher {typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "dev"}";
         Loaded += MainWindow_Loaded;
+        StateChanged += (_, _) =>
+        {
+            // A maximized borderless window reaches past the screen edge by the
+            // resize border; pad it back in.
+            RootBorder.Margin = WindowState == WindowState.Maximized ? new Thickness(7) : new Thickness(0);
+            // Two overlapping squares while maximized, one otherwise.
+            MaximizeGlyph.Data = Geometry.Parse(WindowState == WindowState.Maximized
+                ? "M2.5,0.5 H9.5 V7.5 M0.5,2.5 H7.5 V9.5 H0.5 Z"
+                : "M0.5,0.5 H9.5 V9.5 H0.5 Z");
+        };
         Closing += (_, _) =>
         {
             _cancellation?.Cancel();
@@ -78,8 +95,10 @@ public partial class MainWindow : Window
             _repositoryRoot = repositoryRoot;
             _stateRoot = stateRoot;
             StartSessionLog(_repositoryRoot);
+            ShowReleaseVersion();
             GraphicsSettingsButton.Visibility = Visibility.Visible;
             BuildLocationText.Text = _stateRoot;
+            StateRootText.Text = _stateRoot;
             AppendLog($"Release source: {_repositoryRoot}");
             AppendLog($"Preview state: {_stateRoot}");
             StageControllerMappings();
@@ -97,6 +116,21 @@ public partial class MainWindow : Window
             IsEnabled = true;
             UpdatePrimaryButton();
         }
+    }
+
+    private void ShowReleaseVersion()
+    {
+        if (_repositoryRoot is null) return;
+        try
+        {
+            using var release = JsonDocument.Parse(File.ReadAllText(Path.Combine(_repositoryRoot, "config", "release.json")));
+            var version = release.RootElement.GetProperty("version").GetString();
+            var channel = release.RootElement.TryGetProperty("channel", out var value) ? value.GetString() : null;
+            if (!string.IsNullOrWhiteSpace(version))
+                VersionText.Text = $"Pinyon Shift {version}";
+            ChannelText.Text = string.IsNullOrWhiteSpace(channel) ? "" : channel.ToUpperInvariant();
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or KeyNotFoundException or InvalidOperationException) { }
     }
 
     private async void ChooseInstallRootButton_Click(object sender, RoutedEventArgs e)
@@ -121,12 +155,51 @@ public partial class MainWindow : Window
             Multiselect = false
         };
         if (dialog.ShowDialog(this) == true)
-        {
-            IsoPathTextBox.Text = dialog.FileName;
-            ResetRoute();
-            SetReadyState();
-        }
+            SelectDiscImage(dialog.FileName);
         UpdatePrimaryButton();
+    }
+
+    private void SelectDiscImage(string path)
+    {
+        IsoPathTextBox.Text = path;
+        DropHintText.Text = Path.GetFileName(path);
+        ResetRoute();
+        SetReadyState();
+        ShowPanel(View.Setup);
+        UpdatePrimaryButton();
+    }
+
+    // Dragging a disc image anywhere onto the window selects it.
+    private bool CanAcceptDrop(DragEventArgs e, out string? path)
+    {
+        path = null;
+        if (_busy || _gameExecutable is not null || _pendingReport is not null ||
+            !e.Data.GetDataPresent(DataFormats.FileDrop)) return false;
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: 1 } files) return false;
+        path = files[0];
+        return File.Exists(path);
+    }
+
+    private void Window_DragOver(object sender, DragEventArgs e)
+    {
+        var accepted = CanAcceptDrop(e, out _);
+        e.Effects = accepted ? DragDropEffects.Copy : DragDropEffects.None;
+        DropOverlay.Visibility = accepted ? Visibility.Visible : Visibility.Collapsed;
+        e.Handled = true;
+    }
+
+    protected override void OnDragLeave(DragEventArgs e)
+    {
+        base.OnDragLeave(e);
+        DropOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private void Window_Drop(object sender, DragEventArgs e)
+    {
+        DropOverlay.Visibility = Visibility.Collapsed;
+        if (CanAcceptDrop(e, out var path) && path is not null)
+            SelectDiscImage(path);
+        e.Handled = true;
     }
 
     private void InputChanged(object sender, RoutedEventArgs e) => UpdatePrimaryButton();
@@ -154,9 +227,11 @@ public partial class MainWindow : Window
         BrowseButton.IsEnabled = false;
         OwnershipCheckBox.IsEnabled = false;
         PrimaryButton.IsEnabled = false;
-        PrimaryButton.Content = "BUILDING…";
-        LogPanel.Visibility = Visibility.Visible;
+        SetPrimaryText("BUILDING…");
+        ShowPanel(View.Log);
+        SetProgress(0, "Starting local setup.");
         HeadlineText.Text = "Preparing the road.";
+        SubheadText.Text = "The first build compiles the whole game on this PC and can take a while. You can leave it running.";
         EyebrowText.Text = "LOCAL BUILD IN PROGRESS";
         StatusText.Text = "WORKING";
         StatusDot.Fill = ActiveBrush;
@@ -204,7 +279,7 @@ public partial class MainWindow : Window
             });
             await process.WaitForExitAsync(_cancellation.Token);
             if (process.ExitCode != 0)
-                throw new InvalidOperationException("Setup stopped before completing. The build log above contains the cause.");
+                throw new InvalidOperationException("Setup stopped before completing. The details above contain the cause.");
 
             DetectExistingBuild();
             if (_gameExecutable is null)
@@ -254,13 +329,14 @@ public partial class MainWindow : Window
             {
                 HeadlineText.Text = "Preparing graphics.";
                 StatusText.Text = "PREPARING GRAPHICS";
-                PrimaryButton.Content = "PREPARING…";
+                SetPrimaryText("PREPARING…");
             }
             else if (message.Stage == "play" && _gameExecutable is not null)
             {
                 HeadlineText.Text = "Controller A, Space, or left click.";
+                SubheadText.Text = "Selects the highlighted menu item; Enter is Start. Press F6 in game for settings.";
                 StatusText.Text = "GAME RUNNING";
-                PrimaryButton.Content = "GAME RUNNING";
+                SetPrimaryText("GAME RUNNING");
             }
             if (index >= 0)
             {
@@ -269,7 +345,9 @@ public partial class MainWindow : Window
                         WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
             }
             if (message.Percent is >= 0 and <= 100)
-                ProgressText.Text = $"{message.Percent}%";
+                SetProgress(message.Percent, message.Message);
+            else if (!string.IsNullOrWhiteSpace(message.Message))
+                ProgressMessageText.Text = message.Message;
             if (!string.IsNullOrWhiteSpace(message.Message))
                 AppendLog(message.Message);
         }
@@ -277,6 +355,59 @@ public partial class MainWindow : Window
         {
             AppendLog(line);
         }
+    }
+
+    private void SetProgress(int percent, string? message)
+    {
+        BuildProgress.Value = percent;
+        ProgressText.Text = $"{percent}%";
+        if (!string.IsNullOrWhiteSpace(message))
+            ProgressMessageText.Text = message;
+    }
+
+    // What the next start uses, read straight from the settings file.
+    private string ConfiguredGraphicsApi()
+    {
+        if (_stateRoot is null) return "vulkan";
+        var config = Path.Combine(_stateRoot, "config", "pinyon_shift.toml");
+        if (!File.Exists(config)) return "vulkan";
+        try
+        {
+            var text = File.ReadAllText(config);
+            var schema = Regex.Match(text, @"(?m)^\s*pinyon_shift_config_schema\s*=\s*([0-9]+)");
+            var backend = Regex.Match(text, @"(?m)^\s*gpu_backend\s*=\s*""([^""]*)""");
+            // Config schema 27 moves earlier files to Vulkan when the game starts;
+            // "any" is the first backend, Direct3D 12.
+            if (!schema.Success || int.Parse(schema.Groups[1].Value) < 27 || !backend.Success) return "vulkan";
+            return string.Equals(backend.Groups[1].Value, "vulkan", StringComparison.OrdinalIgnoreCase) ? "vulkan" : "d3d12";
+        }
+        catch (IOException) { return "vulkan"; }
+    }
+
+    private int ConfiguredResolutionScale()
+    {
+        if (_stateRoot is null) return 1;
+        var config = Path.Combine(_stateRoot, "config", "pinyon_shift.toml");
+        try
+        {
+            var match = File.Exists(config)
+                ? Regex.Match(File.ReadAllText(config), @"(?m)^\s*draw_resolution_scale_x\s*=\s*([0-9]+)")
+                : Match.Empty;
+            return match.Success ? Math.Clamp(int.Parse(match.Groups[1].Value), 1, 4) : 1;
+        }
+        catch (IOException) { return 1; }
+    }
+
+    private void UpdateReadyTiles()
+    {
+        var vulkan = ConfiguredGraphicsApi() == "vulkan";
+        ApiTileText.Text = vulkan ? "Vulkan" : "Direct3D 12";
+        ApiTileDetail.Text = vulkan
+            ? "Recorded on a second thread; 120 fps at 1×."
+            : "Prebuilt shader packs, one commands thread.";
+        var scale = ConfiguredResolutionScale();
+        ResolutionTileText.Text = $"{scale}×";
+        ResolutionTileDetail.Text = $"{1280 * scale} × {720 * scale}";
     }
 
     private void DetectExistingBuild()
@@ -289,6 +420,7 @@ public partial class MainWindow : Window
             if (!File.Exists(Path.Combine(_repositoryRoot, ".local", "game", "base", "default.xex")))
             {
                 HeadlineText.Text = "Restore your local game files.";
+                SubheadText.Text = "Choose your disc image and run setup again. Your save stays in place.";
                 StatusText.Text = "GAME FILES MISSING";
                 AppendLog("Select your disc image and run setup to restore the missing game files. Your save stays in place.");
                 return;
@@ -307,6 +439,7 @@ public partial class MainWindow : Window
                 if (!matchesRelease)
                 {
                     HeadlineText.Text = "Update your local build.";
+                    SubheadText.Text = "This release changed the game code. Choose your disc image and run setup; game files and your save are kept.";
                     StatusText.Text = "BUILD UPDATE NEEDED";
                     AppendLog("Select your disc image and run setup to build this release. Existing game files and your save are preserved.");
                     return;
@@ -314,13 +447,16 @@ public partial class MainWindow : Window
             }
             _gameExecutable = candidate;
             SetComplete();
-            if (_stateRoot is not null && !File.Exists(Path.Combine(_stateRoot, "cache", "fh1-artifacts.json")))
+            // Only Direct3D 12 loads prepared shader packs.
+            if (_stateRoot is not null && ConfiguredGraphicsApi() == "d3d12" &&
+                !File.Exists(Path.Combine(_stateRoot, "cache", "fh1-artifacts.json")))
             {
                 _steps[3].SetState(StepState.Waiting, WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
                 _steps[4].SetState(StepState.Waiting, WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
                 HeadlineText.Text = "Finish preparing your preview.";
+                SubheadText.Text = "Direct3D 12 prepares its shaders once for this PC before the first start.";
                 StatusText.Text = "GRAPHICS PREPARATION NEEDED";
-                PrimaryButton.Content = "PREPARE & PLAY";
+                SetPrimaryText("PREPARE & PLAY");
             }
         }
     }
@@ -334,12 +470,13 @@ public partial class MainWindow : Window
         ChooseInstallRootButton.IsEnabled = false;
         GraphicsSettingsButton.IsEnabled = false;
         PrimaryButton.IsEnabled = false;
-        PrimaryButton.Content = "PREPARING…";
-        EyebrowText.Text = "PREPARING TO PLAY";
-        HeadlineText.Text = "Checking graphics.";
-        StatusText.Text = "PREPARING";
-        LogPanel.Visibility = Visibility.Visible;
-        GraphicsPanel.Visibility = Visibility.Collapsed;
+        SetPrimaryText("STARTING…");
+        EyebrowText.Text = "STARTING";
+        HeadlineText.Text = "Warming up the engine.";
+        SubheadText.Text = "The game opens in its own window. This screen reports back when it closes.";
+        StatusText.Text = "STARTING";
+        ShowPanel(View.Log);
+        SetProgress(0, "Checking graphics for this computer.");
         StatusDot.Fill = ActiveBrush;
         ReportProblemButton.IsEnabled = false;
         AppendLog("Checking graphics for this computer. Missing or outdated shaders are prepared automatically.");
@@ -480,17 +617,15 @@ public partial class MainWindow : Window
                 WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
         EyebrowText.Text = "CRASH REPORT READY";
         HeadlineText.Text = "We caught the crash.";
+        SubheadText.Text = "Reporting it takes one click and helps fix it for everyone.";
         StatusText.Text = "REPORT READY";
         StatusDot.Fill = FailedBrush;
         CrashIdText.Text = report.CrashId;
-        CrashPanel.Visibility = Visibility.Visible;
-        GraphicsPanel.Visibility = Visibility.Collapsed;
-        LogPanel.Visibility = Visibility.Collapsed;
-        OwnershipCheckBox.Visibility = Visibility.Collapsed;
+        ShowPanel(View.Crash);
         ReportProblemButton.Visibility = Visibility.Collapsed;
         OpenLogsButton.Content = "OPEN REPORT FOLDER";
         OpenLogsButton.Visibility = Visibility.Visible;
-        PrimaryButton.Content = "REPORT CRASH";
+        SetPrimaryText("REPORT CRASH");
         PrimaryButton.IsEnabled = true;
     }
 
@@ -507,7 +642,7 @@ public partial class MainWindow : Window
         var marker = Path.Combine(_stateRoot, "reports", "pending-report.json");
         try { if (File.Exists(marker)) File.Delete(marker); } catch (IOException) { }
         StatusText.Text = "GITHUB OPENED";
-        PrimaryButton.Content = "OPEN GITHUB AGAIN";
+        SetPrimaryText("OPEN GITHUB AGAIN");
     }
 
     private async Task<string> ResolveRepositoryRootAsync(string? selectedInstallRoot = null)
@@ -582,10 +717,32 @@ public partial class MainWindow : Window
         AppendLog("Controller compatibility mappings are current.");
     }
 
+    private void ShowPanel(View panel)
+    {
+        _panel = panel;
+        SetupPanel.Visibility = panel == View.Setup ? Visibility.Visible : Visibility.Collapsed;
+        ReadyPanel.Visibility = panel == View.Ready ? Visibility.Visible : Visibility.Collapsed;
+        LogPanel.Visibility = panel == View.Log ? Visibility.Visible : Visibility.Collapsed;
+        CrashPanel.Visibility = panel == View.Crash ? Visibility.Visible : Visibility.Collapsed;
+        GraphicsPanel.Visibility = panel == View.Graphics ? Visibility.Visible : Visibility.Collapsed;
+        // The route only tells something while there is setup left to do.
+        RouteList.Visibility = panel is View.Ready or View.Graphics ? Visibility.Collapsed : Visibility.Visible;
+        if (panel == View.Ready) UpdateReadyTiles();
+    }
+
+    private void SetPrimaryText(string text)
+    {
+        PrimaryButtonText.Text = text;
+        PrimaryIcon.Visibility = text.StartsWith("PLAY", StringComparison.Ordinal) ||
+                                 text.StartsWith("PREPARE & PLAY", StringComparison.Ordinal)
+            ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void SetReadyState()
     {
         EyebrowText.Text = "READY FOR YOUR DISC";
         HeadlineText.Text = "Build your preview.";
+        SubheadText.Text = "Your game stays yours. The launcher verifies your disc image, builds the native translation on this PC, and keeps every generated file local.";
         StatusText.Text = "SYSTEM READY";
         StatusDot.Fill = CompleteBrush;
     }
@@ -595,17 +752,17 @@ public partial class MainWindow : Window
         _pendingReport = null;
         foreach (var step in _steps)
             step.SetState(StepState.Complete, WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
-        ProgressText.Text = "100%";
+        SetProgress(100, "Ready.");
         EyebrowText.Text = "LOCAL BUILD COMPLETE";
         HeadlineText.Text = "The road is open.";
+        SubheadText.Text = "Everything was built on this PC from your own disc. Your saves live next to the build and are never uploaded.";
         StatusText.Text = "READY TO PLAY";
         StatusDot.Fill = CompleteBrush;
-        PrimaryButton.Content = "PLAY PINYON SHIFT";
-        CrashPanel.Visibility = Visibility.Collapsed;
-        GraphicsPanel.Visibility = Visibility.Collapsed;
+        SetPrimaryText("PLAY PINYON SHIFT");
+        ShowPanel(View.Ready);
         ReportProblemButton.Visibility = Visibility.Visible;
+        OpenLogsButton.Content = "OPEN LOGS";
         OpenLogsButton.Visibility = Visibility.Visible;
-        OwnershipCheckBox.Visibility = Visibility.Collapsed;
         AppendLog("Build complete. Generated files remain on this computer.");
     }
 
@@ -615,11 +772,12 @@ public partial class MainWindow : Window
         active?.SetState(StepState.Failed, WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
         EyebrowText.Text = eyebrow;
         HeadlineText.Text = "We stopped safely.";
+        SubheadText.Text = message;
         StatusText.Text = "ACTION NEEDED";
         StatusDot.Fill = FailedBrush;
-        PrimaryButton.Content = "TRY AGAIN";
-        LogPanel.Visibility = Visibility.Visible;
-        GraphicsPanel.Visibility = Visibility.Collapsed;
+        SetPrimaryText("TRY AGAIN");
+        ShowPanel(View.Log);
+        ProgressMessageText.Text = message;
         OpenLogsButton.Visibility = Visibility.Visible;
         AppendLog($"ERROR: {message}");
     }
@@ -630,9 +788,8 @@ public partial class MainWindow : Window
         _pendingReport = null;
         foreach (var step in _steps)
             step.SetState(StepState.Waiting, WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
-        PrimaryButton.Content = "VERIFY & BUILD";
-        CrashPanel.Visibility = Visibility.Collapsed;
-        GraphicsPanel.Visibility = Visibility.Collapsed;
+        SetPrimaryText("VERIFY & BUILD");
+        ShowPanel(View.Setup);
         ReportProblemButton.Visibility = Visibility.Visible;
         OwnershipCheckBox.Visibility = Visibility.Visible;
     }
@@ -662,6 +819,13 @@ public partial class MainWindow : Window
         if (LogTextBox.Text.Length > maximumLogCharacters)
             LogTextBox.Text = LogTextBox.Text[^maximumLogCharacters..];
         LogTextBox.ScrollToEnd();
+    }
+
+    private void LogToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        var show = LogBox.Visibility != Visibility.Visible;
+        LogBox.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        LogToggleButton.Content = show ? "HIDE" : "SHOW";
     }
 
     private void OpenLogsButton_Click(object sender, RoutedEventArgs e)
@@ -708,18 +872,34 @@ public partial class MainWindow : Window
             "https://github.com/arcanite24/pinyon-shift/issues/new?template=bug.yml")
         { UseShellExecute = true });
 
+    private void ProjectButton_Click(object sender, RoutedEventArgs e) =>
+        Process.Start(new ProcessStartInfo("https://github.com/arcanite24/pinyon-shift") { UseShellExecute = true });
+
+    private void OpenStateFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_stateRoot is null) return;
+        Directory.CreateDirectory(_stateRoot);
+        Process.Start(new ProcessStartInfo("explorer.exe", _stateRoot) { UseShellExecute = true });
+    }
+
+    private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void MaximizeButton_Click(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
+
     private async void GraphicsSettingsButton_Click(object sender, RoutedEventArgs e)
     {
         if (_repositoryRoot is null || _busy || _pendingReport is not null) return;
-        LogPanel.Visibility = Visibility.Collapsed;
-        CrashPanel.Visibility = Visibility.Collapsed;
-        GraphicsPanel.Visibility = Visibility.Visible;
+        if (_panel != View.Graphics) _panelBeforeGraphics = _panel;
+        ShowPanel(View.Graphics);
         ChooseInstallRootButton.IsEnabled = false;
         GraphicsStatusText.Text = "Loading current settings…";
         try
         {
             ApplyGraphicsResult(await RunGraphicsSettingsToolAsync("Get"));
-            GraphicsStatusText.Text = "Current settings loaded. Saving a change requires a preview restart.";
+            GraphicsStatusText.Text = "Current settings loaded. Saving a change applies at the next start.";
         }
         catch (Exception ex)
         {
@@ -729,20 +909,23 @@ public partial class MainWindow : Window
 
     private void CloseGraphicsButton_Click(object sender, RoutedEventArgs e)
     {
-        GraphicsPanel.Visibility = Visibility.Collapsed;
-        LogPanel.Visibility = Visibility.Visible;
+        ShowPanel(_panelBeforeGraphics == View.Graphics ? View.Setup : _panelBeforeGraphics);
         UpdatePrimaryButton();
     }
 
-    private async void SaveGraphicsButton_Click(object sender, RoutedEventArgs e) =>
-        await ChangeGraphicsSettingsAsync("Apply", "Settings saved. Restart the preview to apply them.");
+    private async void SaveGraphicsButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ChangeGraphicsSettingsAsync("Apply", "Settings saved. They apply at the next start.");
+        // Direct3D 12 may now need its shader packs.
+        if (_gameExecutable is not null && !_busy) DetectExistingBuild();
+    }
 
     private void InGameSettingsButton_Click(object sender, RoutedEventArgs e) =>
         MessageBox.Show(this,
             "Display, graphics, audio and control settings live in the game now. Press F6 while " +
-            "playing to open them. Changes there apply at once, except the resolution scale, and are " +
-            "saved to the same settings file this launcher uses, with a backup before the first change " +
-            "of each session.",
+            "playing to open them. Changes there apply at once, except the resolution scale and the " +
+            "graphics API, and are saved to the same settings file this launcher uses, with a backup " +
+            "before the first change of each session.",
             "In-game settings", MessageBoxButton.OK, MessageBoxImage.Information);
 
     private async void ResetGraphicsButton_Click(object sender, RoutedEventArgs e)
@@ -751,12 +934,12 @@ public partial class MainWindow : Window
                 "Reset only the Pinyon Shift runtime settings? Your current pinyon_shift.toml will be backed up first.",
                 "Reset runtime settings", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
             return;
-        await ChangeGraphicsSettingsAsync("Reset", "Runtime settings reset. Restart the preview to apply them.",
+        await ChangeGraphicsSettingsAsync("Reset", "Runtime settings reset. They apply at the next start.",
             revealBackup: true);
     }
 
     private async void RestoreGraphicsButton_Click(object sender, RoutedEventArgs e) =>
-        await ChangeGraphicsSettingsAsync("Restore", "Latest settings backup restored. Restart the preview to apply it.");
+        await ChangeGraphicsSettingsAsync("Restore", "Latest settings backup restored. It applies at the next start.");
 
     private async Task ChangeGraphicsSettingsAsync(string action, string success, bool revealBackup = false)
     {
@@ -806,8 +989,10 @@ public partial class MainWindow : Window
         {
             "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
             "-Action", action, "-StateRoot", _stateRoot,
-            // Only the scale: the rest is set in game and must not be overwritten.
+            // Only the scale and the API: the rest is set in game and must not
+            // be overwritten.
             "-ResolutionScale", SelectedTag(ResolutionComboBox),
+            "-GraphicsApi", SelectedTag(GraphicsApiComboBox),
             "-Json"
         }) startInfo.ArgumentList.Add(argument);
         using var process = Process.Start(startInfo) ??
@@ -829,8 +1014,13 @@ public partial class MainWindow : Window
     private static string SelectedTag(ComboBox comboBox) =>
         (comboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? throw new InvalidOperationException("Choose a setting first.");
 
-    private void ApplyGraphicsResult(GraphicsResult result) =>
+    private void ApplyGraphicsResult(GraphicsResult result)
+    {
         SelectTag(ResolutionComboBox, result.Settings.ResolutionScale.ToString());
+        SelectTag(GraphicsApiComboBox, string.IsNullOrWhiteSpace(result.Settings.GraphicsApi)
+            ? "vulkan" : result.Settings.GraphicsApi);
+        UpdateReadyTiles();
+    }
 
     private static void SelectTag(ComboBox comboBox, string value)
     {
@@ -841,6 +1031,7 @@ public partial class MainWindow : Window
     private void SetGraphicsControlsEnabled(bool enabled)
     {
         ResolutionComboBox.IsEnabled = enabled;
+        GraphicsApiComboBox.IsEnabled = enabled;
         SaveGraphicsButton.IsEnabled = enabled;
         ResetGraphicsButton.IsEnabled = enabled;
         RestoreGraphicsButton.IsEnabled = enabled;
@@ -869,6 +1060,7 @@ public partial class MainWindow : Window
         [property: JsonPropertyName("disable_depth_of_field")] bool DisableDepthOfField,
         [property: JsonPropertyName("preset")] string Preset,
         [property: JsonPropertyName("resolution_scale")] int ResolutionScale,
+        [property: JsonPropertyName("graphics_api")] string? GraphicsApi,
         [property: JsonPropertyName("clear_memory_page_state")] bool ClearMemoryPageState,
         [property: JsonPropertyName("vsync")] bool Vsync);
 }

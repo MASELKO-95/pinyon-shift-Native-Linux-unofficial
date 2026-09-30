@@ -8,6 +8,8 @@ param(
     [string]$PostEffect = 'none',
     [ValidateSet(1, 2, 3, 4)]
     [int]$ResolutionScale = 1,
+    [ValidateSet('vulkan', 'd3d12')]
+    [string]$GraphicsApi = 'vulkan',
     [ValidateSet('custom', 'shipping_1x', 'experimental_2x', 'experimental_3x')]
     [string]$Preset = 'custom',
     [ValidateSet(0, 30, 60, 120, 240)]
@@ -151,6 +153,10 @@ function Get-SettingsResult([string]$Text, [string]$BackupPath, [string]$Operati
     $vsyncEnabled = (Get-TomlValue $Text 'vsync' 'true') -eq 'true'
     $presentationFps = [int](Get-TomlValue $Text 'host_present_fps_limit' '0')
     $renderFps = [int](Get-TomlValue $Text 'pinyon_shift_fh1_render_fps_limit' '0')
+    # Before schema 27 the game moves the file to Vulkan when it starts; "any"
+    # is the plugin's first backend, Direct3D 12.
+    $backend = (Get-TomlValue $Text 'gpu_backend' '"vulkan"').Trim('"').ToLowerInvariant()
+    $graphicsApi = if ((Get-SchemaVersion $Text) -lt 27 -or $backend -eq 'vulkan') { 'vulkan' } else { 'd3d12' }
     $presetName = if ($resolutionScale -eq 2) {
         'experimental_2x'
     } elseif ($resolutionScale -eq 3) {
@@ -172,6 +178,7 @@ function Get-SettingsResult([string]$Text, [string]$BackupPath, [string]$Operati
             disable_depth_of_field = (Get-TomlValue $Text 'disable_depth_of_field' 'false') -eq 'true'
             preset = $presetName
             resolution_scale = $resolutionScale
+            graphics_api = $graphicsApi
             clear_memory_page_state = $clearPageState
             vsync = $vsyncEnabled
             host_present_fps_limit = $presentationFps
@@ -254,6 +261,11 @@ switch ($Action) {
         if ($null -ne $effectiveResolution) {
             $text = Set-TomlValue $text 'draw_resolution_scale_x' ([string]$effectiveResolution)
             $text = Set-TomlValue $text 'draw_resolution_scale_y' ([string]$effectiveResolution)
+        }
+        if ($bound.ContainsKey('GraphicsApi')) {
+            # Vulkan records draws on a second thread; Direct3D 12 keeps one.
+            $text = Set-TomlValue $text 'gpu_backend' ('"' + $GraphicsApi + '"')
+            $text = Set-TomlValue $text 'gpu_record_thread' ($(if ($GraphicsApi -eq 'vulkan') { 'true' } else { 'false' }))
         }
         if ($bound.ContainsKey('Anisotropy')) {
             $override = switch ($Anisotropy) { 4 { 3 } 8 { 4 } 16 { 5 } }
