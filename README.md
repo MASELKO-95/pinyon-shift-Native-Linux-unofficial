@@ -1,5 +1,9 @@
 # Pinyon Shift
 
+<p align="center">
+  <img src=".github/pinyon-shift-logo.png" alt="Pinyon Shift logo" width="720">
+</p>
+
 Pinyon Shift is a Windows-only playable preview of a native recompilation of
 the Xbox 360 release of *Forza Horizon*. The project is early, imperfect, and
 surprisingly drivable.
@@ -156,3 +160,12 @@ them. See [Legal and distribution](docs/LEGAL.md) and
 Start with [CONTRIBUTING.md](CONTRIBUTING.md). Repository checks reject disc
 images, executables, generated translations, extracted assets, build products,
 and other machine-local material.
+
+## Supporting the project
+
+Pinyon Shift is and will remain free. If you would like to support its continued
+development, you can [sponsor arcanite24 on GitHub]. Sponsorship is entirely
+optional and does not provide builds, game content, support, or influence over
+the project roadmap.
+
+[sponsor arcanite24 on GitHub]: https://github.com/sponsors/arcanite24
