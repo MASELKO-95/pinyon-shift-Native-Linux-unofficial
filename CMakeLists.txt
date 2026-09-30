@@ -29,6 +29,7 @@ elseif(WIN32)
         src/pinyon_shift_runtime_hooks.cpp
         src/save_backups.cpp
         src/cheats.cpp
+        src/save/car_cards.cpp
         src/save/live_profile.cpp
         src/save/profile_body.cpp
         src/mod/mod_host.cpp
@@ -66,6 +67,7 @@ else()
         src/pinyon_shift_runtime_hooks.cpp
         src/save_backups.cpp
         src/cheats.cpp
+        src/save/car_cards.cpp
         src/save/live_profile.cpp
         src/save/profile_body.cpp
         src/mod/mod_host.cpp
@@ -135,6 +137,13 @@ add_executable(pinyon_shift_profile_body_tests EXCLUDE_FROM_ALL
 )
 target_include_directories(pinyon_shift_profile_body_tests PRIVATE src)
 
+add_executable(pinyon_shift_car_cards_tests EXCLUDE_FROM_ALL
+    tests/save/car_cards_test.cpp
+    src/save/car_cards.cpp
+)
+target_include_directories(pinyon_shift_car_cards_tests PRIVATE src)
+target_link_libraries(pinyon_shift_car_cards_tests PRIVATE rex::runtime)
+
 add_executable(pinyon_shift_fh1_edram_tiles_tests EXCLUDE_FROM_ALL
     tests/native_renderer/fh1_edram_tiles_test.cpp
 )
@@ -149,6 +158,7 @@ add_dependencies(pinyon_shift_host_tests
     pinyon_shift_hostui_tests
     pinyon_shift_host_config_tests
     pinyon_shift_profile_body_tests
+    pinyon_shift_car_cards_tests
     pinyon_shift_fh1_edram_tiles_tests
     pinyon_shift_mod_hello_telemetry)
 

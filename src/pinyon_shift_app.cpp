@@ -34,6 +34,7 @@
 #include "cheats.h"
 #include "mod/mod_host.h"
 #include "mod/overlay_device.h"
+#include "save/car_cards.h"
 #include "save_backups.h"
 #include "ui/achievements_menu.h"
 #include "ui/photo_export.h"
@@ -59,6 +60,11 @@ REXCVAR_DEFINE_BOOL(pinyon_shift_hor_plus, false, "Display",
 REXCVAR_DEFINE_BOOL(pinyon_shift_save_backups, true, "Pinyon Shift",
                     "Copy the save files to <state>/backups/saves after the title writes them "
                     "(restore from SETTINGS > PROFILE > SAVE BACKUPS)")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+REXCVAR_DEFINE_BOOL(pinyon_shift_repair_car_cards, true, "Pinyon Shift",
+                    "At start, move car cards that older builds saved striped to "
+                    "<state>/backups/car-cards, so the title shows an empty card until the car "
+                    "is saved again")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 REXCVAR_DEFINE_INT32(pinyon_shift_save_backup_slots, 10, "Pinyon Shift",
                      "Save backups to keep; older ones are deleted")
@@ -376,6 +382,15 @@ void PinyonShiftApp::OnConfigurePaths(rex::PathConfig& paths) {
   // can open the files.
   pinyon_shift::SaveBackups::ApplyPendingRestore(paths.user_data_root,
                                                  state_root / "backups" / "saves");
+  if (REXCVAR_GET(pinyon_shift_repair_car_cards)) {
+    const size_t repaired = pinyon_shift::save::QuarantineStripedCarCards(
+        paths.user_data_root, state_root / "backups" / "car-cards");
+    if (repaired) {
+      REXLOG_INFO("Moved {} striped car card(s) to backups/car-cards", repaired);
+      pinyon_shift::diagnostics::RecordEvent("save.car_cards.repaired",
+                                             {{"cards", std::to_string(repaired)}});
+    }
+  }
   // Mods play a separate profile (NP-7.5), started from a copy of the
   // player's own the first time, so the unmodded save is never touched.
   // Cheats may come from the command line as well as the config file.

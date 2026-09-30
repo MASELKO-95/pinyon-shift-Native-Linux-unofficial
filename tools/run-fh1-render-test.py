@@ -579,8 +579,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         )
     if args.include_opening_movies:
         command.append("-RenderTestIncludeOpeningMovies")
-    if args.game_argument:
-        command.extend(["-GameArgumentsJson", json.dumps(args.game_argument)])
+    game_arguments = list(args.game_argument)
+    # Seeds are fixed snapshots: keep their car cards as saved (the routes
+    # through car select wait for the title to open them) unless a test asks
+    # for the start-up card repair.
+    if not any("pinyon_shift_repair_car_cards" in argument for argument in game_arguments):
+        game_arguments.append("--pinyon_shift_repair_car_cards=false")
+    command.extend(["-GameArgumentsJson", json.dumps(game_arguments)])
     command.append("-Json")
     process = subprocess.run(
         command, capture_output=True, text=True, timeout=timeout + 30, check=False
