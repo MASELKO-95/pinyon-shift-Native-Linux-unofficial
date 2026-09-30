@@ -38,10 +38,6 @@
         <SolidColorBrush x:Key="GreenBrush" Color="{StaticResource Green}"/>
         <SolidColorBrush x:Key="RedBrush" Color="{StaticResource Red}"/>
 
-        <LinearGradientBrush x:Key="AccentGradient" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Color="#6FDB98" Offset="0"/>
-            <GradientStop Color="#3FB873" Offset="1"/>
-        </LinearGradientBrush>
         <LinearGradientBrush x:Key="HeroGradient" StartPoint="0,0" EndPoint="1,1">
             <GradientStop Color="#16402A" Offset="0"/>
             <GradientStop Color="#0E2519" Offset="0.45"/>
@@ -52,46 +48,27 @@
             <Setter Property="FontFamily" Value="Bahnschrift, Segoe UI"/>
             <Setter Property="Foreground" Value="{StaticResource FogBrush}"/>
         </Style>
-        <Style x:Key="Eyebrow" TargetType="TextBlock">
-            <Setter Property="FontFamily" Value="Bahnschrift SemiBold"/>
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
-        </Style>
-        <Style x:Key="Label" TargetType="TextBlock">
-            <Setter Property="FontFamily" Value="Bahnschrift SemiBold"/>
-            <Setter Property="FontSize" Value="10.5"/>
-            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
-        </Style>
-
         <!-- The big call to action. -->
         <Style x:Key="PrimaryButton" TargetType="Button">
             <Setter Property="FontFamily" Value="Bahnschrift SemiBold"/>
             <Setter Property="FontSize" Value="17"/>
             <Setter Property="Foreground" Value="{StaticResource InkBrush}"/>
-            <Setter Property="Background" Value="{StaticResource AccentGradient}"/>
+            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="34,0"/>
-            <Setter Property="Height" Value="56"/>
+            <Setter Property="Padding" Value="32,0"/>
+            <Setter Property="Height" Value="54"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Grid>
-                            <Border x:Name="Glow" CornerRadius="10" Background="{StaticResource AccentBrush}" Opacity="0.28" Margin="0,6,0,-6">
-                                <Border.Effect>
-                                    <BlurEffect Radius="22"/>
-                                </Border.Effect>
-                            </Border>
-                            <Border x:Name="Shell" Background="{TemplateBinding Background}" CornerRadius="10"
-                                    BorderBrush="{StaticResource FogBrush}" BorderThickness="0" Padding="{TemplateBinding Padding}">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                        </Grid>
+                        <Border x:Name="Shell" Background="{TemplateBinding Background}" CornerRadius="10"
+                                BorderBrush="{StaticResource FogBrush}" BorderThickness="0" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Shell" Property="Background" Value="{StaticResource AccentHoverBrush}"/>
-                                <Setter TargetName="Glow" Property="Opacity" Value="0.45"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Shell" Property="Opacity" Value="0.85"/>
@@ -101,7 +78,6 @@
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="Shell" Property="Background" Value="#2B3A30"/>
-                                <Setter TargetName="Glow" Property="Opacity" Value="0"/>
                                 <Setter Property="Foreground" Value="#8A9A8E"/>
                                 <Setter Property="Cursor" Value="Arrow"/>
                             </Trigger>
@@ -315,7 +291,7 @@
 
         <Style TargetType="ProgressBar">
             <Setter Property="Height" Value="6"/>
-            <Setter Property="Foreground" Value="{StaticResource AccentGradient}"/>
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
             <Setter Property="Background" Value="{StaticResource PanelRaisedBrush}"/>
             <Setter Property="Template">
                 <Setter.Value>

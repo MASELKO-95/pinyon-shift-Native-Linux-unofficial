@@ -17,11 +17,11 @@ public partial class MainWindow : Window
 {
     private readonly ObservableCollection<RouteStep> _steps =
     [
-        new("VERIFY", "Disc image", "Exact size and SHA-256", "1"),
-        new("TOOLS", "Windows toolchain", "Provisioned when missing", "2"),
-        new("EXTRACT", "Local game files", "Never uploaded or modified", "3"),
-        new("BUILD", "Local preparation", "Game and graphics built here", "4"),
-        new("PLAY", "Ready to drive", "Launch from this screen", "5")
+        new("VERIFY", "Verify disc", "", "1"),
+        new("TOOLS", "Get build tools", "", "2"),
+        new("EXTRACT", "Extract game", "", "3"),
+        new("BUILD", "Build", "", "4"),
+        new("PLAY", "Play", "", "5")
     ];
 
     // The content area shows one of these at a time.
@@ -51,9 +51,9 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         RouteList.ItemsSource = _steps;
-        BuildLocationText.Text = Path.Combine(
+        BuildLocationRun.Text = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PinyonShift");
-        VersionText.Text = $"Pinyon Shift launcher {typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "dev"}";
+        VersionRun.Text = $"Pinyon Shift {typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "dev"}";
         Loaded += MainWindow_Loaded;
         StateChanged += (_, _) =>
         {
@@ -97,8 +97,7 @@ public partial class MainWindow : Window
             StartSessionLog(_repositoryRoot);
             ShowReleaseVersion();
             GraphicsSettingsButton.Visibility = Visibility.Visible;
-            BuildLocationText.Text = _stateRoot;
-            StateRootText.Text = _stateRoot;
+            BuildLocationRun.Text = _stateRoot;
             AppendLog($"Release source: {_repositoryRoot}");
             AppendLog($"Preview state: {_stateRoot}");
             StageControllerMappings();
@@ -108,7 +107,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            SetFailure("SOURCE UNAVAILABLE", ex.Message);
+            SetFailure("Release files missing", ex.Message);
         }
         finally
         {
@@ -125,10 +124,8 @@ public partial class MainWindow : Window
         {
             using var release = JsonDocument.Parse(File.ReadAllText(Path.Combine(_repositoryRoot, "config", "release.json")));
             var version = release.RootElement.GetProperty("version").GetString();
-            var channel = release.RootElement.TryGetProperty("channel", out var value) ? value.GetString() : null;
             if (!string.IsNullOrWhiteSpace(version))
-                VersionText.Text = $"Pinyon Shift {version}";
-            ChannelText.Text = string.IsNullOrWhiteSpace(channel) ? "" : channel.ToUpperInvariant();
+                VersionRun.Text = $"Pinyon Shift {version}";
         }
         catch (Exception ex) when (ex is IOException or JsonException or KeyNotFoundException or InvalidOperationException) { }
     }
@@ -227,14 +224,11 @@ public partial class MainWindow : Window
         BrowseButton.IsEnabled = false;
         OwnershipCheckBox.IsEnabled = false;
         PrimaryButton.IsEnabled = false;
-        SetPrimaryText("BUILDING…");
+        SetPrimaryText("Building…");
         ShowPanel(View.Log);
         SetProgress(0, "Starting local setup.");
-        HeadlineText.Text = "Preparing the road.";
-        SubheadText.Text = "The first build compiles the whole game on this PC and can take a while. You can leave it running.";
-        EyebrowText.Text = "LOCAL BUILD IN PROGRESS";
-        StatusText.Text = "WORKING";
-        StatusDot.Fill = ActiveBrush;
+        HeadlineText.Text = "Building";
+        SetSubhead("The first build takes 20 to 60 minutes. You can leave it running.");
         AppendLog("Starting local setup. The first build can take a while.");
 
         try
@@ -288,11 +282,11 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
-            SetFailure("BUILD CANCELLED", "No game or source files were uploaded. Run the launcher again to resume.");
+            SetFailure("Build cancelled", "Nothing was uploaded. Start the build again to resume where it stopped.");
         }
         catch (Exception ex)
         {
-            SetFailure("SETUP NEEDS ATTENTION", ex.Message);
+            SetFailure("Setup stopped", ex.Message);
         }
         finally
         {
@@ -327,16 +321,14 @@ public partial class MainWindow : Window
                 string.Equals(x, stage, StringComparison.OrdinalIgnoreCase));
             if (message.Stage == "shaders")
             {
-                HeadlineText.Text = "Preparing graphics.";
-                StatusText.Text = "PREPARING GRAPHICS";
-                SetPrimaryText("PREPARING…");
+                HeadlineText.Text = "Preparing graphics";
+                SetPrimaryText("Preparing…");
             }
             else if (message.Stage == "play" && _gameExecutable is not null)
             {
-                HeadlineText.Text = "Controller A, Space, or left click.";
-                SubheadText.Text = "Selects the highlighted menu item; Enter is Start. Press F6 in game for settings.";
-                StatusText.Text = "GAME RUNNING";
-                SetPrimaryText("GAME RUNNING");
+                HeadlineText.Text = "Game running";
+                SetSubhead("Controller A, Space, or left click. Enter is Start, F6 opens settings.");
+                SetPrimaryText("Game running");
             }
             if (index >= 0)
             {
@@ -398,16 +390,12 @@ public partial class MainWindow : Window
         catch (IOException) { return 1; }
     }
 
-    private void UpdateReadyTiles()
+    // What the next start uses, in one line under the headline.
+    private void UpdateSummary()
     {
-        var vulkan = ConfiguredGraphicsApi() == "vulkan";
-        ApiTileText.Text = vulkan ? "Vulkan" : "Direct3D 12";
-        ApiTileDetail.Text = vulkan
-            ? "Recorded on a second thread; 120 fps at 1×."
-            : "Prebuilt shader packs, one commands thread.";
         var scale = ConfiguredResolutionScale();
-        ResolutionTileText.Text = $"{scale}×";
-        ResolutionTileDetail.Text = $"{1280 * scale} × {720 * scale}";
+        SetSubhead($"{(ConfiguredGraphicsApi() == "vulkan" ? "Vulkan" : "Direct3D 12")} · " +
+                   $"{scale}× ({1280 * scale} × {720 * scale}) · F6 opens settings in game");
     }
 
     private void DetectExistingBuild()
@@ -419,9 +407,8 @@ public partial class MainWindow : Window
         {
             if (!File.Exists(Path.Combine(_repositoryRoot, ".local", "game", "base", "default.xex")))
             {
-                HeadlineText.Text = "Restore your local game files.";
-                SubheadText.Text = "Choose your disc image and run setup again. Your save stays in place.";
-                StatusText.Text = "GAME FILES MISSING";
+                HeadlineText.Text = "Restore your game files";
+                SetSubhead("Choose your disc image to run setup again. Your save stays in place.");
                 AppendLog("Select your disc image and run setup to restore the missing game files. Your save stays in place.");
                 return;
             }
@@ -438,9 +425,8 @@ public partial class MainWindow : Window
                 catch (Exception ex) when (ex is IOException or JsonException or InvalidOperationException) { }
                 if (!matchesRelease)
                 {
-                    HeadlineText.Text = "Update your local build.";
-                    SubheadText.Text = "This release changed the game code. Choose your disc image and run setup; game files and your save are kept.";
-                    StatusText.Text = "BUILD UPDATE NEEDED";
+                    HeadlineText.Text = "Update your build";
+                    SetSubhead("This release changed the game code. Choose your disc image to rebuild; your save stays in place.");
                     AppendLog("Select your disc image and run setup to build this release. Existing game files and your save are preserved.");
                     return;
                 }
@@ -453,10 +439,9 @@ public partial class MainWindow : Window
             {
                 _steps[3].SetState(StepState.Waiting, WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
                 _steps[4].SetState(StepState.Waiting, WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
-                HeadlineText.Text = "Finish preparing your preview.";
-                SubheadText.Text = "Direct3D 12 prepares its shaders once for this PC before the first start.";
-                StatusText.Text = "GRAPHICS PREPARATION NEEDED";
-                SetPrimaryText("PREPARE & PLAY");
+                HeadlineText.Text = "Prepare graphics";
+                SetSubhead("Direct3D 12 prepares its shaders once for this PC before the first start.");
+                SetPrimaryText("Prepare and play");
             }
         }
     }
@@ -470,14 +455,11 @@ public partial class MainWindow : Window
         ChooseInstallRootButton.IsEnabled = false;
         GraphicsSettingsButton.IsEnabled = false;
         PrimaryButton.IsEnabled = false;
-        SetPrimaryText("STARTING…");
-        EyebrowText.Text = "STARTING";
-        HeadlineText.Text = "Warming up the engine.";
-        SubheadText.Text = "The game opens in its own window. This screen reports back when it closes.";
-        StatusText.Text = "STARTING";
+        SetPrimaryText("Starting…");
+        HeadlineText.Text = "Starting";
+        SetSubhead("The game opens in its own window.");
         ShowPanel(View.Log);
         SetProgress(0, "Checking graphics for this computer.");
-        StatusDot.Fill = ActiveBrush;
         ReportProblemButton.IsEnabled = false;
         AppendLog("Checking graphics for this computer. Missing or outdated shaders are prepared automatically.");
         AppendLog("Controls: use controller A, Space, or left click for the selected Xbox menu item; press Enter for Start.");
@@ -551,11 +533,11 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
-            SetFailure("PREPARATION CANCELLED", "Run the launcher again to finish preparing graphics.");
+            SetFailure("Preparation cancelled", "Play again to finish preparing graphics.");
         }
         catch (Exception ex)
         {
-            SetFailure("PREVIEW STOPPED", ex.Message);
+            SetFailure("The game stopped", ex.Message);
         }
         finally
         {
@@ -615,17 +597,14 @@ public partial class MainWindow : Window
         for (var i = 0; i < _steps.Count; i++)
             _steps[i].SetState(i == _steps.Count - 1 ? StepState.Failed : StepState.Complete,
                 WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
-        EyebrowText.Text = "CRASH REPORT READY";
-        HeadlineText.Text = "We caught the crash.";
-        SubheadText.Text = "Reporting it takes one click and helps fix it for everyone.";
-        StatusText.Text = "REPORT READY";
-        StatusDot.Fill = FailedBrush;
-        CrashIdText.Text = report.CrashId;
+        HeadlineText.Text = "The game crashed";
+        SetSubhead("");
+        CrashIdRun.Text = report.CrashId;
         ShowPanel(View.Crash);
         ReportProblemButton.Visibility = Visibility.Collapsed;
-        OpenLogsButton.Content = "OPEN REPORT FOLDER";
+        OpenLogsButton.Content = "Report folder";
         OpenLogsButton.Visibility = Visibility.Visible;
-        SetPrimaryText("REPORT CRASH");
+        SetPrimaryText("Report crash");
         PrimaryButton.IsEnabled = true;
     }
 
@@ -641,8 +620,7 @@ public partial class MainWindow : Window
         Process.Start(new ProcessStartInfo(_pendingReport.IssueUrl) { UseShellExecute = true });
         var marker = Path.Combine(_stateRoot, "reports", "pending-report.json");
         try { if (File.Exists(marker)) File.Delete(marker); } catch (IOException) { }
-        StatusText.Text = "GITHUB OPENED";
-        SetPrimaryText("OPEN GITHUB AGAIN");
+        SetPrimaryText("Open GitHub again");
     }
 
     private async Task<string> ResolveRepositoryRootAsync(string? selectedInstallRoot = null)
@@ -721,30 +699,31 @@ public partial class MainWindow : Window
     {
         _panel = panel;
         SetupPanel.Visibility = panel == View.Setup ? Visibility.Visible : Visibility.Collapsed;
-        ReadyPanel.Visibility = panel == View.Ready ? Visibility.Visible : Visibility.Collapsed;
         LogPanel.Visibility = panel == View.Log ? Visibility.Visible : Visibility.Collapsed;
         CrashPanel.Visibility = panel == View.Crash ? Visibility.Visible : Visibility.Collapsed;
         GraphicsPanel.Visibility = panel == View.Graphics ? Visibility.Visible : Visibility.Collapsed;
         // The route only tells something while there is setup left to do.
-        RouteList.Visibility = panel is View.Ready or View.Graphics ? Visibility.Collapsed : Visibility.Visible;
-        if (panel == View.Ready) UpdateReadyTiles();
+        RouteList.Visibility = panel is View.Setup or View.Log ? Visibility.Visible : Visibility.Collapsed;
+        if (panel == View.Ready) UpdateSummary();
     }
 
     private void SetPrimaryText(string text)
     {
         PrimaryButtonText.Text = text;
-        PrimaryIcon.Visibility = text.StartsWith("PLAY", StringComparison.Ordinal) ||
-                                 text.StartsWith("PREPARE & PLAY", StringComparison.Ordinal)
+        PrimaryIcon.Visibility = text is "Play" or "Prepare and play"
             ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void SetSubhead(string text)
+    {
+        SubheadText.Text = text;
+        SubheadText.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void SetReadyState()
     {
-        EyebrowText.Text = "READY FOR YOUR DISC";
-        HeadlineText.Text = "Build your preview.";
-        SubheadText.Text = "Your game stays yours. The launcher verifies your disc image, builds the native translation on this PC, and keeps every generated file local.";
-        StatusText.Text = "SYSTEM READY";
-        StatusDot.Fill = CompleteBrush;
+        HeadlineText.Text = "Build your preview";
+        SetSubhead("Verified, extracted and compiled on this PC. Nothing is uploaded.");
     }
 
     private void SetComplete()
@@ -753,29 +732,23 @@ public partial class MainWindow : Window
         foreach (var step in _steps)
             step.SetState(StepState.Complete, WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
         SetProgress(100, "Ready.");
-        EyebrowText.Text = "LOCAL BUILD COMPLETE";
-        HeadlineText.Text = "The road is open.";
-        SubheadText.Text = "Everything was built on this PC from your own disc. Your saves live next to the build and are never uploaded.";
-        StatusText.Text = "READY TO PLAY";
-        StatusDot.Fill = CompleteBrush;
-        SetPrimaryText("PLAY PINYON SHIFT");
+        HeadlineText.Text = "Ready to drive";
+        SetPrimaryText("Play");
         ShowPanel(View.Ready);
         ReportProblemButton.Visibility = Visibility.Visible;
-        OpenLogsButton.Content = "OPEN LOGS";
+        OpenLogsButton.Content = "Logs";
         OpenLogsButton.Visibility = Visibility.Visible;
+        OpenStateFolderButton.Visibility = Visibility.Visible;
         AppendLog("Build complete. Generated files remain on this computer.");
     }
 
-    private void SetFailure(string eyebrow, string message)
+    private void SetFailure(string headline, string message)
     {
         var active = _steps.FirstOrDefault(x => x.State == StepState.Active);
         active?.SetState(StepState.Failed, WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
-        EyebrowText.Text = eyebrow;
-        HeadlineText.Text = "We stopped safely.";
-        SubheadText.Text = message;
-        StatusText.Text = "ACTION NEEDED";
-        StatusDot.Fill = FailedBrush;
-        SetPrimaryText("TRY AGAIN");
+        HeadlineText.Text = headline;
+        SetSubhead(message);
+        SetPrimaryText("Try again");
         ShowPanel(View.Log);
         ProgressMessageText.Text = message;
         OpenLogsButton.Visibility = Visibility.Visible;
@@ -788,7 +761,7 @@ public partial class MainWindow : Window
         _pendingReport = null;
         foreach (var step in _steps)
             step.SetState(StepState.Waiting, WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
-        SetPrimaryText("VERIFY & BUILD");
+        SetPrimaryText("Verify and build");
         ShowPanel(View.Setup);
         ReportProblemButton.Visibility = Visibility.Visible;
         OwnershipCheckBox.Visibility = Visibility.Visible;
@@ -825,7 +798,7 @@ public partial class MainWindow : Window
     {
         var show = LogBox.Visibility != Visibility.Visible;
         LogBox.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        LogToggleButton.Content = show ? "HIDE" : "SHOW";
+        LogToggleButton.Content = show ? "Hide details" : "Show details";
     }
 
     private void OpenLogsButton_Click(object sender, RoutedEventArgs e)
@@ -895,11 +868,10 @@ public partial class MainWindow : Window
         if (_panel != View.Graphics) _panelBeforeGraphics = _panel;
         ShowPanel(View.Graphics);
         ChooseInstallRootButton.IsEnabled = false;
-        GraphicsStatusText.Text = "Loading current settings…";
+        GraphicsStatusText.Text = InGameHint;
         try
         {
             ApplyGraphicsResult(await RunGraphicsSettingsToolAsync("Get"));
-            GraphicsStatusText.Text = "Current settings loaded. Saving a change applies at the next start.";
         }
         catch (Exception ex)
         {
@@ -913,20 +885,15 @@ public partial class MainWindow : Window
         UpdatePrimaryButton();
     }
 
+    private const string InGameHint = "Everything else is in the game: press F6 while playing.";
+
     private async void SaveGraphicsButton_Click(object sender, RoutedEventArgs e)
     {
-        await ChangeGraphicsSettingsAsync("Apply", "Settings saved. They apply at the next start.");
+        if (!await ChangeGraphicsSettingsAsync("Apply", "Saved. Applies at the next start.")) return;
         // Direct3D 12 may now need its shader packs.
         if (_gameExecutable is not null && !_busy) DetectExistingBuild();
+        CloseGraphicsButton_Click(sender, e);
     }
-
-    private void InGameSettingsButton_Click(object sender, RoutedEventArgs e) =>
-        MessageBox.Show(this,
-            "Display, graphics, audio and control settings live in the game now. Press F6 while " +
-            "playing to open them. Changes there apply at once, except the resolution scale and the " +
-            "graphics API, and are saved to the same settings file this launcher uses, with a backup " +
-            "before the first change of each session.",
-            "In-game settings", MessageBoxButton.OK, MessageBoxImage.Information);
 
     private async void ResetGraphicsButton_Click(object sender, RoutedEventArgs e)
     {
@@ -934,17 +901,17 @@ public partial class MainWindow : Window
                 "Reset only the Pinyon Shift runtime settings? Your current pinyon_shift.toml will be backed up first.",
                 "Reset runtime settings", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
             return;
-        await ChangeGraphicsSettingsAsync("Reset", "Runtime settings reset. They apply at the next start.",
+        await ChangeGraphicsSettingsAsync("Reset", "Reset to defaults. Applies at the next start.",
             revealBackup: true);
     }
 
     private async void RestoreGraphicsButton_Click(object sender, RoutedEventArgs e) =>
-        await ChangeGraphicsSettingsAsync("Restore", "Latest settings backup restored. It applies at the next start.");
+        await ChangeGraphicsSettingsAsync("Restore", "Backup restored. Applies at the next start.");
 
-    private async Task ChangeGraphicsSettingsAsync(string action, string success, bool revealBackup = false)
+    private async Task<bool> ChangeGraphicsSettingsAsync(string action, string success, bool revealBackup = false)
     {
         SetGraphicsControlsEnabled(false);
-        GraphicsStatusText.Text = action == "Apply" ? "Saving validated settings…" : "Updating runtime settings…";
+        GraphicsStatusText.Text = action == "Apply" ? "Saving…" : "Updating…";
         try
         {
             var result = await RunGraphicsSettingsToolAsync(action);
@@ -959,10 +926,12 @@ public partial class MainWindow : Window
                     Arguments = $"/select,\"{result.BackupPath}\""
                 });
             }
+            return true;
         }
         catch (Exception ex)
         {
             GraphicsStatusText.Text = $"No settings were changed: {ex.Message}";
+            return false;
         }
         finally
         {
@@ -1019,7 +988,6 @@ public partial class MainWindow : Window
         SelectTag(ResolutionComboBox, result.Settings.ResolutionScale.ToString());
         SelectTag(GraphicsApiComboBox, string.IsNullOrWhiteSpace(result.Settings.GraphicsApi)
             ? "vulkan" : result.Settings.GraphicsApi);
-        UpdateReadyTiles();
     }
 
     private static void SelectTag(ComboBox comboBox, string value)
