@@ -570,6 +570,19 @@ other hardware can be debugged, cheaply or for free to host.
   list, the build and SDK commits, the GPU and driver, the settings, and the
   last lines of the runtime log.
 
+### Rendering debug views for power users
+
+A DEBUG VIEW setting (hidden behind an advanced toggle) that changes how the
+renderer draws, for curious players, modders and bug reports: wireframe,
+geometry only (flat shading, no textures), one render target at a time (the
+HDR scene, depth, the shadow maps, the reflection cube, bloom), textures'
+mip levels in colour, overdraw, and hiding classes of draws (UI, particles,
+vegetation). Most of these sit in the executor or the host pipeline state
+(fill mode, a replacement pixel shader, which surface the presenter shows),
+so they need no guest changes; the draw classes need the census's draw tags
+(NP-2.0). Each view is a hot cvar, so frame dumps and routes can use them
+too.
+
 ### Feature requests
 
 Add a GitHub issue template for feature requests (what, why, where in the
