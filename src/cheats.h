@@ -21,6 +21,10 @@ void SetProfileIsolated();
 // The factor applied to the title's gameplay delta, 1 when cheats are off.
 double TimeScale();
 
+// The time of day the trainer holds, in seconds since midnight, or a negative
+// value when it leaves the title's clock alone (cheat_time_of_day).
+double TimeOfDaySeconds();
+
 // The cheats currently changing the game, as "name=value" pairs separated by
 // commas ("" when none), for the modded profile's save tag.
 std::string Active();

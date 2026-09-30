@@ -255,12 +255,12 @@ def parse_scenario(
                 raise ValueError(f"line {number}: host keys must be in increasing frame order")
             previous_hostkey = int(fields[1])
         elif (fields[0] == "mark" and len(fields) == 2) or (
-            fields[0] == "scanpoke" and len(fields) in (5, 7)
+            fields[0] == "scanpoke" and len(fields) in (5, 7, 9)
         ):
             # mark <frame>: keep a copy of the title's heaps; scanpoke <frame>
-            # <min> <max> <float> [<min step> <max step>]: poke every float in
-            # [min, max] that rose by the same step between each pair of marks
-            # (three or more).
+            # <min> <max> <float> [<min step> <max step> [<first> <count>]]: poke
+            # every float in [min, max] that rose by the same step between each
+            # pair of marks (three or more), or only that slice of them.
             if fields[0] == "scanpoke":
                 if float(fields[2]) > float(fields[3]):
                     raise ValueError(f"line {number}: empty scanpoke range")

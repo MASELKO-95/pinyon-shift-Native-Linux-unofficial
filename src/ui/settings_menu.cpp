@@ -526,6 +526,13 @@ std::unique_ptr<MenuScreen> SettingsPages::TrainerWorld() {
     speeds.push_back({std::string(value) + "X", {{"cheat_time_scale", value}}});
   }
   rows.push_back(Setting("GAME SPEED", std::move(speeds), false));
+  std::vector<Choice> times;
+  times.push_back({"RUNNING", {{"cheat_time_of_day", "-1"}}});
+  for (const char* hour : {"0", "3", "6", "9", "12", "15", "18", "21"}) {
+    const std::string label = std::string(hour[1] ? "" : "0") + hour + ":00";
+    times.push_back({label, {{"cheat_time_of_day", hour}}});
+  }
+  rows.push_back(Setting("TIME OF DAY", std::move(times), false));
   return std::make_unique<MenuScreen>("WORLD", std::move(rows));
 }
 

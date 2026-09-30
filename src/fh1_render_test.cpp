@@ -105,6 +105,9 @@ struct HostKeyStep {
   // Optional: only values whose step between marks is in this range.
   float scan_step_min = 1e-6f;
   float scan_step_max = 1e30f;
+  // Optional: poke only candidates [scan_first, scan_first + scan_count).
+  uint32_t scan_first = 0;
+  uint32_t scan_count = UINT32_MAX;
 };
 
 rex::ui::VirtualKey ParseHostKey(const std::string& name) {
@@ -381,10 +384,13 @@ void LoadScript(const std::filesystem::path& path) {
         step.frame = ParseUnsigned(frame, 10, "mark_frame");
         step.mark = true;
       } else {
-        std::string step_min, step_max;
+        std::string step_min, step_max, first, count;
         if (!(row >> frame >> minimum >> maximum >> value)) Fail("script_scanpoke_columns");
-        if (row >> step_min && (!(row >> step_max) || row >> extra)) {
-          Fail("script_scanpoke_columns");
+        if (row >> step_min && !(row >> step_max)) Fail("script_scanpoke_columns");
+        if (row >> first && (!(row >> count) || row >> extra)) Fail("script_scanpoke_columns");
+        if (!count.empty()) {
+          step.scan_first = uint32_t(ParseUnsigned(first, 10, "scanpoke_first"));
+          step.scan_count = uint32_t(ParseUnsigned(count, 10, "scanpoke_count"));
         }
         step.frame = ParseUnsigned(frame, 10, "scanpoke_frame");
         step.scanpoke = true;
@@ -880,6 +886,7 @@ bool ObserveOutput(
         return it->bytes.data() + (address - it->address);
       };
       std::vector<uint32_t> addresses;
+      std::vector<std::pair<float, float>> values;  // first mark's value, step
       if (g_test.marks.size() >= 3) {
         for (const TestState::MarkRegion& region : g_test.marks[0]) {
           for (size_t offset = 0; offset + 4 <= region.bytes.size(); offset += 4) {
@@ -906,24 +913,35 @@ bool ObserveOutput(
               }
               previous = current;
             }
-            if (steady) addresses.push_back(address);
+            if (steady) {
+              addresses.push_back(address);
+              values.push_back({load(region.bytes.data() + offset), reference});
+            }
           }
         }
       }
       uint32_t bits;
       std::memcpy(&bits, &step.poke_value, sizeof(bits));
       bits = (bits >> 24) | ((bits >> 8) & 0xFF00) | ((bits << 8) & 0xFF0000) | (bits << 24);
+      // Candidates as index:address:first value:step; the slice is poked.
       std::string listed;
+      uint32_t poked = 0;
       for (size_t i = 0; i < addresses.size(); ++i) {
-        std::memcpy(memory->TranslateVirtual(addresses[i]), &bits, sizeof(bits));
+        const bool poke = i >= step.scan_first && i - step.scan_first < step.scan_count;
+        if (poke) {
+          std::memcpy(memory->TranslateVirtual(addresses[i]), &bits, sizeof(bits));
+          ++poked;
+        }
         if (i < 64) {
-          char text[16];
-          std::snprintf(text, sizeof(text), "%s%08X", i ? " " : "", addresses[i]);
+          char text[64];
+          std::snprintf(text, sizeof(text), "%s%zu:%08X:%g:%g%s", i ? " " : "", i, addresses[i],
+                        values[i].first, values[i].second, poke ? "*" : "");
           listed += text;
         }
       }
       diagnostics::RecordEvent("fh1.render_test.scanpoke",
                                {{"count", std::to_string(addresses.size())},
+                                {"poked", std::to_string(poked)},
                                 {"value", std::to_string(step.poke_value)},
                                 {"addresses", listed}});
       g_test.marks.clear();

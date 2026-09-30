@@ -20,6 +20,11 @@ REXCVAR_DEFINE_DOUBLE(cheat_time_scale, 1.0, "Cheats",
                       "Game speed: the title's gameplay delta is multiplied by this (0.25 to 2)")
     .range(0.25, 2.0)
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+REXCVAR_DEFINE_DOUBLE(cheat_time_of_day, -1.0, "Cheats",
+                      "Hold the time of day at this hour (0 to 24, fractions allowed); -1 lets "
+                      "the title's clock run")
+    .range(-1.0, 24.0)
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
 REXCVAR_DEFINE_INT32(cheat_set_credits, -1, "Cheats",
                      "Set the profile's credits to this when it next loads, once; -1 leaves them")
     .range(-1, 999999999)
@@ -54,10 +59,19 @@ double TimeScale() {
   return std::isfinite(scale) ? std::clamp(scale, 0.25, 2.0) : 1.0;
 }
 
+double TimeOfDaySeconds() {
+  if (!Enabled()) return -1.0;
+  const double hours = REXCVAR_GET(cheat_time_of_day);
+  return std::isfinite(hours) && hours >= 0.0 ? std::min(hours, 24.0) * 3600.0 : -1.0;
+}
+
 std::string Active() {
   std::string active;
   if (TimeScale() != 1.0) {
     active += fmt::format("time_scale={:.2f}", TimeScale());
+  }
+  if (const double seconds = TimeOfDaySeconds(); seconds >= 0.0) {
+    active += fmt::format("{}time_of_day={:.2f}", active.empty() ? "" : ",", seconds / 3600.0);
   }
   if (g_credits_applied.load(std::memory_order_acquire)) {
     active += fmt::format("{}set_credits={}", active.empty() ? "" : ",",
@@ -103,7 +117,8 @@ void SetAppliedCallback(std::function<void(std::string_view setting)> callback) 
 void InstallChangeLog() {
   // Every setting the trainer changes, including the graphics and debug ones
   // it shares with SETTINGS.
-  for (const char* name : {"cheat_time_scale", "disable_motion_blur", "disable_depth_of_field",
+  for (const char* name : {"cheat_time_scale", "cheat_time_of_day", "disable_motion_blur",
+                           "disable_depth_of_field",
                            "force_trilinear_filtering", "fh1_render_test_log_file_opens"}) {
     rex::cvar::RegisterChangeCallback(name, [](std::string_view name, std::string_view value) {
       diagnostics::RecordEvent("cheat.changed", {{"name", name}, {"value", value}});

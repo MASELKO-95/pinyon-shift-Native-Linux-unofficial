@@ -3960,6 +3960,48 @@ void PinyonShiftTraceFrameTelemetry(PPCRegister& r28, PPCRegister& r31) {
        {"transition_active", Hex32(transition_active)}});
 }
 
+// The trainer's time of day (NP-8.4, NP-8.5). The time-of-day object is
+// reached from the world as the title's own setters reach it (sub_82943D00,
+// sub_8290D2A8): [[[0x832DF024] + 4] + 4] is the world (sub_8247FC10 and
+// the reference copy of sub_824AFB20), [world + 232] the time-of-day object
+// (sub_82486CF0), and its float at +10488 is seconds since midnight, which the
+// per-frame update (sub_825CB718) advances and lights from. A set byte at
+// +10505 means a script holds the time; the title's setters then leave it
+// alone, and so does this. Written once per frame from the delta hook, the
+// clock holds at the chosen hour.
+static void PinyonShiftHoldTimeOfDay() {
+  const double seconds = pinyon_shift::cheats::TimeOfDaySeconds();
+  if (seconds < 0.0) {
+    return;
+  }
+  constexpr uint32_t kWorldHolder = 0x832DF024u;
+  constexpr uint32_t kWorldTimeOfDay = 232;
+  constexpr uint32_t kTimeOfDaySeconds = 10488;
+  constexpr uint32_t kTimeOfDayScriptHold = 10505;
+  const uint32_t holder = LoadGuestU32(kWorldHolder);
+  if (holder == 0 || !PinyonShiftGuestRangeReadable(holder + 4u, 4)) {
+    return;
+  }
+  const uint32_t handle = LoadGuestU32(holder + 4u);
+  if (handle == 0 || !PinyonShiftGuestRangeReadable(handle + 4u, 4)) {
+    return;
+  }
+  const uint32_t world = LoadGuestU32(handle + 4u);
+  if (world == 0 || !PinyonShiftGuestRangeReadable(world + kWorldTimeOfDay, 4)) {
+    return;
+  }
+  const uint32_t time_of_day = LoadGuestU32(world + kWorldTimeOfDay);
+  if (time_of_day == 0 ||
+      !PinyonShiftGuestRangeReadable(time_of_day + kTimeOfDaySeconds, 20) ||
+      LoadGuestU8(time_of_day + kTimeOfDayScriptHold) != 0) {
+    return;
+  }
+  const float value = static_cast<float>(seconds);
+  uint32_t bits;
+  std::memcpy(&bits, &value, sizeof(bits));
+  StoreGuestU32(time_of_day + kTimeOfDaySeconds, bits);
+}
+
 void PinyonShiftObserveSimulationDelta(PPCRegister& f31) {
   double seconds = f31.f64;
   if (!std::isfinite(seconds) || seconds < 0.0 || seconds > 0.25) {
@@ -3971,6 +4013,7 @@ void PinyonShiftObserveSimulationDelta(PPCRegister& f31) {
     seconds *= scale;
     f31.f64 = seconds;
   }
+  PinyonShiftHoldTimeOfDay();
   PROFILE_SIMULATION_TIME_NS(
       static_cast<int64_t>(std::llround(seconds * 1'000'000'000.0)));
 }
