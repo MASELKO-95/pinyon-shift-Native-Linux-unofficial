@@ -127,10 +127,14 @@ Vulkan path got here is in the [performance backlog](docs/PERFORMANCE_BACKLOG.md
 6. Choose **Play Pinyon Shift**. Press **F6** in game for settings.
 
 **Graphics** in the launcher picks the graphics API (Vulkan, recommended, or
-Direct3D 12) and the internal resolution before the game starts. Vulkan is
-faster at 1x and 2x; for 3x and 4x choose Direct3D 12, which prepares shader
-packs for your computer before its first start. Everything else, including the
-**Performance 120** and **Quality 60** presets, is in the in-game settings.
+Direct3D 12), the internal resolution and the output scaling (bilinear, CAS or
+FSR 1), and says what that means on your screen: for example, renders
+1280 × 720, FSR 1 upscales to 3840 × 2160. Vulkan is faster at 1x and 2x; for
+3x and 4x choose Direct3D 12, which prepares shader packs for your computer
+before its first start. Everything else, including the **Performance 120** and
+**Quality 60** presets, is in the in-game settings, where most changes apply at
+once; the graphics API and the language are among the few that need a
+restart.
 
 The preview launcher is not code-signed yet, so Windows may identify it as an
 unrecognized app. Use only the archive attached to this repository's release
@@ -221,8 +225,9 @@ in the [performance backlog](docs/PERFORMANCE_BACKLOG.md).
 - [ ] Keep crowd and purchase animations at the right speed above 30 fps
 - [ ] Make the first build faster and fully validated
 - [ ] Support more disc regions and languages
-- [ ] Change resolution and render scale while the game is running
-- [ ] Apply graphics settings without restarting the preview
+- [x] Change resolution and render scale while the game is running
+- [x] Apply graphics settings without restarting the preview (all but the
+  graphics API)
 - [ ] Support ultrawide (21:9 and wider) displays
 - [ ] Ship the UI extension API
 - [ ] Ship a modding API for loading custom content
