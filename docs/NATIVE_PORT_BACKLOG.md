@@ -157,7 +157,7 @@ runs on the development machine (Ryzen 7 5800X, RTX 4080).
 | NP-10.4 | Lua 5.4 for script mods (optional) | Adding Lua as a new vendored dependency: the maintainer's call |
 | NP-12.1, 12.2, 12.7, 12.8 | Configuring and building on Linux (the presets and POSIX sources of NP-12.1 and NP-12.2 are written but unbuilt), Linux tooling and Steam Deck qualification | A Linux toolchain (the WSL here has no clang or CMake; installing one is the maintainer's call) and a Steam Deck |
 | NP-13 | The macOS port (ARM64 baseline, MoltenVK, app bundle) | A Mac and its toolchain |
-| NP-14 | The Android port (NDK build, fibers, page size, mobile GPU, sideloading) | The Android NDK and a reference device |
+| NP-14 | The Android port (NDK build, fibers, mobile GPU, sideloading; running NP-14.3 on a 16 KiB kernel) | The Android NDK and a reference device |
 | NP-X | AMD, Intel and lower-end GPU qualification; an unscripted drive before each train | Hardware and a player |
 | NP-12.4 | The Vulkan device loss in the race at 2x: the checkpoints name only where the GPU was, not the faulting command | Installing the Vulkan SDK's validation layers or NVIDIA Nsight Aftermath (the maintainer's call; neither is installed) |
 
@@ -500,7 +500,7 @@ within an agreed margin of the Windows 1x baseline on comparable hardware.
 | --- | --- | --- |
 | NP-14.1 | SDK Android build: NDK toolchain, the missing `rex/main_android.h` glue, SDL3 activity and Gradle project, Android surface path. | L |
 | NP-14.2 | Fibers without `ucontext`: a hand-written AArch64 context switch (also removes a syscall per switch on every POSIX target). | S–M |
-| NP-14.3 | Page-size independence: make the `0xE0000000` host offset runtime-selected in `xmemory` and the generated `REX_PHYS_HOST_OFFSET`; also fixes Linux ARM64 16 KiB kernels. | M |
+| NP-14.3 | **Built, untested on a large-page kernel** (SDK `30896db`): the runtime already mapped the `0xE0000000` heap with a 0x1000 host offset when the allocation granularity exceeds 4 KB, but `PhysicalHostOffset` and the generated `REX_PHYS_HOST_OFFSET` hard-coded the offset per platform with none on Linux, so a 16 KiB or 64 KiB kernel would translate every 0xE0 address wrongly. On Linux and Android both now read `rex_physical_host_offset_e0`, which `PhysicalHeap::Initialize` sets from the granularity; Windows and macOS keep their constants (Windows build and frame replays unchanged). The codegen template change applies when the generator is next rebuilt. Running on a 16 KiB kernel waits on NP-12's Linux toolchain and ARM64 hardware | M |
 | NP-14.4 | Mobile GPU constraints: descriptor-indexing fallback, BC decode when compression is absent, storage-buffer bucketing, MSAA 2x emulation, Adreno and Mali workarounds. | L |
 | NP-14.5 | Cross-build and sideload workflow: codegen and NDK cross-compile on the user's PC from their own ISO, on-device or PC-side pack production keyed by the device features hash, nothing derived distributed. | M |
 | NP-14.6 | Performance and thermals on the reference device; touch and controller input; scale fixed at 1x. | L |
