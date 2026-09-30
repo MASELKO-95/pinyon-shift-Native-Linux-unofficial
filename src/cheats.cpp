@@ -25,6 +25,10 @@ REXCVAR_DEFINE_DOUBLE(cheat_time_of_day, -1.0, "Cheats",
                       "the title's clock run")
     .range(-1.0, 24.0)
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+REXCVAR_DEFINE_BOOL(cheat_free_camera, false, "Cheats",
+                    "Switch the cameras to the title's free camera (moved with the pad); off "
+                    "returns them to the player")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
 REXCVAR_DEFINE_INT32(cheat_set_credits, -1, "Cheats",
                      "Set the profile's credits to this when it next loads, once; -1 leaves them")
     .range(-1, 999999999)
@@ -65,10 +69,15 @@ double TimeOfDaySeconds() {
   return std::isfinite(hours) && hours >= 0.0 ? std::min(hours, 24.0) * 3600.0 : -1.0;
 }
 
+bool FreeCamera() { return Enabled() && REXCVAR_GET(cheat_free_camera); }
+
 std::string Active() {
   std::string active;
   if (TimeScale() != 1.0) {
     active += fmt::format("time_scale={:.2f}", TimeScale());
+  }
+  if (FreeCamera()) {
+    active += fmt::format("{}free_camera", active.empty() ? "" : ",");
   }
   if (const double seconds = TimeOfDaySeconds(); seconds >= 0.0) {
     active += fmt::format("{}time_of_day={:.2f}", active.empty() ? "" : ",", seconds / 3600.0);
@@ -117,7 +126,8 @@ void SetAppliedCallback(std::function<void(std::string_view setting)> callback) 
 void InstallChangeLog() {
   // Every setting the trainer changes, including the graphics and debug ones
   // it shares with SETTINGS.
-  for (const char* name : {"cheat_time_scale", "cheat_time_of_day", "disable_motion_blur",
+  for (const char* name : {"cheat_time_scale", "cheat_time_of_day", "cheat_free_camera",
+                           "disable_motion_blur",
                            "disable_depth_of_field",
                            "force_trilinear_filtering", "fh1_render_test_log_file_opens"}) {
     rex::cvar::RegisterChangeCallback(name, [](std::string_view name, std::string_view value) {

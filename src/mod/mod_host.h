@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,11 @@ bool HasSubscribers(PinyonHook hook);
 void Dispatch(const PinyonHookEvent& event);
 // Runs the guest tasks mods queued; at frame.tick, on the title's main thread.
 void RunGuestTasks();
+// The host's own guest work (the trainer), run with the mods' tasks.
+void EnqueueHostGuestTask(std::function<void()> task);
+// Calls a guest function with up to six integer arguments (r3 to r8) and
+// returns r3; only inside a guest task.
+uint32_t CallGuest(uint32_t address, std::initializer_list<uint32_t> args);
 
 // What the host gives the mod host besides the files.
 struct HostServices {

@@ -4002,6 +4002,52 @@ static void PinyonShiftHoldTimeOfDay() {
   StoreGuestU32(time_of_day + kTimeOfDaySeconds, bits);
 }
 
+// The trainer's free camera (NP-8.5), as the title's own script actions
+// switch it: CChangeToFreeCamera (sub_828F2DB0) sets each of the world's
+// camera controllers (count sub_82486C40, controller sub_82486C70) to mode 6
+// with sub_82858638, and CResetCameraToPlayer (sub_82937158) returns each
+// (sub_82486B40) to the player with sub_825A86F8. Applied when the setting
+// changes, as a guest task on the title's main thread.
+static void PinyonShiftApplyFreeCamera() {
+  static bool applied = false;
+  const bool wanted = pinyon_shift::cheats::FreeCamera();
+  if (wanted == applied) {
+    return;
+  }
+  applied = wanted;
+  pinyon_shift::mod::EnqueueHostGuestTask([wanted] {
+    constexpr uint32_t kWorldHolder = 0x832DF024u;
+    const uint32_t holder = LoadGuestU32(kWorldHolder);
+    if (holder == 0 || !PinyonShiftGuestRangeReadable(holder + 4u, 4)) {
+      return;
+    }
+    const uint32_t handle = LoadGuestU32(holder + 4u);
+    if (handle == 0 || !PinyonShiftGuestRangeReadable(handle + 4u, 4)) {
+      return;
+    }
+    const uint32_t world = LoadGuestU32(handle + 4u);
+    if (world == 0) {
+      return;
+    }
+    const uint32_t count = pinyon_shift::mod::CallGuest(0x82486C40u, {world});
+    for (uint32_t i = 0; i < count && i < 4; ++i) {
+      if (wanted) {
+        const uint32_t controller = pinyon_shift::mod::CallGuest(0x82486C70u, {world, i});
+        if (controller != 0) {
+          pinyon_shift::mod::CallGuest(0x82858638u, {controller, 6u});
+        }
+      } else {
+        const uint32_t controller = pinyon_shift::mod::CallGuest(0x82486B40u, {world, i});
+        if (controller != 0) {
+          pinyon_shift::mod::CallGuest(0x825A86F8u, {controller});
+        }
+      }
+    }
+    pinyon_shift::diagnostics::RecordEvent(
+        "cheat.free_camera", {{"enabled", wanted ? "1" : "0"}, {"cameras", fmt::format("{}", count)}});
+  });
+}
+
 void PinyonShiftObserveSimulationDelta(PPCRegister& f31) {
   double seconds = f31.f64;
   if (!std::isfinite(seconds) || seconds < 0.0 || seconds > 0.25) {
@@ -4014,6 +4060,7 @@ void PinyonShiftObserveSimulationDelta(PPCRegister& f31) {
     f31.f64 = seconds;
   }
   PinyonShiftHoldTimeOfDay();
+  PinyonShiftApplyFreeCamera();
   PROFILE_SIMULATION_TIME_NS(
       static_cast<int64_t>(std::llround(seconds * 1'000'000'000.0)));
 }

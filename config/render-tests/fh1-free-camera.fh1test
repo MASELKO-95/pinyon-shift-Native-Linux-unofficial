@@ -1,0 +1,27 @@
+pinyon-shift-fh1-render-test-v1
+# clock-hz 60
+# NP-8.5 gate: with cheats on (--pinyon_shift_cheats=true), turning
+# cheat_free_camera on in free roam switches the camera to the title's free
+# camera (above the car), the left stick then flies it away from the parked
+# car, and turning it off returns the chase camera; cheat.free_camera logs
+# both switches.
+input 0 0000 0 0 0 0 0 0
+input 360 1000 0 0 0 0 0 0
+input 366 0000 0 0 0 0 0 0
+input 480 1000 0 0 0 0 0 0
+input 486 0000 0 0 0 0 0 0
+input 600 1000 0 0 0 0 0 0
+input 606 0000 0 0 0 0 0 0
+input 720 1000 0 0 0 0 0 0
+input 726 0000 0 0 0 0 0 0
+input 780 0000 0 0 0 0 0 0
+input 930 0000 0 0 0 0 0 0
+capture 1240 before
+cvar 1250 cheat_free_camera true
+capture 1290 enabled
+input 1300 0000 0 0 0 32767 0 0
+input 1460 0000 0 0 0 0 0 0
+capture 1500 moved
+cvar 1510 cheat_free_camera false
+capture 1560 reset
+stop 1600

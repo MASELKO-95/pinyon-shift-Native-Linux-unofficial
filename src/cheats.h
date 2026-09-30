@@ -25,6 +25,9 @@ double TimeScale();
 // value when it leaves the title's clock alone (cheat_time_of_day).
 double TimeOfDaySeconds();
 
+// Whether the cameras should be the title's free camera (cheat_free_camera).
+bool FreeCamera();
+
 // The cheats currently changing the game, as "name=value" pairs separated by
 // commas ("" when none), for the modded profile's save tag.
 std::string Active();

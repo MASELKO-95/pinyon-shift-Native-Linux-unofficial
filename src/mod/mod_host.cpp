@@ -83,6 +83,7 @@ uint64_t g_next_handle = 1;
 
 std::mutex g_tasks_mutex;
 std::vector<std::pair<PinyonGuestTask, void*>> g_tasks;
+std::vector<std::function<void()>> g_host_tasks;
 std::atomic<bool> g_tasks_pending{false};
 thread_local bool g_in_guest_task = false;
 
@@ -447,16 +448,33 @@ void Dispatch(const PinyonHookEvent& event) {
 void RunGuestTasks() {
   if (!g_tasks_pending.load(std::memory_order_acquire)) return;
   std::vector<std::pair<PinyonGuestTask, void*>> tasks;
+  std::vector<std::function<void()>> host_tasks;
   {
     std::lock_guard lock(g_tasks_mutex);
     tasks.swap(g_tasks);
+    host_tasks.swap(g_host_tasks);
     g_tasks_pending.store(false, std::memory_order_release);
   }
   g_in_guest_task = true;
+  for (const auto& task : host_tasks) {
+    task();
+  }
   for (const auto& [task, user] : tasks) {
     task(user);
   }
   g_in_guest_task = false;
+}
+
+void EnqueueHostGuestTask(std::function<void()> task) {
+  if (!task) return;
+  std::lock_guard lock(g_tasks_mutex);
+  g_host_tasks.push_back(std::move(task));
+  g_tasks_pending.store(true, std::memory_order_release);
+}
+
+uint32_t CallGuest(uint32_t address, std::initializer_list<uint32_t> args) {
+  const std::vector<uint32_t> values(args);
+  return ApiCallGuest(address, values.data(), uint32_t(values.size()));
 }
 
 void LoadMods(const std::filesystem::path& state_root, const std::string& enabled_mods,

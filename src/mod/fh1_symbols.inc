@@ -3,6 +3,11 @@
 // Executable: default.xex DB40DF605ADE49A6
 
 PINYON_SYMBOL_EXECUTABLE("default.xex", "DB40DF605ADE49A6")
+PINYON_SYMBOL("camera.controller", 0x82486C70)
+PINYON_SYMBOL("camera.count", 0x82486C40)
+PINYON_SYMBOL("camera.player_controller", 0x82486B40)
+PINYON_SYMBOL("camera.reset_to_player", 0x825A86F8)
+PINYON_SYMBOL("camera.set_mode", 0x82858638)
 PINYON_SYMBOL("frame.tick", 0x823EDA10)
 PINYON_SYMBOL("gpu.fence_wait_predicate", 0x829F04A8)
 PINYON_SYMBOL("graphics.frame", 0x829EFEB8)

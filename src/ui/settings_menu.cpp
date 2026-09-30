@@ -533,6 +533,7 @@ std::unique_ptr<MenuScreen> SettingsPages::TrainerWorld() {
     times.push_back({label, {{"cheat_time_of_day", hour}}});
   }
   rows.push_back(Setting("TIME OF DAY", std::move(times), false));
+  rows.push_back(Toggle("FREE CAMERA", "cheat_free_camera"));
   return std::make_unique<MenuScreen>("WORLD", std::move(rows));
 }
 
