@@ -110,7 +110,10 @@ From a PowerShell terminal in a repository checkout:
 
 The setup script provisions pinned dependencies, initializes ShiftGlue,
 verifies/extracts the disc, generates translated source, and
-builds Release. See [Building](docs/BUILDING.md) and
+builds Release. `python tools/pinyon.py launch` starts the built game the same
+way without PowerShell (on Windows it still prepares shaders through it), with
+`--state-root`, `--hidden` and game arguments after `--`; it is the launcher
+for Linux builds. See [Building](docs/BUILDING.md) and
 [Troubleshooting](docs/TROUBLESHOOTING.md) for details.
 
 ## Roadmap
