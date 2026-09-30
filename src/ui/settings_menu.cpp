@@ -284,6 +284,26 @@ std::unique_ptr<MenuScreen> SettingsPages::Display() {
 
 std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
   std::vector<MenuRow> rows;
+  // PB-5: whole setups at once; any other combination reads CUSTOM. The 120
+  // fps preset renders at 1x on Vulkan with the split GPU commands thread
+  // (the GPU needs about 6.4 ms a frame there) and scales to the display
+  // with FSR 1; 3x holds 60 on the default backend.
+  rows.push_back(Setting("GRAPHICS PRESET",
+                         {{"PERFORMANCE 120",
+                           {{"gpu_backend", "\"vulkan\""},
+                            {"gpu_record_thread", "true"},
+                            {"draw_resolution_scale_x", "1"},
+                            {"draw_resolution_scale_y", "1"},
+                            {"present_effect", "\"fsr\""},
+                            {"pinyon_shift_fh1_render_fps_limit", "120"}}},
+                          {"QUALITY 60",
+                           {{"gpu_backend", "\"any\""},
+                            {"gpu_record_thread", "false"},
+                            {"draw_resolution_scale_x", "3"},
+                            {"draw_resolution_scale_y", "3"},
+                            {"present_effect", "\"bilinear\""},
+                            {"pinyon_shift_fh1_render_fps_limit", "60"}}}},
+                         true));
   std::vector<Choice> scales;
   for (int scale = 1; scale <= 4; ++scale) {
     const std::string value = std::to_string(scale);
