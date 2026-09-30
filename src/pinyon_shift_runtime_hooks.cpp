@@ -50,6 +50,15 @@ REXCVAR_DEFINE_DOUBLE(pinyon_shift_fov_scale, 1.0, "Display",
 REXCVAR_DEFINE_BOOL(pinyon_shift_pause_settings, true, "Pinyon Shift",
                     "Turn the offline pause menu's MULTIPLAYER row into SETTINGS, which opens "
                     "the in-game settings screen (takes effect at the next start)");
+REXCVAR_DEFINE_BOOL(pinyon_shift_host_simulation_delta, false, "Pinyon Shift",
+                    "Step the simulation by the host's clock between ticks, capped by "
+                    "pinyon_shift_max_simulation_step_ms, instead of the title's millisecond "
+                    "delta: smooth at high frame rates, and a slow frame slows the game "
+                    "instead of being replayed as one large step");
+REXCVAR_DEFINE_DOUBLE(pinyon_shift_max_simulation_step_ms, 33.4, "Pinyon Shift",
+                      "With pinyon_shift_host_simulation_delta, the longest simulation step "
+                      "(ms); longer gaps between ticks are dropped")
+    .range(4.0, 250.0);
 REXCVAR_DEFINE_BOOL(disable_motion_blur, false, "Pinyon Shift",
                     "Disable Forza Horizon motion blur");
 REXCVAR_DEFINE_BOOL(disable_depth_of_field, false, "Pinyon Shift",
@@ -4053,6 +4062,21 @@ void PinyonShiftObserveSimulationDelta(PPCRegister& f31) {
   if (!std::isfinite(seconds) || seconds < 0.0 || seconds > 0.25) {
     PROFILE_SIMULATION_DELTA_INVALID();
     return;
+  }
+  if (REXCVAR_GET(pinyon_shift_host_simulation_delta)) {
+    // The title measures ticks in whole milliseconds (8 or 9 ms at 120 Hz)
+    // and integrates any gap up to 4 s as one step. Use the host's clock
+    // instead, capped, so the game runs smoothly and slows under load.
+    using Clock = std::chrono::steady_clock;
+    static Clock::time_point last_tick;
+    const Clock::time_point now = Clock::now();
+    if (last_tick != Clock::time_point{}) {
+      const double host_seconds = std::chrono::duration<double>(now - last_tick).count();
+      const double cap = REXCVAR_GET(pinyon_shift_max_simulation_step_ms) / 1000.0;
+      seconds = std::clamp(host_seconds, 0.0001, cap);
+      f31.f64 = seconds;
+    }
+    last_tick = now;
   }
   // The trainer's game speed (NP-8.1) scales the delta the title stores.
   if (const double scale = pinyon_shift::cheats::TimeScale(); scale != 1.0) {
