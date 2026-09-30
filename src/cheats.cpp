@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <mutex>
 
 #include <fmt/format.h>
@@ -29,6 +32,11 @@ REXCVAR_DEFINE_BOOL(cheat_free_camera, false, "Cheats",
                     "Switch the cameras to the title's free camera (moved with the pad); off "
                     "returns them to the player")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+REXCVAR_DEFINE_STRING(cheat_set_profile_fields, "", "Cheats",
+                      "Set these profile fields when it next loads, once, as "
+                      "Path/Name=value pairs separated by commas (for example "
+                      "Main/XP=450000); \"\" leaves them")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 REXCVAR_DEFINE_INT32(cheat_set_credits, -1, "Cheats",
                      "Set the profile's credits to this when it next loads, once; -1 leaves them")
     .range(-1, 999999999)
@@ -40,6 +48,9 @@ namespace {
 std::atomic<bool> g_profile_isolated{false};
 std::atomic<bool> g_credits_applied{false};
 std::atomic<int32_t> g_set_credits_value{-1};
+std::atomic<bool> g_fields_applied{false};
+std::mutex g_fields_mutex;
+std::string g_fields_value;
 std::mutex g_applied_mutex;
 std::function<void(std::string_view)> g_applied;
 
@@ -86,10 +97,103 @@ std::string Active() {
     active += fmt::format("{}set_credits={}", active.empty() ? "" : ",",
                           g_set_credits_value.load(std::memory_order_acquire));
   }
+  if (g_fields_applied.load(std::memory_order_acquire)) {
+    std::lock_guard lock(g_fields_mutex);
+    active += fmt::format("{}set_profile_fields={}", active.empty() ? "" : ",", g_fields_value);
+  }
   return active;
 }
 
+namespace {
+// Sets `path=value` on a scalar field of a decrypted profile body; false when
+// the field is missing, not scalar or the value does not parse.
+bool SetProfileField(uint8_t* body, size_t size, std::string_view path, std::string_view text,
+                     std::string& previous) {
+  const auto field = save::FindProfileField(body, size, path);
+  if (!field) return false;
+  uint8_t* value = body + field->offset;
+  const std::string owned(text);
+  char* end = nullptr;
+  switch (field->type) {
+    case save::FieldType::kBool:
+    case save::FieldType::kUInt8: {
+      const unsigned long parsed = std::strtoul(owned.c_str(), &end, 10);
+      if (end == owned.c_str() || *end || parsed > 0xFF) return false;
+      previous = fmt::format("{}", value[0]);
+      value[0] = uint8_t(parsed);
+      return true;
+    }
+    case save::FieldType::kUInt32:
+    case save::FieldType::kInt32: {
+      const long long parsed = std::strtoll(owned.c_str(), &end, 10);
+      if (end == owned.c_str() || *end || parsed < INT32_MIN || parsed > UINT32_MAX) return false;
+      previous = fmt::format("{}", (uint32_t(value[0]) << 24) | (uint32_t(value[1]) << 16) |
+                                       (uint32_t(value[2]) << 8) | uint32_t(value[3]));
+      StoreBe32(value, uint32_t(parsed));
+      return true;
+    }
+    case save::FieldType::kFloat: {
+      const float parsed = std::strtof(owned.c_str(), &end);
+      if (end == owned.c_str() || *end || !std::isfinite(parsed)) return false;
+      uint32_t bits = (uint32_t(value[0]) << 24) | (uint32_t(value[1]) << 16) |
+                      (uint32_t(value[2]) << 8) | uint32_t(value[3]);
+      float old;
+      std::memcpy(&old, &bits, sizeof(old));
+      previous = fmt::format("{}", old);
+      std::memcpy(&bits, &parsed, sizeof(bits));
+      StoreBe32(value, bits);
+      return true;
+    }
+    default:
+      return false;
+  }
+}
+}  // namespace
+
+// Sets cheat_set_profile_fields on a decrypted profile, once.
+static void EditLoadedProfileFields(uint8_t* body, size_t size) {
+  const std::string fields = REXCVAR_GET(cheat_set_profile_fields);
+  if (!Enabled() || fields.empty() || g_fields_applied.load(std::memory_order_acquire)) {
+    return;
+  }
+  // Other secure files pass through here too; only the profile has Main.
+  if (!save::FindProfileField(body, size, "Main/Credits")) {
+    return;
+  }
+  if (g_fields_applied.exchange(true, std::memory_order_acq_rel)) {
+    return;
+  }
+  size_t start = 0;
+  while (start < fields.size()) {
+    const size_t end = std::min(fields.find(',', start), fields.size());
+    const std::string_view pair = std::string_view(fields).substr(start, end - start);
+    start = end + 1;
+    const size_t equals = pair.find('=');
+    if (equals == std::string_view::npos) continue;
+    const std::string_view path = pair.substr(0, equals);
+    const std::string_view value = pair.substr(equals + 1);
+    std::string previous;
+    const bool set = SetProfileField(body, size, path, value, previous);
+    diagnostics::RecordEvent("cheat.applied", {{"name", "cheat_set_profile_fields"},
+                                               {"field", std::string(path)},
+                                               {"previous", previous},
+                                               {"value", std::string(value)},
+                                               {"result", set ? "set" : "rejected"}});
+  }
+  {
+    std::lock_guard lock(g_fields_mutex);
+    g_fields_value = fields;
+  }
+  std::function<void(std::string_view)> applied;
+  {
+    std::lock_guard lock(g_applied_mutex);
+    applied = g_applied;
+  }
+  if (applied) applied("cheat_set_profile_fields");
+}
+
 void EditLoadedProfile(uint8_t* body, size_t size) {
+  EditLoadedProfileFields(body, size);
   const int32_t credits = REXCVAR_GET(cheat_set_credits);
   if (!Enabled() || credits < 0 || g_credits_applied.load(std::memory_order_acquire)) {
     return;

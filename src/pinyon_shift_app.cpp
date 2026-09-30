@@ -644,7 +644,8 @@ void PinyonShiftApp::OnPostSetup() {
     if (!window()) return;
     window()->app_context().CallInUIThreadDeferred([this, name = std::string(setting)] {
       if (host_config_ && host_config_->Load()) {
-        host_config_->Set(name, "-1");
+        // The credits take -1 for "leave them", the field list "".
+        host_config_->Set(name, name == "cheat_set_credits" ? "-1" : "");
         if (!host_config_->Save()) {
           REXLOG_ERROR("Cheats: could not clear {} in {}", name, host_config_->path().string());
         }

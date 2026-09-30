@@ -514,6 +514,16 @@ std::unique_ptr<MenuScreen> SettingsPages::TrainerPlayer() {
     credits.push_back({label, {{"cheat_set_credits", value}}});
   }
   rows.push_back(Setting("SET CREDITS", std::move(credits), true));
+  // Any scalar profile field goes through cheat_set_profile_fields; the
+  // wristband level also unlocks the events it gates.
+  std::vector<Choice> wristbands;
+  wristbands.push_back({"UNCHANGED", {{"cheat_set_profile_fields", ""}}});
+  for (const char* level : {"1", "2", "3", "4", "5", "6", "7", "8"}) {
+    wristbands.push_back(
+        {std::string("LEVEL ") + level,
+         {{"cheat_set_profile_fields", std::string("Main/WristbandLevel=") + level}}});
+  }
+  rows.push_back(Setting("SET WRISTBAND", std::move(wristbands), true));
   return std::make_unique<MenuScreen>("PLAYER", std::move(rows), [] {
     return std::string("APPLIED ONCE WHEN THE PROFILE NEXT LOADS: RESTART THE GAME");
   });
