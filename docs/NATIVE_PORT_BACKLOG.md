@@ -550,6 +550,33 @@ long and how Windows-specific that is.
 Accepted directions that still need research before they become numbered
 slices with items, sizes and gates.
 
+### Opt-out crash and log collection
+
+Collect crash reports and short logs from players' machines so bugs seen on
+other hardware can be debugged, cheaply or for free to host.
+
+- **Consent.** On by default only if the maintainer decides so after
+  reading the privacy implications; a first-run notice, a SETTINGS switch to
+  opt out, and nothing sent from a machine that opted out. Payloads never
+  hold game files, saves, generated code or memory dumps (the existing crash
+  bundle already excludes them) and carry no account or machine identifiers
+  beyond a random install ID.
+- **Hosting candidates.** Sentry's free tier or a self-hosted GlitchTip
+  (Sentry-compatible, one small VM); GitHub issues through the existing
+  crash-report link (free, but needs the player's GitHub account); or a
+  Cloudflare Worker writing to R2 (free tier covers low volume). Measure the
+  bundle size and pick by cost, retention and triage workflow.
+- **What to send.** The crash report's signal or exception, stack and module
+  list, the build and SDK commits, the GPU and driver, the settings, and the
+  last lines of the runtime log.
+
+### Feature requests
+
+Add a GitHub issue template for feature requests (what, why, where in the
+game) next to the crash template, and a short "Request a feature" section in
+the README that links to it and says how requests are triaged into this
+backlog.
+
 ### Modern upscalers (DLSS, FSR 3 and 4) as optional mods
 
 Offer DLSS and FSR 3 or 4 as optional upscalers, alongside the CAS and FSR 1
