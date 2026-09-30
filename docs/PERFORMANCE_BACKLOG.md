@@ -16,7 +16,15 @@ is not met: the recorder needs about 7 ms against its 9.4, what remains of
 it has no single item above 8 %, and PB-2.12's analysis shows a new draw
 ABI would not close that; native 4K (3x) at 120 would need about three
 times this GPU. What is left for a person is the GPU trace (PB-0.4) and the
-visible-window check of the presets and fidelity trades (PB-5). This backlog replaces the performance items of the
+visible-window check of the presets and fidelity trades (PB-5).
+
+**Final pass (planned 2026-09-30).** A comparison with UnleashedRecomp,
+XenosRecomp, skate3recomp and other recomps, plus a census of FH1's command
+stream, produced PB-6 to PB-10 in
+[Final pass](#final-pass-lessons-from-other-recomps-pb-6-to-pb-10). FH1
+renders from prebuilt display lists (96 % of indirect buffers are identical
+every frame), so compiling them (PB-6.4) is the lever that can close the
+recorder's gap to 7 ms. This backlog replaces the performance items of the
 [native port backlog](NATIVE_PORT_BACKLOG.md) (NP-2, NP-3, NP-9 and the
 speed half of NP-15) with one target and one plan. It was written from a
 read-only audit of the renderer, the command processor, the recompiled guest
@@ -525,6 +533,144 @@ yet: the recorder needs about 7 ms (PB-2.12 or a pass-rate trade).
   payload_hash` equality against control.
 - **Never** the AppData save; seeds only.
 
+## Final pass: lessons from other recomps (PB-6 to PB-10)
+
+Researched 2026-09-30 against local checkouts: UnleashedRecomp `cf829a9`
+with XenosRecomp `990d03b` (hedge-dev), skate3recomp `f6e0ae8` with its SDK
+submodule, Rayman Origins, Kameo, Nocturne, TiP, reNut, SVR07, the Yukes SDK
+fork and upstream ReXGlue `development`. Measured on FH1 the same day with a
+temporary decoder census (reverted).
+
+**What the fast ones do.**
+
+- **UnleashedRecomp** has no GPU emulation. It replaces the statically
+  linked Xbox D3D runtime function by function (`CreateDevice`,
+  `SetTexture`, `DrawIndexedPrimitive`, `StretchRect`...). It reads the
+  device struct's own dirty bits for constants, and a lock-free queue feeds
+  one render thread over plume (D3D12/Vulkan).
+- **XenosRecomp**, its offline shader recompiler (MIT), emits a D3D9-like
+  ABI:
+  - the whole float register file per stage in one buffer, indexed by
+    register number (4 KB vertex, 3.5 KB pixel), uploaded whole when dirty;
+  - bindless textures and samplers, with indices in a 272-byte shared
+    block;
+  - no fetch-constant interpretation in the shader;
+  - one specialization mask.
+- **Unleashed's other techniques:**
+  - lazy resolves: a resolved texture sampled before its source is redrawn
+    binds the source surface directly;
+  - a shipped pipeline list plus pipelines predicted from asset loads;
+  - 191 mid-assembly hooks for high frame rates.
+- **skate3recomp's** 2x comes from a hand-ported native scene renderer.
+  - It hooks the engine's RenderMesh and sorted draw list and ports the
+    material shaders by hand; the SDK still parses PM4 but skips suppressed
+    draws and resolves.
+  - That is months of game-specific work. Its SDK's emulation fast paths are
+    behind ours, so there is nothing to port there beyond small settings.
+- **Rayman Origins** hooks D3D draws like Unleashed.
+- The other ReXGlue projects keep emulation. They contribute small things:
+  - `[rexcrt]` routing of guest `memcpy`/`memset` to host code;
+  - an FP-exception guard;
+  - present-interval hooks for frame-rate unlocks.
+- **Upstream ReXGlue** has one performance commit the fork lacks: `7f7c92e`,
+  `stwcx.` as a `std::atomic` compare-and-swap.
+
+**Why FH1 cannot take the D3D-hook route, and what it can take instead.**
+The census of the race:
+
+| Measure (per race frame) | Value |
+| --- | --- |
+| Draws through the title's runtime indexed emitter (`0x8240F4D8`) | **42**, 70 us of guest time |
+| Draws arriving in indirect buffers (IBs) | all of the ~3,400-6,700 |
+| IB executions | 1,000-1,740, carrying 0.96-1.85 M PM4 dwords |
+| IBs byte-identical to the previous frame at the same address | **96 %** (none changed in place; the rest are new addresses) |
+| Draws inside those identical IBs | 66-85 % |
+| `LOAD_ALU_CONSTANT` packets | 3,300-6,000, all float constants, ~16 dwords (4 vec4) each |
+| ...whose source data is identical to the previous frame | **99.9 %** |
+| Draws in identical IBs whose context registers and fetch/bool/loop constants equal the same draw's last frame | 55-67 % (36-54 % of all draws) |
+| ...whose full float register file also equals last frame's | 0 % (the camera globals change every frame) |
+
+So FH1 renders from prebuilt display lists, with static per-object constants
+loaded by pointer. A D3D-level hook would see almost none of it. The same
+lists are decoded and every draw re-derived each frame, though, and that
+repetition is the lever.
+
+Licenses:
+- UnleashedRecomp is **GPL-3.0**: ideas only, no code.
+- XenosRecomp and plume are MIT, as the research reports them (re-check
+  before vendoring).
+- moodycamel concurrentqueue is BSD/Boost.
+
+### PB-6 Static display lists
+
+| Item | Work | Expected | Size |
+| --- | --- | --- | --- |
+| PB-6.1 | **IB identity and a running state hash on the decoder.**<br>• Identify each IB by (physical address, dword count) and keep it valid through a write watch on its pages, instead of hashing 1-1.8 M dwords a frame. The shared-memory watch machinery exists.<br>• Keep a Zobrist-style hash of the draw-relevant register state that updates per write in O(1): `H ^= mix(i, old) ^ mix(i, new)`. It covers context registers `0x2000-0x23FF` less the per-draw ones (`VGT_DMA_*`, `VGT_DRAW_INITIATOR`, `VGT_EVENT_INITIATOR`) and fetch/bool/loop constants, from the shadow register file.<br>• Put `draw_identity = (IB key, ordinal)` and `state_hash` in each `DrawRecord`.<br>• The decoder has about 40 % slack. | enabler; the census numbers above become live counters | M |
+| PB-6.2 | **Decoded record-stream cache.** For an IB still valid under its watch, replay last frame's record words (register runs, draw records, calls) instead of parsing PM4 again. `LOAD_ALU_CONSTANT` payloads are re-read from memory (they are pointers), and calls that sample live memory stay live. | decoder time (about 5 MB of PM4 a frame); frees decoder capacity for PB-6.1 and PB-6.4 | M |
+| PB-6.3 | **Cross-frame draw templates on the recorder.** Per `draw_identity`, keep the last frame's derived state together with its `state_hash`:<br>• shader pair, modifications and translations;<br>• pipeline, layout and handle;<br>• viewport and scissor;<br>• sampler parameters and handles;<br>• the texture binding infos, validated by the texture cache's binding version and outdated flag;<br>• the executor's target keys.<br>On a hash match, use them instead of the per-draw derivations. This generalizes PB-2.6's epoch memos ("same as the previous draw") to "same as this draw last frame". | the derivation share of the recorder (about 20 %) times the extra hit rate; measure first with PB-6.1's counters | M |
+| PB-6.4 | **Compiled display lists.** For an IB that is valid, has the same entry `state_hash` as last frame, and whose resources are all unchanged (no texture outdated, no shared-memory page of its vertex/index data invalidated, and the same executor tile ownership over its targets at entry):<br>• replay last frame's tape segment for the IB with patched constant bindings;<br>• apply its register writes from the PB-6.2 cache;<br>• per draw, only gather and upload the float constants (the camera globals change) and rewrite the dynamic offsets.<br>Everything else is skipped: textures, samplers, descriptors, pipeline, executor preparation and binding, primitive processing, shared-memory checks. An invalidation inside the IB falls back to the full path. | per templated draw about 0.4 us against 1.85; with about 45 % of draws eligible, **roughly a third of the recorder (9.4 to about 6.3 ms)**, the gap to 7 ms | XL |
+| PB-6.5 | **GPU-side reuse** (research after PB-6.4): Vulkan secondary command buffers per compiled IB, or `VK_EXT_descriptor_buffer` with constant addresses read per draw from a small table, so a compiled IB is re-executed rather than re-recorded. | submission worker time; the recorder's tape copy | L |
+
+Order: PB-6.1, then PB-6.3 (cheap and measurable), then PB-6.2 and PB-6.4.
+Gate each with the 1x replay goldens (bit-exact) and the race captures.
+
+### PB-7 Constant and binding ABI (XenosRecomp's lessons, on our translator)
+
+| Item | Work | Expected | Size |
+| --- | --- | --- | --- |
+| PB-7.1 | **Census first.** Per draw, record which 4-register float blocks changed since the previous draw, and whether they came from `LOAD_ALU_CONSTANT` (per object, about 4 vec4 a draw) or from writes outside static IBs (frame globals). The design depends on it. | decides PB-7.2 | S |
+| PB-7.2 | **Two-level register-indexed constants.** The SPIR-V translator reads float constants by register number, as XenosRecomp does, from two buffers:<br>• a per-frame global register file, uploaded whole (4 KB + 3.5 KB) only when a global block changes, a few times a frame;<br>• a small per-draw block holding the ranges the draw's IB loads, addressed through a per-draw offset.<br>The per-draw gather and the used-constant bitmap scans disappear. Unleashed's "upload the whole file when dirty" would cost 37 MB a frame at FH1's 5,000 draws, hence the split. | the float-constant gather and upload, about 7 % of the recorder | L |
+| PB-7.3 | **Bindless textures and samplers** (descriptor indexing, as in both Unleashed and skate3). Each texture view gets a heap index at creation, and samplers are heap entries by hash. Per draw only indices go into a small block (or push constants), replacing the push-descriptor image-info building. Translator change: non-uniform indexing into the descriptor arrays. | about 3-4 % of the recorder, plus the submission worker's push descriptors | L |
+
+### PB-8 Quick wins seen in other projects
+
+| Item | Work | Source | Size |
+| --- | --- | --- | --- |
+| PB-8.1 | Route FH1's guest CRT `memcpy`/`memmove`/`memset` (and `XMemCpy` if linked) to host code with the SDK's `[rexcrt]` table (supported by our codegen, unused by our config). `sub_82A7F140` is a `memset` candidate (called with `(dst, 0, 92)`). Measure the guest threads' busy share. | Kameo, Nocturne | S |
+| PB-8.2 | Port upstream `7f7c92e`: `stwcx.`/`stdcx.` as `std::atomic` compare-exchange without the full-barrier `__sync` builtin, dropping the CR0.so copy. | upstream ReXGlue | S |
+| PB-8.3 | Raise the texture cache's limits (soft 384 MB to 2 GB, hard 768 MB to 4 GB, lifetime 30 s to 300 s) and measure reloads and evictions over a free-roam route. | skate3 | S |
+| PB-8.4 | MMCSS "Games" registration and 1 ms timer resolution for the decoder, recorder, submission and vblank threads (distinct from the priority boost measured in PB-4.4). | skate3, Nocturne | S |
+| PB-8.5 | An NVIDIA application profile preferring maximum performance (NVAPI), against P-state parking under a CPU-bound load. It changes a driver profile, so it is an opt-in setting for the maintainer to approve. | skate3 | S |
+| PB-8.6 | Present at 120 Hz: frame latency 2 and a present wait at the start of the guest frame (Vulkan `presentWait`), as Unleashed does, for even pacing once the frame fits. | UnleashedRecomp | S |
+| PB-8.7 | Lazy resolve aliasing for the scaled modes (PB-1.2's simpler form). When a resolve destination is sampled before its source surface is drawn again, and the formats, size and single-sampling match, bind the executor's surface directly and skip the untile reload. The copy happens only if the source is about to be overwritten while the texture is still referenced. | UnleashedRecomp `StretchRect` | M |
+
+### PB-9 High-frame-rate correctness (PB-4.3) with Unleashed's toolkit
+
+Unleashed's 191 hooks follow a few patterns:
+- clamp a site's delta time;
+- rescale exponential lerps with `1 - pow(1 - t, (30 + bias) / (fps + bias))`;
+- grow an object's allocation to hold a per-object accumulator and step it at the original rate;
+- integrate at 30 Hz and extrapolate the visual position.
+
+TiP and reNut unlock by hooking the title's present-interval setter and re-locking the scenes that break.
+
+| Item | Work | Size |
+| --- | --- | --- |
+| PB-9.1 | Find the crowd's stepper. Continue PB-4.3's snapshot pass by poking the candidate clocks one at a time with the route's `poke` and watching the spectators in the captures; then trace the writer of the one that freezes them. | M |
+| PB-9.2 | Apply the matching pattern (delta clamp or per-object accumulator) as a mid-assembly hook in `config/rexglue/analysis/`, gated by a cvar, and extend `expect-simulation-time` routes with a crowd capture at 30 and 120 fps. | S-M |
+| PB-9.3 | Audit the purchase animation (NP-3.7's first report) the same way. | M |
+
+### PB-10 Long-term options (not scheduled)
+
+- **A native FH1 scene renderer**, skate3 2.0 style: hook the engine where it
+  builds its display lists and draws per mesh, port the material shaders,
+  and let the SDK skip suppressed draws and resolves. It is the only route
+  past about 2x beyond PB-6, and it costs months. Revisit only if PB-6.4
+  falls short.
+- **Adopting XenosRecomp itself**: it expects D3DX shader containers with
+  constant tables and D3D-level state, and leaves integer/loop constants,
+  vertex formats and memexport unimplemented. PB-7 takes its ABI ideas onto
+  our translator instead.
+
+**Final-pass working order.**
+1. PB-8.1 to PB-8.4, cheap and independent.
+2. PB-6.1, then PB-6.3, measuring the template hit rate.
+3. PB-7.1's census.
+4. PB-6.2 and PB-6.4, the main lever for 120 fps at 1x.
+5. PB-7.3, then PB-7.2 if PB-6.4 leaves the constant upload on top.
+6. PB-9 in parallel.
+7. PB-8.5 to PB-8.7 last.
+
 ## Working order
 
 1. **PB-0** in full (about a week): Vulkan timing and counters, the 3x
@@ -554,6 +700,7 @@ FSR 1 or CAS to 4K, or the 2-sample host mode, both already settings.
 | Item | What is left | Needs |
 | --- | --- | --- |
 | PB-0.4 | A GPU trace of a 3x race frame (Nsight Systems' Vulkan trace and GPU metrics, or Nsight Graphics) to split the draws' GPU time | An elevated session, or the NVIDIA setting that allows GPU performance counters for all users |
+| PB-8.5 | Approving an NVIDIA application profile that prefers maximum performance (a driver setting) | The maintainer |
 | PB-5 | The final check with the window visible on the 120 Hz display, and one look at the accepted fidelity trades before they become defaults | The maintainer at the machine |
 
 ## Relation to the native port backlog
