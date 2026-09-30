@@ -17,7 +17,7 @@ experiment reports describe those experiments.
 | How the native renderer replaced Xenos, and what is still open | [Xenos retirement backlog](native-renderer/XENOS_RETIREMENT_BACKLOG.md) (closed; XR-08 and XR-09 keep items that need a person or hardware) |
 | What the renderer must implement | [Native frame contract](native-renderer/NATIVE_FRAME_CONTRACT.md), [guest-visible dependencies](native-renderer/GUEST_VISIBLE_RENDER_DEPENDENCIES.md) |
 | Current findings and retained changes | This document |
-| Performance | [Native performance baselines](native-renderer/NATIVE_PERFORMANCE_BASELINES.md), [CPU profiling procedure](native-renderer/CPU_HOTSPOT_PROFILING.md) |
+| Performance | [Performance backlog: 4K at 120 fps on Vulkan](PERFORMANCE_BACKLOG.md), [native performance baselines](native-renderer/NATIVE_PERFORMANCE_BASELINES.md), [CPU profiling procedure](native-renderer/CPU_HOTSPOT_PROFILING.md) |
 | Previous renderer and performance work | [Research reference](native-renderer/RESEARCH.md): retired plans, journals, failed trials, their Git checkpoints and the [archived Xenos-era documents](native-renderer/RESEARCH.md#archived-xenos-era-documents) |
 | Extend the original game UI | [UI API research and implementation tasks](UI_API_PLAN.md) |
 | Produce and validate artifacts | [Artifact production](native-renderer/P1_ARTIFACT_PRODUCTION.md), [shader pack contract](native-renderer/SHADER_PACK_FORMAT.md), [shader capture](native-renderer/CANDIDATE_SHADER_CAPTURE.md), [render tests and diagnostics](native-renderer/FH1_RENDER_TEST_AUTOMATION.md), [manual discovery sessions](native-renderer/DISCOVERY_PLAYTEST.md) |
