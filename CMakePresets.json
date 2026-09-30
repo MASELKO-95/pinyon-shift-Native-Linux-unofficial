@@ -18,6 +18,7 @@
         "CMAKE_CXX_FLAGS": "-msse4.1",
         "PINYON_SHIFT_CPU_BASELINE": "sse4.1",
         "REXSDK_DIR": "${sourceDir}/thirdparty/shiftglue-sdk",
+        "REXGLUE_USE_VULKAN": "ON",
         "PINYON_SHIFT_GENERATED_ROOT": "${sourceDir}/.local/generated",
         "PINYON_SHIFT_GENERATED_DIR": "${sourceDir}/.local/generated/default"
       },

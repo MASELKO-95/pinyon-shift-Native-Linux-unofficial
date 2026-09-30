@@ -47,7 +47,7 @@
 extern "C" int __llvm_profile_dump(void);
 #endif
 
-REXCVAR_DEFINE_UINT32(pinyon_shift_config_schema, 26, "Pinyon Shift",
+REXCVAR_DEFINE_UINT32(pinyon_shift_config_schema, 27, "Pinyon Shift",
                       "Pinyon Shift host configuration schema version");
 REXCVAR_DEFINE_STRING(enabled_mods, "", "Mods",
                       "Mods to load from <state>/mods, in order, separated by commas. With any "
@@ -91,8 +91,12 @@ namespace {
 // made every frame upload again every page the CPU had uploaded, about 20 MB
 // of vertex data per race frame, and the race window runs 12 % faster
 // without it with no rendering difference on the race, photo, dealership and
-// FMV routes.
-constexpr uint32_t kConfigSchema = 26;
+// FMV routes. Schema 27 makes Vulkan the renderer's graphics API, with the
+// GPU commands thread split into a decoder and a recorder: the 1x race runs
+// at 120 fps there against about 55 on Direct3D 12 (docs/PERFORMANCE_BACKLOG.md).
+// Migration moves every earlier configuration to it once; the GRAPHICS page's
+// GRAPHICS API row switches back.
+constexpr uint32_t kConfigSchema = 27;
 
 bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
                            bool& migrated) {
@@ -114,6 +118,8 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
               "keybind_a = \"LMB,Space\"\n"
               "keybind_start = \"Return\"\n"
               "d3d12_allow_variable_refresh_rate_and_tearing = false\n"
+              "gpu_backend = \"vulkan\"\n"
+              "gpu_record_thread = true\n"
               "vsync = true\n"
               "host_present_fps_limit = 0\n"
               "host_present_sleep_spin = true\n"
@@ -278,6 +284,19 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
           std::regex(R"((^|\n)(\s*clear_memory_page_state\s*=\s*)true)", std::regex::icase),
           "$1$2false");
     }
+    if (schema < 27) {
+      // Vulkan by default: replace an earlier backend choice (the old QUALITY
+      // preset wrote "any", which meant Direct3D 12). The settings list below
+      // appends both when absent.
+      migrated_text = std::regex_replace(
+          migrated_text,
+          std::regex(R"re((^|\n)(\s*gpu_backend\s*=\s*)"[^"]*")re", std::regex::icase),
+          "$1$2\"vulkan\"");
+      migrated_text = std::regex_replace(
+          migrated_text,
+          std::regex(R"((^|\n)(\s*gpu_record_thread\s*=\s*)false)", std::regex::icase),
+          "$1$2true");
+    }
     if (schema == 1) {
       const std::regex stabilization_pattern(
           R"((?:^|\n)\s*pinyon_shift_stabilize_vehicle_presentation\s*=\s*(true|false)\s*(?:#.*)?(?:\r?\n|$))");
@@ -314,6 +333,8 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
         {"disable_depth_of_field", "disable_depth_of_field = false\n"},
         {"draw_resolution_scale_x", "draw_resolution_scale_x = 1\n"},
         {"draw_resolution_scale_y", "draw_resolution_scale_y = 1\n"},
+        {"gpu_backend", "gpu_backend = \"vulkan\"\n"},
+        {"gpu_record_thread", "gpu_record_thread = true\n"},
         {"vsync", "vsync = true\n"},
         {"host_present_fps_limit", "host_present_fps_limit = 0\n"},
         {"host_present_sleep_spin", "host_present_sleep_spin = true\n"},

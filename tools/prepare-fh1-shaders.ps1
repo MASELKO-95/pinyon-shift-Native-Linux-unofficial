@@ -82,6 +82,22 @@ try {
             if ($match.Success) { $settings[$name] = $match.Groups[1].Value.Trim().ToLowerInvariant() }
         }
     }
+    # Only Direct3D 12 ("d3d12", or "any", its first backend) loads prebuilt
+    # shader packs; Vulkan translates shaders as the game runs. Config schema 27
+    # made Vulkan the default and moves earlier files to it, so a file without
+    # a schema 27 backend choice starts on Vulkan.
+    $backend = 'vulkan'
+    if (Test-Path -LiteralPath $config) {
+        $schemaMatch = [regex]::Match($text, '(?m)^\s*pinyon_shift_config_schema\s*=\s*([0-9]+)')
+        $backendMatch = [regex]::Match($text, '(?m)^\s*gpu_backend\s*=\s*"([^"]*)"')
+        if ($schemaMatch.Success -and [int]$schemaMatch.Groups[1].Value -ge 27 -and $backendMatch.Success) {
+            $backend = $backendMatch.Groups[1].Value.ToLowerInvariant()
+        }
+    }
+    if ($backend -eq 'vulkan') {
+        Write-PinyonEvent shaders 100 'Vulkan prepares its shaders while the game runs.' -JsonEvents:$JsonEvents
+        return
+    }
     # Not a key input: whether the other scales are prepared as well.
     $prepareAllScales = (Test-Path -LiteralPath $config) -and [regex]::IsMatch(
         (Get-Content -LiteralPath $config -Raw), '(?m)^\s*pinyon_shift_prepare_all_scales\s*=\s*true\b')

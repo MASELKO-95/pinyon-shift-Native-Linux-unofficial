@@ -87,14 +87,22 @@ function Get-Process { return $null }
                 return (root / "calls.txt").read_text().splitlines()
 
             active = state / "cache/fh1-artifacts.json"
+            # Vulkan, the default (and what any config before schema 27
+            # migrates to), translates shaders as it runs: nothing is prepared.
+            run()
+            self.assertFalse(active.exists())
+            self.assertFalse((root / "calls.txt").exists())
+            # Direct3D 12 loads prepared packs.
+            (state / "config").mkdir()
+            config = state / "config/pinyon_shift.toml"
+            d3d12 = 'pinyon_shift_config_schema = 27\ngpu_backend = "d3d12"\n'
+            config.write_text(d3d12)
             run()
             self.assertTrue(active.is_file())
             self.assertEqual(calls(), ["1"])
             run()
-            # Creation of the default runtime config must not invalidate preparation.
-            (state / "config").mkdir()
-            config = state / "config/pinyon_shift.toml"
-            config.write_text("draw_resolution_scale_x = 1\ndraw_resolution_scale_y = 1\n")
+            # Writing the default settings must not invalidate preparation.
+            config.write_text(d3d12 + "draw_resolution_scale_x = 1\ndraw_resolution_scale_y = 1\n")
             run()
             self.assertEqual(calls(), ["1"])
             (state / "cache/fh1-native-shaders-v2.bin").write_text("damaged")
@@ -108,7 +116,7 @@ function Get-Process { return $null }
             environment["PINYON_TEST_FAIL"] = "0"
             run()
             self.assertEqual(calls(), ["1", "1", "1"])
-            config.write_text("draw_resolution_scale_x = 2\ndraw_resolution_scale_y = 2\n")
+            config.write_text(d3d12 + "draw_resolution_scale_x = 2\ndraw_resolution_scale_y = 2\n")
             run()
             self.assertEqual(calls()[-1], "2")
             receipt = json.loads(active.read_text())
@@ -149,7 +157,7 @@ function Get-Process { return $null }
             self.assertEqual(len(calls()), 8)
             # Preparing every scale stages the other scales' packs too, once,
             # and keeps the chosen scale's set active (NP-4.7).
-            config.write_text("draw_resolution_scale_x = 2\ndraw_resolution_scale_y = 2\n"
+            config.write_text(d3d12 + "draw_resolution_scale_x = 2\ndraw_resolution_scale_y = 2\n"
                               "pinyon_shift_prepare_all_scales = true\n")
             run()
             self.assertEqual(calls()[8:], ["1+misses", "3+misses", "4+misses"])

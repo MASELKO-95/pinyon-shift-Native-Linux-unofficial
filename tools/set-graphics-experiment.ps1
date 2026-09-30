@@ -39,15 +39,18 @@ $backupDirectory = Join-Path $configDirectory 'backups'
 function Get-DefaultConfigText {
     @'
 # Pinyon Shift host configuration.
-# Schema 26 stops re-uploading CPU-written memory every frame; schema 25 keeps
-# one occlusion-query path; schema 24 retired the renderer choice.
-pinyon_shift_config_schema = 26
+# Schema 27 renders on Vulkan with the split GPU commands thread; schema 26
+# stops re-uploading CPU-written memory every frame; schema 25 keeps one
+# occlusion-query path; schema 24 retired the renderer choice.
+pinyon_shift_config_schema = 27
 input_backend = "sdl"
 hid_mappings_file = "gamecontrollerdb.txt"
 mnk_mode = true
 keybind_a = "LMB,Space"
 keybind_start = "Return"
 d3d12_allow_variable_refresh_rate_and_tearing = false
+gpu_backend = "vulkan"
+gpu_record_thread = true
 vsync = true
 host_present_fps_limit = 0
 host_present_sleep_spin = true
@@ -188,7 +191,7 @@ switch ($Action) {
             Get-Content -LiteralPath $configPath -Raw
         } else { Get-DefaultConfigText }
         $schema = Get-SchemaVersion $text
-        if ($schema -lt 1 -or $schema -gt 26) { throw "Unsupported host configuration schema: $schema" }
+        if ($schema -lt 1 -or $schema -gt 27) { throw "Unsupported host configuration schema: $schema" }
     }
     'Reset' {
         $backup = New-HostConfigBackup $configPath
@@ -205,7 +208,7 @@ switch ($Action) {
         $backup = New-HostConfigBackup $configPath
         $text = Get-Content -LiteralPath $source.FullName -Raw
         $schema = Get-SchemaVersion $text
-        if ($schema -lt 1 -or $schema -gt 26) { throw "Backup uses unsupported schema: $schema" }
+        if ($schema -lt 1 -or $schema -gt 27) { throw "Backup uses unsupported schema: $schema" }
         Write-HostConfig $configPath $text
     }
     'Apply' {
@@ -213,7 +216,7 @@ switch ($Action) {
             Get-Content -LiteralPath $configPath -Raw
         } else { Get-DefaultConfigText }
         $schema = Get-SchemaVersion $text
-        if ($schema -lt 1 -or $schema -gt 26) { throw "Unsupported host configuration schema: $schema" }
+        if ($schema -lt 1 -or $schema -gt 27) { throw "Unsupported host configuration schema: $schema" }
         $backup = New-HostConfigBackup $configPath
         # The retired guest vblank rate became the render limit, which the
         # replacement defaults to following the display.
@@ -226,7 +229,12 @@ switch ($Action) {
         if ($schema -lt 24) { $text = Remove-TomlValue $text 'readback_resolve' }
         # Schema 26 turned clear_memory_page_state off (src/pinyon_shift_app.cpp).
         if ($schema -lt 26) { $text = Set-TomlValue $text 'clear_memory_page_state' 'false' }
-        $text = Set-TomlValue $text 'pinyon_shift_config_schema' '26'
+        # Schema 27 made Vulkan with the split GPU commands thread the default.
+        if ($schema -lt 27) {
+            $text = Set-TomlValue $text 'gpu_backend' '"vulkan"'
+            $text = Set-TomlValue $text 'gpu_record_thread' 'true'
+        }
+        $text = Set-TomlValue $text 'pinyon_shift_config_schema' '27'
         $text = Set-TomlValue $text 'pinyon_shift_fh1_source_presentation' 'true'
         if (-not [regex]::IsMatch($text, '(?m)^[ \t]*xma_relaxed_padding_admission[ \t]*=')) {
             $text = Set-TomlValue $text 'xma_relaxed_padding_admission' 'false'

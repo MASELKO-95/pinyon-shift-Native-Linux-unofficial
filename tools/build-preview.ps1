@@ -129,9 +129,11 @@ Write-PinyonEvent build 82 'Compiling the playable preview. This is the longest 
 Push-Location $root
 try {
     Write-PinyonEvent build 83 "CPU baseline: $cpuBaseline." -JsonEvents:$JsonEvents
+    # The presets build the Vulkan backend, whose glslang reads its version
+    # through Python: the pinned runtime, since a pyenv shim breaks that.
     Invoke-PinyonBuildCommand $environment.CMake @('--preset', $previewPreset, "-DREXSDK_DIR=$sdkRoot",
         "-DPINYON_SHIFT_CPU_BASELINE=$cpuBaseline", "-DCMAKE_C_FLAGS=$cpuFlags",
-        "-DCMAKE_CXX_FLAGS=$cpuFlags") `
+        "-DCMAKE_CXX_FLAGS=$cpuFlags", "-DPYTHON_EXECUTABLE=$(Get-PinyonPython)") `
         (Join-Path $logs 'preview-configure.log') 'Preview configuration failed.'
     Invoke-PinyonBuildCommand $environment.CMake @('--build', '--preset', $previewPreset, '--parallel', "$Parallel") `
         (Join-Path $logs 'preview-build.log') 'Preview compilation failed.'

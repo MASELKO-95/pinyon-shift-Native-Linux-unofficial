@@ -357,7 +357,7 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
 
     def test_graphics_schema_and_diagnostics_contract(self):
         app = (ROOT / "src/pinyon_shift_app.cpp").read_text(encoding="utf-8")
-        self.assertIn("constexpr uint32_t kConfigSchema = 26", app)
+        self.assertIn("constexpr uint32_t kConfigSchema = 27", app)
         self.assertIn(".schema", app)
         for setting in ("anisotropic_override", "swap_post_effect", "draw_resolution_scale_x"):
             self.assertIn(setting, app)
@@ -416,8 +416,8 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         launcher_xaml = (ROOT / "launcher/PinyonShift.Launcher/MainWindow.xaml").read_text(
             encoding="utf-8"
         )
-        self.assertIn("constexpr uint32_t kConfigSchema = 26;", app)
-        self.assertRegex(app, r"pinyon_shift_config_schema,\s*26,")
+        self.assertIn("constexpr uint32_t kConfigSchema = 27;", app)
+        self.assertRegex(app, r"pinyon_shift_config_schema,\s*27,")
         self.assertIn('"pinyon_shift_stabilize_vehicle_presentation = false\\n"', app)
         self.assertIn('"keybind_a = \\"LMB,Space\\"\\n"', app)
         # Schemas 1..24 migrate; the current schema is accepted unchanged.
@@ -443,8 +443,8 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         ):
             self.assertIn(f'"{retired}"', retired_block)
         graphics_tool = (ROOT / "tools/set-graphics-experiment.ps1").read_text(encoding="utf-8")
-        self.assertIn("pinyon_shift_config_schema = 26", graphics_tool)
-        self.assertIn("-gt 26", graphics_tool)
+        self.assertIn("pinyon_shift_config_schema = 27", graphics_tool)
+        self.assertIn("-gt 27", graphics_tool)
         self.assertNotIn("-gt 23", graphics_tool)
         # Apply writes the current schema and so bypasses the game's
         # migration: it must drop every setting that migration retires.
