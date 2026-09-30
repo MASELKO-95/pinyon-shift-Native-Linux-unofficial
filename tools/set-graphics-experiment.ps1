@@ -10,6 +10,8 @@ param(
     [int]$ResolutionScale = 1,
     [ValidateSet('vulkan', 'd3d12')]
     [string]$GraphicsApi = 'vulkan',
+    [ValidateSet('bilinear', 'cas', 'fsr')]
+    [string]$OutputScaling = 'bilinear',
     [ValidateSet('custom', 'shipping_1x', 'experimental_2x', 'experimental_3x')]
     [string]$Preset = 'custom',
     [ValidateSet(0, 30, 60, 120, 240)]
@@ -179,6 +181,13 @@ function Get-SettingsResult([string]$Text, [string]$BackupPath, [string]$Operati
             preset = $presetName
             resolution_scale = $resolutionScale
             graphics_api = $graphicsApi
+            output_scaling = (Get-TomlValue $Text 'present_effect' '"bilinear"').Trim('"').ToLowerInvariant()
+            # Where the image lands, for the launcher's resolution line.
+            fullscreen = (Get-TomlValue $Text 'fullscreen' 'true') -eq 'true'
+            monitor = [int](Get-TomlValue $Text 'monitor' '0')
+            window_width = [int](Get-TomlValue $Text 'window_width' '0')
+            window_height = [int](Get-TomlValue $Text 'window_height' '0')
+            letterbox = (Get-TomlValue $Text 'present_letterbox' 'true') -eq 'true'
             clear_memory_page_state = $clearPageState
             vsync = $vsyncEnabled
             host_present_fps_limit = $presentationFps
@@ -266,6 +275,9 @@ switch ($Action) {
             # Vulkan records draws on a second thread; Direct3D 12 keeps one.
             $text = Set-TomlValue $text 'gpu_backend' ('"' + $GraphicsApi + '"')
             $text = Set-TomlValue $text 'gpu_record_thread' ($(if ($GraphicsApi -eq 'vulkan') { 'true' } else { 'false' }))
+        }
+        if ($bound.ContainsKey('OutputScaling')) {
+            $text = Set-TomlValue $text 'present_effect' ('"' + $OutputScaling + '"')
         }
         if ($bound.ContainsKey('Anisotropy')) {
             $override = switch ($Anisotropy) { 4 { 3 } 8 { 4 } 16 { 5 } }

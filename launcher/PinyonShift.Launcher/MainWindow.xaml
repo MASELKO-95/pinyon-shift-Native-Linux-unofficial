@@ -224,8 +224,11 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.3*"/>
+                            <ColumnDefinition Width="18"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="18"/>
                             <ColumnDefinition Width="*"/>
@@ -238,13 +241,25 @@
                         </ComboBox>
                         <TextBlock Grid.Column="2" Text="Internal resolution" FontSize="13" Foreground="{StaticResource MutedBrush}"/>
                         <ComboBox Grid.Row="1" Grid.Column="2" x:Name="ResolutionComboBox" Margin="0,8,0,0" SelectedIndex="0"
-                                  AutomationProperties.Name="Internal resolution">
-                            <ComboBoxItem Tag="1">1× · 1280 × 720</ComboBoxItem>
-                            <ComboBoxItem Tag="2">2× · 2560 × 1440</ComboBoxItem>
-                            <ComboBoxItem Tag="3">3× · 3840 × 2160</ComboBoxItem>
-                            <ComboBoxItem Tag="4">4× · 5120 × 2880</ComboBoxItem>
+                                  AutomationProperties.Name="Internal resolution"
+                                  SelectionChanged="GraphicsChoice_SelectionChanged">
+                            <ComboBoxItem Tag="1">1×</ComboBoxItem>
+                            <ComboBoxItem Tag="2">2×</ComboBoxItem>
+                            <ComboBoxItem Tag="3">3×</ComboBoxItem>
+                            <ComboBoxItem Tag="4">4×</ComboBoxItem>
                         </ComboBox>
-                        <DockPanel Grid.Row="2" Grid.ColumnSpan="3" Margin="0,22,0,0">
+                        <TextBlock Grid.Column="4" Text="Output scaling" FontSize="13" Foreground="{StaticResource MutedBrush}"/>
+                        <ComboBox Grid.Row="1" Grid.Column="4" x:Name="OutputScalingComboBox" Margin="0,8,0,0" SelectedIndex="0"
+                                  AutomationProperties.Name="Output scaling"
+                                  SelectionChanged="GraphicsChoice_SelectionChanged">
+                            <ComboBoxItem Tag="bilinear">Bilinear</ComboBoxItem>
+                            <ComboBoxItem Tag="cas">CAS sharpening</ComboBoxItem>
+                            <ComboBoxItem Tag="fsr">FSR 1</ComboBoxItem>
+                        </ComboBox>
+                        <TextBlock Grid.Row="2" Grid.ColumnSpan="5" x:Name="ResolutionLineText" Margin="0,14,0,0"
+                                   FontSize="13.5" Foreground="{StaticResource FogBrush}" TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite"/>
+                        <DockPanel Grid.Row="3" Grid.ColumnSpan="5" Margin="0,22,0,0">
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                                 <Button x:Name="RestoreGraphicsButton" Content="Restore backup" Style="{StaticResource LinkButton}"
                                         VerticalAlignment="Center" Click="RestoreGraphicsButton_Click"/>

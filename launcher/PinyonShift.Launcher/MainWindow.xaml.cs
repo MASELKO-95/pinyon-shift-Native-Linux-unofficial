@@ -958,10 +958,11 @@ public partial class MainWindow : Window
         {
             "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
             "-Action", action, "-StateRoot", _stateRoot,
-            // Only the scale and the API: the rest is set in game and must not
-            // be overwritten.
+            // Only the choices in this panel: the rest is set in game and must
+            // not be overwritten.
             "-ResolutionScale", SelectedTag(ResolutionComboBox),
             "-GraphicsApi", SelectedTag(GraphicsApiComboBox),
+            "-OutputScaling", SelectedTag(OutputScalingComboBox),
             "-Json"
         }) startInfo.ArgumentList.Add(argument);
         using var process = Process.Start(startInfo) ??
@@ -985,9 +986,143 @@ public partial class MainWindow : Window
 
     private void ApplyGraphicsResult(GraphicsResult result)
     {
+        _graphicsSettings = result.Settings;
         SelectTag(ResolutionComboBox, result.Settings.ResolutionScale.ToString());
         SelectTag(GraphicsApiComboBox, string.IsNullOrWhiteSpace(result.Settings.GraphicsApi)
             ? "vulkan" : result.Settings.GraphicsApi);
+        SelectTag(OutputScalingComboBox, string.IsNullOrWhiteSpace(result.Settings.OutputScaling)
+            ? "bilinear" : result.Settings.OutputScaling);
+        UpdateResolutionLine();
+    }
+
+    private GraphicsSettings? _graphicsSettings;
+
+    private void GraphicsChoice_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        UpdateResolutionLine();
+
+    // What the game renders and what reaches the screen, as the in-game
+    // display settings say it: the scaled 1280 x 720 image, fitted to the
+    // display (or the window) with the chosen output scaling.
+    private void UpdateResolutionLine()
+    {
+        if (ResolutionLineText is null) return;
+        var scale = int.TryParse((ResolutionComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out var value)
+            ? value : 1;
+        var (renderWidth, renderHeight) = (1280 * scale, 720 * scale);
+        var line = $"Renders {renderWidth} × {renderHeight}";
+        var output = OutputSize(_graphicsSettings);
+        if (output is not var (outputWidth, outputHeight))
+        {
+            ResolutionLineText.Text = line + ".";
+            return;
+        }
+        var fsr = (OutputScalingComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() == "fsr";
+        ResolutionLineText.Text = (long)outputWidth * outputHeight == (long)renderWidth * renderHeight
+            ? $"{line}, the size of your screen."
+            : (long)outputWidth * outputHeight > (long)renderWidth * renderHeight
+                ? $"{line}, {(fsr ? "FSR 1 upscales" : "stretched")} to {outputWidth} × {outputHeight}."
+                : $"{line}, downscaled to {outputWidth} × {outputHeight}.";
+    }
+
+    private (int Width, int Height)? OutputSize(GraphicsSettings? settings)
+    {
+        (int Width, int Height)? area;
+        if (settings is null || settings.Fullscreen)
+        {
+            area = DisplaySize(settings?.Monitor ?? 0);
+        }
+        else
+        {
+            // The game sizes its window in logical pixels, 1280 x 720 unless set.
+            var dpi = VisualTreeHelper.GetDpi(this);
+            area = ((int)Math.Round((settings.WindowWidth > 0 ? settings.WindowWidth : 1280) * dpi.DpiScaleX),
+                    (int)Math.Round((settings.WindowHeight > 0 ? settings.WindowHeight : 720) * dpi.DpiScaleY));
+        }
+        if (area is not var (width, height) || width <= 0 || height <= 0) return null;
+        if (settings is not null && !settings.Letterbox) return (width, height);
+        // Letterboxed to the game's 16:9.
+        return (long)width * 9 > (long)height * 16 ? (height * 16 / 9, height) : (width, width * 9 / 16);
+    }
+
+    // The display mode of the game's monitor: 0 and 1 are the primary, 2 on
+    // the other displays in Windows' order.
+    private static (int Width, int Height)? DisplaySize(int monitor)
+    {
+        string? deviceName = null;
+        if (monitor > 1)
+        {
+            var others = new List<string>();
+            var device = new DisplayDevice { cb = System.Runtime.InteropServices.Marshal.SizeOf<DisplayDevice>() };
+            for (uint index = 0; EnumDisplayDevices(null, index, ref device, 0); index++)
+            {
+                if ((device.StateFlags & 0x1) != 0 && (device.StateFlags & 0x4) == 0) others.Add(device.DeviceName);
+                device.cb = System.Runtime.InteropServices.Marshal.SizeOf<DisplayDevice>();
+            }
+            if (monitor - 2 < others.Count) deviceName = others[monitor - 2];
+        }
+        var mode = new DevMode { dmSize = (short)System.Runtime.InteropServices.Marshal.SizeOf<DevMode>() };
+        return EnumDisplaySettings(deviceName, -1, ref mode) ? (mode.dmPelsWidth, mode.dmPelsHeight) : null;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern bool EnumDisplaySettings(string? deviceName, int modeNum, ref DevMode devMode);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern bool EnumDisplayDevices(string? device, uint deviceIndex, ref DisplayDevice displayDevice,
+        uint flags);
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential,
+        CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private struct DisplayDevice
+    {
+        public int cb;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string DeviceName;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceString;
+        public int StateFlags;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceID;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceKey;
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential,
+        CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private struct DevMode
+    {
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string dmDeviceName;
+        public short dmSpecVersion;
+        public short dmDriverVersion;
+        public short dmSize;
+        public short dmDriverExtra;
+        public int dmFields;
+        public int dmPositionX;
+        public int dmPositionY;
+        public int dmDisplayOrientation;
+        public int dmDisplayFixedOutput;
+        public short dmColor;
+        public short dmDuplex;
+        public short dmYResolution;
+        public short dmTTOption;
+        public short dmCollate;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string dmFormName;
+        public short dmLogPixels;
+        public int dmBitsPerPel;
+        public int dmPelsWidth;
+        public int dmPelsHeight;
+        public int dmDisplayFlags;
+        public int dmDisplayFrequency;
+        public int dmICMMethod;
+        public int dmICMIntent;
+        public int dmMediaType;
+        public int dmDitherType;
+        public int dmReserved1;
+        public int dmReserved2;
+        public int dmPanningWidth;
+        public int dmPanningHeight;
     }
 
     private static void SelectTag(ComboBox comboBox, string value)
@@ -1000,6 +1135,7 @@ public partial class MainWindow : Window
     {
         ResolutionComboBox.IsEnabled = enabled;
         GraphicsApiComboBox.IsEnabled = enabled;
+        OutputScalingComboBox.IsEnabled = enabled;
         SaveGraphicsButton.IsEnabled = enabled;
         ResetGraphicsButton.IsEnabled = enabled;
         RestoreGraphicsButton.IsEnabled = enabled;
@@ -1029,6 +1165,12 @@ public partial class MainWindow : Window
         [property: JsonPropertyName("preset")] string Preset,
         [property: JsonPropertyName("resolution_scale")] int ResolutionScale,
         [property: JsonPropertyName("graphics_api")] string? GraphicsApi,
+        [property: JsonPropertyName("output_scaling")] string? OutputScaling,
+        [property: JsonPropertyName("fullscreen")] bool Fullscreen,
+        [property: JsonPropertyName("monitor")] int Monitor,
+        [property: JsonPropertyName("window_width")] int WindowWidth,
+        [property: JsonPropertyName("window_height")] int WindowHeight,
+        [property: JsonPropertyName("letterbox")] bool Letterbox,
         [property: JsonPropertyName("clear_memory_page_state")] bool ClearMemoryPageState,
         [property: JsonPropertyName("vsync")] bool Vsync);
 }

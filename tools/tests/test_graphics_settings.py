@@ -142,6 +142,25 @@ class GraphicsSettingsTests(unittest.TestCase):
             self.assertIn("gpu_record_thread = true", text)
             self.assertEqual(result["settings"]["graphics_api"], "vulkan")
 
+    def test_output_scaling_sets_present_effect_and_reports_the_window(self):
+        with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:
+            state = pathlib.Path(temporary)
+            config = state / "config/pinyon_shift.toml"
+            config.parent.mkdir(parents=True)
+            config.write_text("pinyon_shift_config_schema = 27\nfullscreen = false\n"
+                              "window_width = 1920\nwindow_height = 1080\n", encoding="utf-8")
+            settings = self.run_tool(state, "-Action", "Get")["settings"]
+            self.assertEqual(settings["output_scaling"], "bilinear")
+            self.assertFalse(settings["fullscreen"])
+            self.assertEqual((settings["window_width"], settings["window_height"]), (1920, 1080))
+            self.assertTrue(settings["letterbox"])
+            result = self.run_tool(state, "-Action", "Apply", "-OutputScaling", "fsr")
+            self.assertIn('present_effect = "fsr"', config.read_text(encoding="utf-8"))
+            self.assertEqual(result["settings"]["output_scaling"], "fsr")
+            # Saving other choices keeps the in-game one.
+            self.run_tool(state, "-Action", "Apply", "-ResolutionScale", "2")
+            self.assertIn('present_effect = "fsr"', config.read_text(encoding="utf-8"))
+
     def test_reset_writes_supported_defaults_and_preserves_backup(self):
         with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:
             state = pathlib.Path(temporary)
