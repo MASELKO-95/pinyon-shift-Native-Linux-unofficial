@@ -105,10 +105,21 @@ architecture.
 | NP-12 | Linux and Steam Deck | Native Linux build with the Vulkan executor and Deck qualification | XL | NP-9 | 1.x |
 | NP-13 | macOS | Apple Silicon build through MoltenVK | L | NP-12 | 1.x |
 | NP-14 | Android | ARM64 Vulkan build with a cross-build workflow | XL | NP-13 | 1.x |
+| NP-15 | Vulkan first | Vulkan becomes the renderer new work lands on, then the default once it matches D3D12; D3D12 stays as a maintained fallback | L | NP-12.4 | 1.x |
 | NP-X | Quality and tooling | C++ tests and SDK build in CI, pruned tools, hardware qualification | ongoing | — | all |
 | NP-D | Distribution and first run | Faster first build, launcher core reusable across platforms, signing | ongoing | — | all |
 
 ## Working order
+
+**Renderer direction (decided 2026-09-30): Vulkan first (NP-15).** Vulkan is
+the only renderer every planned platform can use (Linux and the Deck, macOS
+through MoltenVK, Android), and it now renders FH1 correctly at 1x and 2x.
+New renderer work lands on Vulkan first; D3D12 stays the default for players
+and moves to maintenance (bug fixes, and new features only where they are
+cheap) until Vulkan meets NP-15's switch gates, then Vulkan becomes the
+default with D3D12 kept as a fallback setting for a release or two. Order
+from here: the Linux build (NP-12.1, 12.2, 12.7), then NP-15's performance
+and preparation items, since the Deck needs both.
 
 **Current goal (set 2026-09-28): finish NP-0, then NP-1.** NP-0 shrinks the
 code every later slice touches, and NP-1 is both the largest remaining
@@ -157,6 +168,7 @@ runs on the development machine (Ryzen 7 5800X, RTX 4080).
 | NP-13 | The macOS port (ARM64 baseline, MoltenVK, app bundle) | A Mac and its toolchain |
 | NP-14 | The Android port (NDK build, fibers, mobile GPU, sideloading; running NP-14.3 on a 16 KiB kernel) | The Android NDK and a reference device |
 | NP-X | AMD, Intel and lower-end GPU qualification; an unscripted drive before each train | Hardware and a player |
+| NP-15.6 | The Vulkan renderer on an AMD and an Intel GPU, a gate for making Vulkan the default | That hardware |
 
 ## NP-0 Clean native baseline
 
@@ -505,6 +517,30 @@ within an agreed margin of the Windows 1x baseline on comparable hardware.
 | NP-14.4 | Mobile GPU constraints: descriptor-indexing fallback, BC decode when compression is absent, storage-buffer bucketing, MSAA 2x emulation, Adreno and Mali workarounds. | L |
 | NP-14.5 | Cross-build and sideload workflow: codegen and NDK cross-compile on the user's PC from their own ISO, on-device or PC-side pack production keyed by the device features hash, nothing derived distributed. | M |
 | NP-14.6 | Performance and thermals on the reference device; touch and controller input; scale fixed at 1x. | L |
+
+## NP-15 Vulkan first
+
+**Why.** Every platform after Windows runs Vulkan, and maintaining two
+renderers at the same level costs twice. The executor core is already shared
+(NP-9.0), so maturing one backend is mostly the Vulkan layer: its speed, its
+shader preparation, the D3D12-only fast paths, and qualification beyond the
+one NVIDIA card it has run on.
+
+| Item | Work | Size |
+| --- | --- | --- |
+| NP-15.1 | Race-frame parity: the Vulkan race frame is about 19.6 ms against 16.7 ms on D3D12, bound by the GPU commands thread, where `UpdateBindings` and the driver's descriptor allocation and writes are the largest share. Move per-draw descriptor work into the recorded stream (push descriptors or dynamic uniform buffers, descriptor buffers where supported), then re-profile. | M–L |
+| NP-15.2 | Shader preparation for Vulkan like D3D12's: produce a Vulkan pack for the chosen scales at preparation time and validate it with a compiler-free route (every pipeline from the pack, no translation), keyed by the Vulkan device and driver, so play never stutters on a first-seen shader. | M |
+| NP-15.3 | Port the D3D12-only texture-cache fast paths (reflection-cube import, scaled 32-bpp, linear video upload) and anything else the D3D12 executor does natively that Vulkan does through the generic texture cache. | M |
+| NP-15.4 | Higher scales on Vulkan: every route at 1x to 4x with no executor skips, and NP-4.10's window and shadow artifacts checked on Vulkan too. | M |
+| NP-15.5 | Switch the default: the launcher and SETTINGS offer RENDERER (VULKAN, DIRECT3D 12), new installs start on Vulkan, and a device loss or failed start falls back to D3D12 with a notice. | S |
+| NP-15.6 | Vendor qualification of the Vulkan path on an AMD and an Intel GPU (see Needs a person). | S (+hardware) |
+
+**Gates for the default switch (NP-15.5).** The race frame within 5% of
+D3D12 or better on the baseline machine; every render-test route passing on
+Vulkan at 1x to 4x, and the golden frame replays matching D3D12 within
+tolerance; a validated Vulkan pack with zero runtime translations on the
+route matrix; at least one AMD or Intel GPU qualified; no open Vulkan-only
+visual bug.
 
 ## NP-X Quality and tooling (ongoing)
 
