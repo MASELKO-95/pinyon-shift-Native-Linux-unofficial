@@ -30,6 +30,7 @@ sha256 = "DB40DF605ADE49A6"  # prefix of the supported default.xex SHA-256
 "time_of_day.from_world" = 0x82486CF0    # r3 world -> r3 its time-of-day object ([world + 232])
 "time_of_day.request" = 0x825C7DD0       # r3 time-of-day object, f1 target seconds (add 86400 to pass midnight), f2 game seconds per second
 "time_of_day.update" = 0x825CB718        # per-frame clock and lighting update, r3 time-of-day object
+"world.game_mode" = 0x824878D0           # r3 world -> r3 game mode ([[world + 124] + 56]): 17 free roam, 3 inside an event (entry, race, results)
 
 # Byte offsets inside title objects, as the hooks above read them.
 [offsets]
@@ -41,3 +42,5 @@ sha256 = "DB40DF605ADE49A6"  # prefix of the supported default.xex SHA-256
 "world.time_of_day" = 232                # time-of-day object pointer in the world
 "time_of_day.seconds" = 10488            # float seconds since midnight, advanced by time_of_day.update
 "time_of_day.script_hold" = 10505        # u8, set while a script holds the time (setters then skip it)
+"world.session" = 124                    # pointer to the object holding the game mode
+"session.game_mode" = 56                 # u32 game mode, as world.game_mode returns it
