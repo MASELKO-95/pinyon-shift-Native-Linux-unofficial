@@ -4,10 +4,13 @@
 // on a CPU that has it, so this matters when a build is copied elsewhere.
 #if defined(PINYON_SHIFT_CPU_BASELINE_FMA) && (defined(__x86_64__) || defined(_M_X64))
 
-#include <cpuid.h>
 #include <cstdint>
 
 #include "platform/host_platform.h"
+
+// After the standard headers: its __cpuid macro would break the MSVC
+// runtime's intrin.h declaration of the function of the same name.
+#include <cpuid.h>
 
 namespace {
 
