@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>The Xbox 360 release of <i>Forza Horizon</i>, recompiled to run natively on Windows.</b><br>
-  Built on your own PC from your own disc. 120 fps at 1x, internal resolutions up to 4K.
+  Built on your own PC from your own disc, with internal resolutions up to 4K.
 </p>
 
 Pinyon Shift is not an emulator. The game's PowerPC code is translated ahead of
@@ -105,12 +105,12 @@ window, from the same save.
 | 3x (3840×2160) | 35 fps (28.7 ms) | **57 fps** (17.5 ms) |
 
 Median frame rate and frame time over the race's last 600 frames, its busiest
-part. At 1x on Vulkan the first 40 seconds of the race hold 120 fps (8.3 ms).
+part.
 
-Vulkan is the default because it records draws on a second thread, which is
-what reaches 120 fps at 1x. At 3x and above the GPU is the limit, and there
-Direct3D 12 is faster: the Vulkan backend spends more GPU time on the game's
-multisampled surfaces. The optional single-sampled surfaces
+Vulkan is the default because it records draws on a second thread, which makes
+it the faster backend at 1x and 2x. At 3x and above the GPU is the limit, and
+there Direct3D 12 is faster: the Vulkan backend spends more GPU time on the
+game's multisampled surfaces. The optional single-sampled surfaces
 (`fh1_scaled_msaa_single_sample`) bring Vulkan at 3x to about 24 ms. How the
 Vulkan path got here is in the [performance backlog](docs/PERFORMANCE_BACKLOG.md).
 
@@ -127,9 +127,9 @@ Vulkan path got here is in the [performance backlog](docs/PERFORMANCE_BACKLOG.md
 6. Choose **Play Pinyon Shift**. Press **F6** in game for settings.
 
 **Graphics** in the launcher picks the graphics API (Vulkan, recommended, or
-Direct3D 12) and the internal resolution before the game starts. On Vulkan 1x
-runs at up to 120 fps and 2x above 60; for 3x and 4x choose Direct3D 12, which
-prepares shader packs for your computer before its first start. Everything else, including the
+Direct3D 12) and the internal resolution before the game starts. Vulkan is
+faster at 1x and 2x; for 3x and 4x choose Direct3D 12, which prepares shader
+packs for your computer before its first start. Everything else, including the
 **Performance 120** and **Quality 60** presets, is in the in-game settings.
 
 The preview launcher is not code-signed yet, so Windows may identify it as an
