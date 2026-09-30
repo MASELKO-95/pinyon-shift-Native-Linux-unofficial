@@ -1,7 +1,22 @@
 # Performance backlog: 4K at 120 fps on Vulkan
 
-Status: **open; created 2026-09-30** at `dev` checkpoint `58473da` (ShiftGlue
-`b9a5de0`). This backlog replaces the performance items of the
+Status: **worked through on 2026-09-30; every item is taken, measured and
+dropped, sized and deferred, or waiting on a person.** Created 2026-09-30 at
+`dev` checkpoint `58473da` (ShiftGlue `b9a5de0`).
+
+**Outcome.** The Vulkan race at 1x went from 20.8 ms (48 fps) to a frame
+mean of 10.4-11.8 ms (about 90 fps): the GPU commands thread was split into
+a decoder and a recorder, and the recorder's cost per draw fell from about
+2.9 to 1.85 us through push descriptors, sampler, binding and lookup memos,
+executor target skips, presenting from the submission worker and a register
+state epoch. At 3x the GPU holds the frame at 22-24 ms (from 29.1) with
+single-sampled MSAA surfaces. The GRAPHICS PRESET row sets PERFORMANCE 120
+(1x on Vulkan with FSR 1 to the display) and QUALITY 60. The 120 fps target
+is not met: the recorder needs about 7 ms against its 9.4, what remains of
+it has no single item above 8 %, and PB-2.12's analysis shows a new draw
+ABI would not close that; native 4K (3x) at 120 would need about three
+times this GPU. What is left for a person is the GPU trace (PB-0.4) and the
+visible-window check of the presets and fidelity trades (PB-5). This backlog replaces the performance items of the
 [native port backlog](NATIVE_PORT_BACKLOG.md) (NP-2, NP-3, NP-9 and the
 speed half of NP-15) with one target and one plan. It was written from a
 read-only audit of the renderer, the command processor, the recompiled guest
