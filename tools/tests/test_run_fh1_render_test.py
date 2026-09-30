@@ -150,6 +150,30 @@ class Fh1RenderTestRunnerTests(unittest.TestCase):
             self.assertEqual(b"pipelines", (copied / "fh1-native-pipelines-v1.bin").read_bytes())
             self.assertFalse((copied / "unrelated.pnsp").exists())
 
+    def test_seeds_vulkan_shader_and_pipeline_storage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            storage = source / "cache" / "shaders" / "shareable"
+            storage.mkdir(parents=True)
+            (storage / "4D5309C9.xsh").write_bytes(b"ucode")
+            (storage / "4D5309C9.fbo.vk.xpso").write_bytes(b"pipelines")
+            (storage / "4D5309C9.rtv.d3d12.xpso").write_bytes(b"d3d12")
+            (storage / "pack.pnsp").write_bytes(b"pack")
+            destination = root / "destination"
+
+            self.assertEqual(
+                ["4D5309C9.fbo.vk.xpso", "4D5309C9.xsh"],
+                MODULE.seed_vulkan_shader_storage(source, destination),
+            )
+            copied = destination / "cache" / "shaders" / "shareable"
+            self.assertEqual(b"ucode", (copied / "4D5309C9.xsh").read_bytes())
+            self.assertEqual(b"pipelines", (copied / "4D5309C9.fbo.vk.xpso").read_bytes())
+            self.assertFalse((copied / "4D5309C9.rtv.d3d12.xpso").exists())
+            self.assertFalse((copied / "pack.pnsp").exists())
+            with self.assertRaises(ValueError):
+                MODULE.seed_vulkan_shader_storage(root / "empty", destination)
+
     def test_seeds_only_fh1_pipeline_prewarm_allowlist(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

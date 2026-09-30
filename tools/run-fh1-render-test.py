@@ -63,6 +63,30 @@ def seed_fh1_shader_storage(source: Path, destination: Path) -> list[str]:
     return list(names)
 
 
+def seed_vulkan_shader_storage(source: Path, destination: Path) -> list[str]:
+    """Copy the seed's Vulkan shader (.xsh) and pipeline (.fbo.vk.xpso) storage.
+
+    The Vulkan backend translates at run time and recreates the stored
+    pipelines at start, so a route seeded with the storage of an earlier run
+    renders the race without compiling shaders on the way, which is what a
+    performance measurement needs.
+    """
+    source_directory = source / "cache" / "shaders" / "shareable"
+    names = sorted(
+        path.name
+        for pattern in ("*.xsh", "*.fbo.vk.xpso")
+        for path in source_directory.glob(pattern)
+        if path.is_file()
+    )
+    if not names:
+        raise ValueError(f"missing Vulkan shader storage below {source_directory}")
+    destination_directory = destination / "cache" / "shaders" / "shareable"
+    destination_directory.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        shutil.copy2(source_directory / name, destination_directory / name)
+    return names
+
+
 def seed_fh1_pipeline_prewarm(source: Path, destination: Path) -> str:
     name = "fh1-gpu-prewarm-v3.txt"
     source_path = source / "cache" / name
@@ -518,6 +542,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         if args.seed_pipeline_prewarm
         else None
     )
+    seeded_vulkan_shader_storage = (
+        seed_vulkan_shader_storage(state_root, run_state_root)
+        if args.seed_vulkan_shader_storage
+        else []
+    )
     # Each pack is staged under its own name, so packs for several scales can
     # be present for a run that switches scale.
     staged_shader_packs = []
@@ -842,6 +871,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "shader_capture": shader_capture,
         "seeded_shader_storage": seeded_shader_storage,
         "seeded_pipeline_prewarm": seeded_pipeline_prewarm,
+        "seeded_vulkan_shader_storage": seeded_vulkan_shader_storage,
         "opening_movies_included": args.include_opening_movies,
         "performance": performance,
         "comparisons": comparisons,
@@ -883,6 +913,10 @@ def main() -> int:
     )
     parser.add_argument("--seed-shader-storage", action="store_true")
     parser.add_argument("--seed-pipeline-prewarm", action="store_true")
+    parser.add_argument(
+        "--seed-vulkan-shader-storage", action="store_true",
+        help="copy the seed's Vulkan shader and pipeline storage into the run",
+    )
     parser.add_argument("--require-zero-shader-misses", action="store_true")
     parser.add_argument("--include-opening-movies", action="store_true")
     parser.add_argument("--timeout", type=int)
