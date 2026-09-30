@@ -286,9 +286,9 @@ std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
   std::vector<MenuRow> rows;
   // PB-5: whole setups at once; any other combination reads CUSTOM. Both
   // render on Vulkan with the split GPU commands thread. The 120 fps preset
-  // renders at 1x (the GPU needs about 6.4 ms a frame there) and scales to
-  // the display with FSR 1; 2x needs about 12 ms, so it holds 60 (3x is
-  // GPU-bound at about 24 ms).
+  // renders at 1x and scales to the display with FSR 1; at 2x the race's
+  // busiest part runs at a 12.7 ms median (79 fps), so it holds 60. At 3x
+  // Vulkan is GPU-bound at about 29 ms, where Direct3D 12 takes 17.5 ms.
   rows.push_back(Setting("GRAPHICS PRESET",
                          {{"PERFORMANCE 120",
                            {{"gpu_backend", "\"vulkan\""},

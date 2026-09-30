@@ -418,7 +418,7 @@
                                     <ComboBoxItem Tag="vulkan">Vulkan · recommended</ComboBoxItem>
                                     <ComboBoxItem Tag="d3d12">Direct3D 12</ComboBoxItem>
                                 </ComboBox>
-                                <TextBlock Text="Vulkan records draws on a second thread and reaches 120 fps at 1×. Direct3D 12 prepares shader packs before the first start."
+                                <TextBlock Text="Vulkan records draws on a second thread and reaches 120 fps at 1×. Direct3D 12 is faster at 3× and above, and prepares shader packs before its first start."
                                            FontSize="11.5" Foreground="{StaticResource MutedBrush}" Margin="0,8,0,0"
                                            TextWrapping="Wrap" LineHeight="17"/>
                             </StackPanel>
@@ -431,7 +431,7 @@
                                     <ComboBoxItem Tag="3">3× · 3840 × 2160 (experimental)</ComboBoxItem>
                                     <ComboBoxItem Tag="4">4× · 5120 × 2880 (experimental)</ComboBoxItem>
                                 </ComboBox>
-                                <TextBlock Text="1× holds 120 fps on Vulkan; 2× holds 60. Output is scaled to your display, with FSR 1 if chosen in game."
+                                <TextBlock Text="On Vulkan 1× runs at up to 120 fps and 2× above 60; at 3× and 4× choose Direct3D 12. Output is scaled to your display, with FSR 1 if chosen in game."
                                            FontSize="11.5" Foreground="{StaticResource MutedBrush}" Margin="0,8,0,0"
                                            TextWrapping="Wrap" LineHeight="17"/>
                             </StackPanel>
