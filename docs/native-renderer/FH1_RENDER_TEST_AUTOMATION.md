@@ -125,11 +125,14 @@ runs, so confirm a candidate with `poke` in a run that found it; delete the
 snapshots afterwards (1.5 GB for three). For that, `mark <frame>` keeps a
 copy of the title's committed virtual heap pages (0x00010000-0x7EFFFFFF,
 about 110 MB in free roam) in memory, and `scanpoke <frame> <min> <max>
-<float> [<min step> <max step>]` pokes every float in `[min, max]` that rose
-by the same step (within 2 %) between each pair of three or more marks, then
-records `fh1.render_test.scanpoke` with the count and the first 64 virtual
-addresses. Poking hundreds of values can crash the title; narrow the range
-and step first.
+<float> [<min step> <max step> [<first> <count>]]` pokes every float in
+`[min, max]` that rose by the same step (within 2 %) between each pair of
+three or more marks, or only candidates `first` to `first + count - 1`, then
+records `fh1.render_test.scanpoke` with the count and the first 64 candidates
+as `index:address:value:step` (`*` where poked). Poking hundreds of values
+can crash the title: list them first with a count of 0, then narrow the
+range and step. The time of day was found this way, in seconds
+(`scanpoke <frame> 40000 50000 79200 200 350` turns free roam to night).
 `hostclick <frame> <left|right> <x> <y>` moves the pointer and clicks at
 `(x, y)` in the title's 1280x720 layout space, mapped onto the painted guest
 output, which is the space the host UI lays its rows out in. The host UI
