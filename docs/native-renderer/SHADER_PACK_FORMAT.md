@@ -199,6 +199,23 @@ next launch. Two rounds from recorded misses took `fh1-race-sync`,
 `fh1-buy-car` and `fh1-rewind-sync` to zero pack misses. The records are
 game-derived microcode and stay in the local state like the pack.
 
+The preparation route runs on wall-clock time (`# clock-hz 60`), so how far
+the game gets between its scripted presses depends on the machine. The
+producer run translates and compiles as it goes, while the compiler-free
+check runs from the finished pack, so on a slow machine (issue #316: an Intel
+HD 520 laptop with a two-core i5-6300U) the check can reach shader variants
+the producer run never drew. Graphics preparation therefore passes
+`-AllowShaderMisses`: such misses become a warning that counts them by stage
+and lists the first ones, and `production.json` records them under
+`shader_misses`. The game handles them like any other pack miss. A crash, a
+route that does not complete, a native executor that drew nothing and a pack
+that did not load stay fatal. Each fatal error names the route's result,
+exit code and runtime log, which `setup-error.json` also records
+(`build_log`, `exit_code`, `output_tail`). Production without the switch
+still requires zero misses. Each route launch's hang guard is
+`-RouteTimeoutSeconds` (1800 s by default; it was 600 s and covers startup and
+the disc corpus translation as well as the route).
+
 ## Public-source boundary
 
 Extracted guest shaders, translated bytecode, manifests containing guest shader

@@ -185,10 +185,14 @@ try {
         if (-not $sourceCache -or -not (Test-ArtifactSet $ready $sourceCache $Key)) {
             $relativeWork = '.local/native-renderer/managed/run-' + [Guid]::NewGuid().ToString('N')
             $work = Resolve-PinyonLocalPath -RelativePath $relativeWork
+            # The preparation route runs on wall-clock time, so a slower machine
+            # can reach shaders in the compiler-free check that its producer run
+            # did not (issue #316). Those are a warning: the game drops the draw,
+            # records the miss and the next launch prepares the pack with it.
             & (Join-Path $PSScriptRoot 'produce-fh1-artifacts.ps1') -WorkRoot $relativeWork `
                 -RenderTestScript (Join-Path $root 'config/render-tests/fh1-shader-preparation.fh1test') `
                 -GameRoot $GameRoot -BuildDirectory $BuildDirectory -RuntimeConfig $config -Scale $Scale -Hidden -IncludeOpeningMovies `
-                -AllowPipelineDiscovery -SeedShaderCacheRoot $(if ($seedLegacyCache) { $legacyShaderCache }) `
+                -AllowPipelineDiscovery -AllowShaderMisses -SeedShaderCacheRoot $(if ($seedLegacyCache) { $legacyShaderCache }) `
                 -ShaderMissDir $(if ($misses.Count) { $missDirectory }) -JsonEvents:$JsonEvents |
                 ForEach-Object { if ($_ -is [string] -and $_.StartsWith('::pinyon::')) { Write-Output $_ } }
             $report = Read-Receipt (Join-Path $work 'production.json')

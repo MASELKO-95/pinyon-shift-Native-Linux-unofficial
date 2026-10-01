@@ -37,6 +37,9 @@ only the supplied route completed without shader-pack misses, runtime shader
 translation, synchronous pipeline creation, or missing prewarmed pipelines.
 It does not establish image parity, full gameplay coverage, or driver-cache
 cold-start performance. `gameplay_ready` deliberately remains false.
+`-AllowShaderMisses`, which graphics setup passes, turns route pack misses
+into a warning recorded under `shader_misses`; a run with misses is never
+`route-validated` (see [pack misses](SHADER_PACK_FORMAT.md#pack-misses-and-self-repair)).
 
 ## Verified results
 

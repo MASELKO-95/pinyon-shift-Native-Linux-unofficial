@@ -48,8 +48,10 @@ class ShaderPreparationTests(unittest.TestCase):
             for name in ("prepare-fh1-shaders.ps1", "release-common.ps1"):
                 shutil.copyfile(ROOT / "tools" / name, root / "tools" / name)
             (root / "tools/produce-fh1-artifacts.ps1").write_text(r'''
-param($WorkRoot, $RenderTestScript, $GameRoot, $BuildDirectory, $RuntimeConfig, $Scale, $SeedShaderCacheRoot, $ShaderMissDir, [switch]$Hidden, [switch]$JsonEvents, [switch]$IncludeOpeningMovies, [switch]$AllowPipelineDiscovery)
+param($WorkRoot, $RenderTestScript, $GameRoot, $BuildDirectory, $RuntimeConfig, $Scale, $SeedShaderCacheRoot, $ShaderMissDir, [switch]$Hidden, [switch]$JsonEvents, [switch]$IncludeOpeningMovies, [switch]$AllowPipelineDiscovery, [switch]$AllowShaderMisses)
 $root = Split-Path $PSScriptRoot -Parent
+# Setup must tolerate route-coverage pack misses (issue #316).
+if (-not $AllowShaderMisses) { throw 'graphics setup must allow route shader misses' }
 Add-Content (Join-Path $root 'calls.txt') $(if ($ShaderMissDir) { "$Scale+misses" } else { $Scale })
 $work = Join-Path $root $WorkRoot
 $cache = Join-Path $work 'strict-state/cache'
@@ -167,6 +169,176 @@ function Get-Process { return $null }
             run()
             self.assertEqual(len(calls()), 11)
 
+
+
+ROUTE_VERDICT_COMMAND = r'''
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+# Load only the production script's top-level functions; nothing else runs.
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($env:PINYON_TEST_SCRIPT, [ref]$null, [ref]$null)
+foreach ($function in $ast.FindAll({ param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $false)) {
+    . ([ScriptBlock]::Create($function.Extent.Text))
+}
+$launch = $env:PINYON_TEST_LAUNCH | ConvertFrom-Json
+try {
+    $verdict = Get-CompilerFreeRouteVerdict $env:PINYON_TEST_STATE $launch ([int64]$env:PINYON_TEST_ENTRIES) `
+        ($env:PINYON_TEST_ALLOW -eq '1')
+    [Console]::Out.Write(($verdict | ConvertTo-Json -Depth 6 -Compress))
+} catch {
+    [Console]::Out.Write(([ordered]@{ error = $_.Exception.Message
+        build_log = $_.Exception.Data['build_log']; exit_code = $_.Exception.Data['exit_code']
+        step = $_.Exception.Data['step']; excerpt = @($_.Exception.Data['error_excerpt']) } |
+        ConvertTo-Json -Compress))
+}
+'''
+
+
+@unittest.skipUnless(shutil.which("powershell"), "Windows PowerShell required")
+class CompilerFreeRouteVerdictTests(unittest.TestCase):
+    """Issue #316: route misses on another GPU must not fail graphics setup,
+    and a real failure must say what failed and where the log is."""
+
+    PACK_ENTRIES = 24862
+    NORMAL = {"result": "normal-exit", "process_id": 7, "exit_code": 0}
+
+    def run_verdict(self, state, launch=None, allow=True, entries=PACK_ENTRIES):
+        environment = os.environ.copy()
+        environment.update(
+            PINYON_TEST_SCRIPT=str(ROOT / "tools/produce-fh1-artifacts.ps1"),
+            PINYON_TEST_STATE=str(state), PINYON_TEST_ENTRIES=str(entries),
+            PINYON_TEST_LAUNCH=json.dumps(launch or self.NORMAL),
+            PINYON_TEST_ALLOW="1" if allow else "0",
+        )
+        result = subprocess.run(["powershell", "-NoProfile", "-Command", ROUTE_VERDICT_COMMAND],
+                                env=environment, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return json.loads(result.stdout)
+
+    def make_state(self, root, *, complete=True, loaded=PACK_ENTRIES, ignored=None,
+                   misses=(), records=(), draws=1200):
+        state = pathlib.Path(root) / "strict-state"
+        logs = state / "logs"
+        logs.mkdir(parents=True)
+        events = []
+        if complete:
+            events.append({"event": "fh1.render_test.complete", "frame": "7260"})
+        else:
+            events.append({"event": "fh1.render_test.failure", "reason": "capture_failed"})
+        (logs / "20260930T000000Z-p7.jsonl").write_text(
+            "".join(json.dumps(event) + "\n" for event in events), encoding="utf-8")
+        lines = ["[info] FH1 native executor enabled: native"]
+        if ignored:
+            lines.append(f"[warning] Ignoring FH1 precompiled shader pack x.pnsp: {ignored}")
+        if loaded is not None:
+            lines.append(f"[info] Loaded {loaded} FH1 precompiled shaders from x.pnsp")
+        lines += [f"[error] FH1 precompiled shader pack miss for {miss}" for miss in misses]
+        lines.append(f"[info] FH1 native executor frame=9000 draws={draws} resolves=10")
+        (logs / "runtime.log").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        if records:
+            directory = state / "cache/fh1-shader-misses"
+            directory.mkdir(parents=True)
+            for name in records:
+                (directory / name).write_bytes(b"")
+        return state
+
+    def test_clean_route_passes_without_a_warning(self):
+        with tempfile.TemporaryDirectory(prefix="pinyon-route-") as directory:
+            verdict = self.run_verdict(self.make_state(directory), allow=False)
+            self.assertIsNone(verdict["warning"])
+            self.assertEqual(verdict["shader_misses"]["count"], 0)
+            self.assertEqual(verdict["execution"]["draws"], 1200)
+            self.assertEqual(verdict["exit_code"], 0)
+
+    def test_route_misses_are_a_counted_warning_during_setup(self):
+        misses = ("1111111111111111/0000000000000007", "2222222222222222/000000000000003F",
+                  "geometry shader 00000012", "1111111111111111/0000000000000007")
+        records = ("vertex-1111111111111111-0000000000000007.bin",
+                   "pixel-2222222222222222-000000000000003F.bin",
+                   "geometry-0000000000000000-0000000000000012.bin")
+        with tempfile.TemporaryDirectory(prefix="pinyon-route-") as directory:
+            state = self.make_state(directory, misses=misses, records=records)
+            verdict = self.run_verdict(state)
+            found = verdict["shader_misses"]
+            self.assertEqual((found["count"], found["vertex"], found["pixel"], found["geometry"]),
+                             (3, 1, 1, 1))
+            self.assertTrue(found["tolerated"])
+            self.assertIn("1111111111111111/0000000000000007", found["examples"])
+            self.assertIn("3 shader variants missing from the pack", verdict["warning"])
+            self.assertIn("1 vertex, 1 pixel, 1 geometry", verdict["warning"])
+            self.assertTrue(pathlib.Path(verdict["runtime_log"]).samefile(state / "logs/runtime.log"))
+
+            # A maintainer's strict production still rejects them, with detail.
+            failure = self.run_verdict(state, allow=False)
+            self.assertIn("3 shader variants missing from the pack", failure["error"])
+            self.assertIn("Route result: normal-exit, exit code 0", failure["error"])
+            self.assertIn("Runtime log:", failure["error"])
+            self.assertTrue(pathlib.Path(failure["build_log"]).samefile(state / "logs/runtime.log"))
+            self.assertEqual(failure["exit_code"], 0)
+            self.assertEqual(failure["step"], "compiler-free route check")
+            self.assertIn("FH1 precompiled shader pack miss for geometry shader 00000012",
+                          failure["excerpt"])
+
+    def test_pack_that_did_not_load_stays_fatal_and_names_the_reason(self):
+        with tempfile.TemporaryDirectory(prefix="pinyon-route-") as directory:
+            state = self.make_state(directory, loaded=None, ignored="configuration mismatch",
+                                    misses=("1111111111111111/0000000000000007",))
+            failure = self.run_verdict(state)
+            self.assertIn("did not load the produced shader pack", failure["error"])
+            self.assertIn("configuration mismatch", failure["error"])
+            self.assertIn("configuration mismatch", failure["excerpt"][0])
+        with tempfile.TemporaryDirectory(prefix="pinyon-route-") as directory:
+            failure = self.run_verdict(self.make_state(directory, loaded=12))
+            self.assertIn(f"it loaded 12 of {self.PACK_ENTRIES} shaders", failure["error"])
+        with tempfile.TemporaryDirectory(prefix="pinyon-route-") as directory:
+            failure = self.run_verdict(self.make_state(directory, loaded=None))
+            self.assertIn("did not find the staged pack", failure["error"])
+
+    def test_crashes_and_incomplete_routes_report_exit_code_and_log(self):
+        crash = {"result": "crash", "process_id": 7, "exit_code": -1073741819,
+                 "crash_id": "c1", "bundle": "C:/crash/c1.zip"}
+        with tempfile.TemporaryDirectory(prefix="pinyon-route-") as directory:
+            state = self.make_state(directory)
+            failure = self.run_verdict(state, launch=crash)
+            self.assertIn("The compiler-free route failed.", failure["error"])
+            self.assertIn("exit code -1073741819", failure["error"])
+            self.assertIn("C:/crash/c1.zip", failure["error"])
+            self.assertEqual(failure["exit_code"], -1073741819)
+        with tempfile.TemporaryDirectory(prefix="pinyon-route-") as directory:
+            failure = self.run_verdict(self.make_state(directory, complete=False))
+            self.assertIn("did not complete (capture_failed)", failure["error"])
+            self.assertIn("Runtime log:", failure["error"])
+        with tempfile.TemporaryDirectory(prefix="pinyon-route-") as directory:
+            failure = self.run_verdict(self.make_state(directory, draws=0))
+            self.assertIn("did not execute the route", failure["error"])
+
+    def test_logged_native_commands_tolerate_stderr_warnings(self):
+        # Windows PowerShell turns redirected stderr into a terminating error
+        # under 'Stop'; a CMake or compiler warning must not fail setup.
+        with tempfile.TemporaryDirectory(prefix="pinyon-native-") as directory:
+            log = pathlib.Path(directory) / "build.log"
+            command = ROUTE_VERDICT_COMMAND.split("$launch =")[0] + r'''
+$codes = @(
+    (Invoke-LoggedNative $env:PINYON_TEST_LOG { cmd /c "echo warning from the build 1>&2" }),
+    (Invoke-LoggedNative $env:PINYON_TEST_LOG { cmd /c "echo failed 1>&2 & exit 3" }),
+    (Invoke-LoggedNative $env:PINYON_TEST_LOG { & 'pinyon-command-that-does-not-exist' }))
+[Console]::Out.Write($codes -join ',')
+'''
+            environment = os.environ.copy()
+            environment.update(PINYON_TEST_SCRIPT=str(ROOT / "tools/produce-fh1-artifacts.ps1"),
+                               PINYON_TEST_LOG=str(log))
+            result = subprocess.run(["powershell", "-NoProfile", "-Command", command],
+                                    env=environment, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(result.stdout, "0,3,-1")
+            self.assertTrue(log.is_file())
+
+    def test_route_launches_use_the_long_hang_guard(self):
+        script = (ROOT / "tools/produce-fh1-artifacts.ps1").read_text(encoding="utf-8")
+        self.assertIn("RenderTestTimeoutSeconds = $RouteTimeoutSeconds", script)
+        self.assertRegex(script, r"\[int\]\$RouteTimeoutSeconds = (\d{4,})")
+        self.assertGreaterEqual(
+            int(re.search(r"\[int\]\$RouteTimeoutSeconds = (\d+)", script).group(1)), 1800)
 
 
 class ShaderPreparationKeyInputTests(unittest.TestCase):
