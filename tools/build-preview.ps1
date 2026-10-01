@@ -67,6 +67,12 @@ Write-PinyonEvent build 62 'Building the local code generator.' -JsonEvents:$Jso
 $memoryBytes = Get-PinyonTotalMemoryBytes
 $memoryText = if ($memoryBytes -gt 0) { ", $([Math]::Round($memoryBytes / 1GB)) GB memory" } else { '' }
 Write-PinyonEvent build 62 "Compiling with $Parallel parallel jobs ($([Environment]::ProcessorCount) logical processors$memoryText)." -JsonEvents:$JsonEvents
+# A folder moved since the last build (a portable install) is configured afresh.
+foreach ($buildTree in @((Join-Path $sdkRoot 'out/build/win-amd64'), (Join-Path $root "out/build/$previewPreset"))) {
+    if (Reset-PinyonRelocatedCMakeCache -BuildDirectory $buildTree) {
+        Write-PinyonEvent build 62 "The build folder moved; configuring $buildTree again." -JsonEvents:$JsonEvents
+    }
+}
 Push-Location $sdkRoot
 try {
     Invoke-PinyonBuildCommand $environment.CMake @('--preset', 'win-amd64',

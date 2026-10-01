@@ -35,6 +35,27 @@ fails, choose **Open logs** in the launcher and attach `launcher.log` to the bug
 report. This log contains build output and local paths, but no game data or
 generated source. Never attach game files or generated source.
 
+## A portable install cannot start or build
+
+A launcher with `portable.txt` beside it (or started with `--portable`) keeps
+everything in the `data` folder next to it; see "Portable install" in the
+README.
+
+- **"Portable folder is not writable"**: the launcher folder is read-only for
+  your account, typically because it was extracted into Program Files or onto
+  read-only media. Move the whole folder somewhere you own, such as
+  `D:\Games\PinyonShift`, or delete `portable.txt` to install under
+  `%LOCALAPPDATA%\PinyonShift` instead.
+- **"Portable folder path is too long"**: the build creates files about 185
+  characters below `data`, and Git, CMake and the compilers stop at Windows'
+  260-character limit. Move the launcher folder so the `data` folder's path is
+  70 characters or fewer, for example `D:\PinyonShift\data`. An existing build
+  in a deeper folder still plays.
+- **After moving the folder** the first rebuild configures the build folder
+  again and recompiles, which takes about as long as the first build. Playing
+  an existing build needs no rebuild. On a PC without Visual Studio Build
+  Tools, the next build installs them again.
+
 ## Gameplay stutters
 
 Some one-time stutter while the preview encounters new effects is expected in
@@ -100,13 +121,14 @@ arranges a private transfer for a specific investigation.
 ## Start over
 
 Close the launcher and delete `.local` and `out` from the repository or the
-launcher source folder under `%LOCALAPPDATA%\PinyonShift`. Your original ISO is
-outside those folders and is never deleted by project scripts.
+launcher source folder under `%LOCALAPPDATA%\PinyonShift` (for a portable
+install, under `data\source` beside the launcher). Your original ISO is outside
+those folders and is never deleted by project scripts.
 
 ## Uninstall completely
 
 Close the launcher and preview, then delete the extracted launcher folder and
-`%LOCALAPPDATA%\PinyonShift`. The preview does not install a Windows service or
-registry startup entry. Microsoft Visual Studio Build Tools are shared system
-tools and should be removed separately from **Installed apps** only if no other
-development work uses them. The original ISO remains wherever you stored it.
+`%LOCALAPPDATA%\PinyonShift`; a portable install is only its own folder. The
+preview does not install a Windows service or registry startup entry. Microsoft
+Visual Studio Build Tools are shared system tools and should be removed
+separately from **Installed apps** only if no other development work uses them. The original ISO remains wherever you stored it.

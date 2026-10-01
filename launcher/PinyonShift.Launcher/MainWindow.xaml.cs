@@ -35,6 +35,11 @@ public partial class MainWindow : Window
     private CrashReport? _pendingReport;
     private bool _busy;
     private bool _canChooseInstallRoot;
+    // Set when this launcher keeps everything beside itself (PortableMode); the data folder.
+    private string? _portableRoot;
+    private readonly bool _portableRequested = PortableMode.IsRequested(
+        AppContext.BaseDirectory, Environment.GetCommandLineArgs().Skip(1));
+    private readonly List<string> _portableNotes = [];
     private View _panel = View.Setup;
     private View _panelBeforeGraphics = View.Setup;
 
@@ -53,6 +58,12 @@ public partial class MainWindow : Window
         RouteList.ItemsSource = _steps;
         BuildLocationRun.Text = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PinyonShift");
+        if (_portableRequested)
+        {
+            BuildLocationPrefixRun.Text = "Portable: ";
+            BuildLocationRun.Text = PortableMode.DataRoot(AppContext.BaseDirectory);
+            ChooseInstallRootButton.Visibility = Visibility.Collapsed;
+        }
         VersionRun.Text = $"Pinyon Shift {typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "dev"}";
         Loaded += MainWindow_Loaded;
         StateChanged += (_, _) =>
@@ -97,13 +108,19 @@ public partial class MainWindow : Window
             StartSessionLog(_repositoryRoot);
             ShowReleaseVersion();
             GraphicsSettingsButton.Visibility = Visibility.Visible;
-            BuildLocationRun.Text = _stateRoot;
+            ShowBuildLocation();
+            foreach (var note in _portableNotes) AppendLog(note);
+            _portableNotes.Clear();
             AppendLog($"Release source: {_repositoryRoot}");
             AppendLog($"Preview state: {_stateRoot}");
             StageControllerMappings();
             DetectExistingBuild();
             DetectPendingReport();
             UpdatePrimaryButton();
+        }
+        catch (PortableFolderException ex)
+        {
+            SetFailure("Portable folder is not writable", ex.Message);
         }
         catch (Exception ex)
         {
@@ -115,6 +132,14 @@ public partial class MainWindow : Window
             IsEnabled = true;
             UpdatePrimaryButton();
         }
+    }
+
+    // "Portable: <data folder>" for a portable install, otherwise where the saves are.
+    private void ShowBuildLocation()
+    {
+        BuildLocationPrefixRun.Text = _portableRoot is null ? "Installs to " : "Portable: ";
+        BuildLocationRun.Text = _portableRoot ?? _stateRoot ?? BuildLocationRun.Text;
+        ChooseInstallRootButton.Visibility = _portableRoot is null ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void ShowReleaseVersion()
@@ -149,7 +174,9 @@ public partial class MainWindow : Window
             Title = "Choose your Forza Horizon disc image",
             Filter = "Xbox 360 disc image (*.iso)|*.iso|All files (*.*)|*.*",
             CheckFileExists = true,
-            Multiselect = false
+            Multiselect = false,
+            // A portable install leaves no trace in the user's recent files.
+            AddToRecent = _portableRoot is null
         };
         if (dialog.ShowDialog(this) == true)
             SelectDiscImage(dialog.FileName);
@@ -216,6 +243,11 @@ public partial class MainWindow : Window
 
         if (_busy || _repositoryRoot is null)
             return;
+        if (_portableRoot is not null && PortableMode.PathLengthProblem(_portableRoot) is { } pathTooLong)
+        {
+            SetFailure("Portable folder path is too long", pathTooLong);
+            return;
+        }
 
         _busy = true;
         ChooseInstallRootButton.IsEnabled = false;
@@ -653,6 +685,10 @@ public partial class MainWindow : Window
                 string.IsNullOrWhiteSpace(report.Bundle) || string.IsNullOrWhiteSpace(report.IssueUrl)) return;
             var bundle = Path.GetFullPath(report.Bundle);
             var reportsPrefix = reportsRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            // A folder moved since the crash (a portable install) still holds the bundle in its
+            // own reports folder.
+            if (!bundle.StartsWith(reportsPrefix, StringComparison.OrdinalIgnoreCase))
+                bundle = Path.Combine(reportsRoot, Path.GetFileName(bundle));
             if (!bundle.StartsWith(reportsPrefix, StringComparison.OrdinalIgnoreCase) || !File.Exists(bundle)) return;
             if (!Uri.TryCreate(report.IssueUrl, UriKind.Absolute, out var issueUri) ||
                 issueUri.Scheme != Uri.UriSchemeHttps || issueUri.Host != "github.com" ||
@@ -706,6 +742,9 @@ public partial class MainWindow : Window
             if (IsRoot(directory))
             {
                 _canChooseInstallRoot = false;
+                _portableRoot = null;
+                if (_portableRequested)
+                    _portableNotes.Add("Portable mode does not apply to a repository checkout; using the checkout.");
                 return directory;
             }
             var parent = Directory.GetParent(directory);
@@ -718,13 +757,30 @@ public partial class MainWindow : Window
             throw new FileNotFoundException("Keep pinyon-shift-source.zip beside the launcher, or run the launcher from a repository checkout.");
 
         var version = typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "dev";
-        var installRoot = Environment.GetEnvironmentVariable("PINYON_SHIFT_INSTALL_ROOT");
-        _canChooseInstallRoot = string.IsNullOrWhiteSpace(installRoot);
-        if (_canChooseInstallRoot)
-            installRoot = selectedInstallRoot ?? (File.Exists(InstallRootPreference)
-                ? (await File.ReadAllTextAsync(InstallRootPreference)).Trim() : null);
-        if (string.IsNullOrWhiteSpace(installRoot))
-            installRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PinyonShift");
+        string? installRoot;
+        if (_portableRequested)
+        {
+            // Everything beside the launcher, derived again at every start so the folder can move;
+            // no preference file and no environment override.
+            installRoot = PortableMode.DataRoot(AppContext.BaseDirectory);
+            _canChooseInstallRoot = false;
+            PortableMode.EnsureWritable(installRoot);
+            foreach (var ignored in PortableMode.ApplyToEnvironment(installRoot))
+                _portableNotes.Add($"Portable mode ignores {ignored}.");
+            if (PortableMode.PathLengthProblem(installRoot) is { } pathTooLong)
+                _portableNotes.Add(pathTooLong);
+            _portableRoot = installRoot;
+        }
+        else
+        {
+            installRoot = Environment.GetEnvironmentVariable("PINYON_SHIFT_INSTALL_ROOT");
+            _canChooseInstallRoot = string.IsNullOrWhiteSpace(installRoot);
+            if (_canChooseInstallRoot)
+                installRoot = selectedInstallRoot ?? (File.Exists(InstallRootPreference)
+                    ? (await File.ReadAllTextAsync(InstallRootPreference)).Trim() : null);
+            if (string.IsNullOrWhiteSpace(installRoot))
+                installRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PinyonShift");
+        }
         var destination = Path.Combine(Path.GetFullPath(installRoot), "source", version);
         var payloadHash = await Task.Run(async () =>
         {

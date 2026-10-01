@@ -165,7 +165,7 @@
                                         ToolTip="Existing files and saves stay where they are."/>
                                 <TextBlock VerticalAlignment="Center" FontSize="12.5" Foreground="{StaticResource MutedBrush}"
                                            TextTrimming="CharacterEllipsis">
-                                    <Run Text="Installs to "/><Run x:Name="BuildLocationRun" Text="%LOCALAPPDATA%\PinyonShift"
+                                    <Run x:Name="BuildLocationPrefixRun" Text="Installs to "/><Run x:Name="BuildLocationRun" Text="%LOCALAPPDATA%\PinyonShift"
                                                                    Foreground="{StaticResource FogBrush}"/>
                                 </TextBlock>
                             </DockPanel>

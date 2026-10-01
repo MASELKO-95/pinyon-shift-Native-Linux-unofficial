@@ -570,6 +570,26 @@ function Enter-PinyonBuildEnvironment {
     }
 }
 
+# A CMake build tree records its absolute location, and CMake refuses to configure one
+# that was moved (a portable install taken to another drive or PC). Such a tree is
+# configured afresh; the build then recompiles what the new paths invalidate. Returns
+# whether the cache was removed.
+function Reset-PinyonRelocatedCMakeCache {
+    param([Parameter(Mandatory)] [string]$BuildDirectory)
+    $cache = Join-Path $BuildDirectory 'CMakeCache.txt'
+    if (-not (Test-Path -LiteralPath $cache -PathType Leaf)) { return $false }
+    $line = Select-String -LiteralPath $cache -Pattern '^CMAKE_CACHEFILE_DIR:INTERNAL=(.+)$' |
+        Select-Object -First 1
+    if ($null -eq $line) { return $false }
+    $recorded = [IO.Path]::GetFullPath($line.Matches[0].Groups[1].Value.Trim()).TrimEnd('\', '/')
+    $current = [IO.Path]::GetFullPath($BuildDirectory).TrimEnd('\', '/')
+    if ([string]::Equals($recorded, $current, [StringComparison]::OrdinalIgnoreCase)) { return $false }
+    Remove-Item -LiteralPath $cache -Force
+    $cmakeFiles = Join-Path $BuildDirectory 'CMakeFiles'
+    if (Test-Path -LiteralPath $cmakeFiles) { Remove-Item -LiteralPath $cmakeFiles -Recurse -Force }
+    return $true
+}
+
 function Get-PinyonGit {
     $root = Get-PinyonRepoRoot
     $config = Get-PinyonReleaseToolchain

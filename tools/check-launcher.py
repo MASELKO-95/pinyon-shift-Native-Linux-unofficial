@@ -1,5 +1,9 @@
 """Exercise the real WPF launcher without launching a game or touching user saves.
 
+Covers folder selection, portable installs (portable.txt), preservation of existing
+files, graphics preparation, progress and layout. Every file it writes is in a
+temporary project directory; it never reads or writes %LOCALAPPDATA%\\PinyonShift.
+
 Run on Windows with .NET 8+: python tools/check-launcher.py [screenshot-directory]
 """
 import pathlib
@@ -70,6 +74,51 @@ class Check {
         Require(!button.IsEnabled, "Folder can change during build/play");
         typeof(MainWindow).GetField("_busy", flags)!.SetValue(window, false);
         update.Invoke(window, null);
+
+        // Portable installs: portable.txt beside the launcher keeps everything in its data folder.
+        var portableType = typeof(MainWindow).Assembly.GetType("PinyonShift.Launcher.PortableMode")!;
+        object Portable(string name, params object[] arguments) {
+            try { return portableType.GetMethod(name)!.Invoke(null, arguments); }
+            catch (TargetInvocationException ex) { throw ex.InnerException!; }
+        }
+        var marker = Path.Combine(root, "portable.txt");
+        Require(!(bool)Portable("IsRequested", root, new string[0])!, "Portable without marker");
+        Require((bool)Portable("IsRequested", root, new[] { "--PORTABLE" })!, "--portable ignored");
+        File.WriteAllText(marker, "");
+        Require((bool)Portable("IsRequested", root, new string[0])!, "portable.txt ignored");
+        Environment.SetEnvironmentVariable("PINYON_SHIFT_INSTALL_ROOT", selected);
+        Environment.SetEnvironmentVariable("PINYON_SHIFT_STATE_ROOT", Path.Combine(root, "elsewhere"));
+        var portableWindow = new MainWindow();
+        var dataRoot = Path.Combine(Path.TrimEndingDirectorySeparator(root), "data");
+        Require(((System.Windows.Documents.Run)portableWindow.FindName("BuildLocationPrefixRun")).Text == "Portable: "
+            && ((System.Windows.Documents.Run)portableWindow.FindName("BuildLocationRun")).Text == dataRoot,
+            "Portable location not shown");
+        var portableInstalled = ((Task<string>)resolver.Invoke(portableWindow, [selected])!).GetAwaiter().GetResult();
+        Require(portableInstalled.StartsWith(Path.Combine(dataRoot, "source") + Path.DirectorySeparatorChar),
+            $"Portable install outside its data folder: {portableInstalled}");
+        Require(!(bool)typeof(MainWindow).GetField("_canChooseInstallRoot", flags)!.GetValue(portableWindow)!,
+            "Portable install offers another folder");
+        Require((string)typeof(MainWindow).GetField("_portableRoot", flags)!.GetValue(portableWindow) == dataRoot,
+            "Portable root not recorded");
+        Require(Environment.GetEnvironmentVariable("PINYON_SHIFT_INSTALL_ROOT") is null
+            && Environment.GetEnvironmentVariable("PINYON_SHIFT_STATE_ROOT") is null, "Overrides leak out of portable");
+        Require(Environment.GetEnvironmentVariable("TEMP") == Path.Combine(dataRoot, "temp")
+            && Environment.GetEnvironmentVariable("TMP") == Path.Combine(dataRoot, "temp")
+            && Directory.Exists(Path.Combine(dataRoot, "temp")), "Portable children write temporary files elsewhere");
+        var stateResolver = typeof(MainWindow).GetMethod("ResolveStateRoot", BindingFlags.Static | BindingFlags.NonPublic)!;
+        Require((string)stateResolver.Invoke(null, [portableInstalled])! ==
+            Path.Combine(portableInstalled, ".local", "preview"), "Portable saves outside the data folder");
+        Require(Directory.GetFiles(dataRoot, ".write-test-*").Length == 0, "Portable write probe left behind");
+        Require(Portable("PathLengthProblem", @"D:\Games\PinyonShift\data") is null, "Short portable folder refused");
+        Require(Portable("PathLengthProblem", @"D:\" + new string('x', 80) + @"\data") is string,
+            "Long portable folder accepted");
+        try { Portable("EnsureWritable", Path.Combine(sentinel, "data")); throw new Exception("Unwritable portable folder accepted"); }
+        catch (Exception ex) when (ex.GetType().Name == "PortableFolderException") {
+            Require(ex.Message.Contains("cannot write") && ex.Message.Contains("portable.txt"), "Unclear portable error");
+        }
+        File.Delete(marker);
+        portableWindow.Close();
+
         var state = Path.Combine(root, "fresh-state");
         var executable = Path.Combine(root, "out/build/win-amd64-release/pinyon_shift.exe");
         Directory.CreateDirectory(Path.GetDirectoryName(executable)!);
@@ -82,11 +131,15 @@ class Check {
         var game = Path.Combine(root, ".local/game/base/default.xex");
         Directory.CreateDirectory(Path.GetDirectoryName(game)!);
         File.WriteAllText(game, "test game");
+        // Direct3D 12 prepares shader packs before the first start.
+        Directory.CreateDirectory(Path.Combine(state, "config"));
+        File.WriteAllText(Path.Combine(state, "config/pinyon_shift.toml"),
+            "pinyon_shift_config_schema = 27\ngpu_backend = \"d3d12\"\n");
         typeof(MainWindow).GetMethod("DetectExistingBuild", flags)!.Invoke(window, null);
-        var primary = (Button)window.FindName("PrimaryButton");
-        Require((string)primary.Content == "PREPARE & PLAY", "Existing build skips graphics preparation");
-        var marker = Path.Combine(root, ".pinyon-source-sha256");
-        File.WriteAllText(marker, "current payload");
+        var primary = (TextBlock)window.FindName("PrimaryButtonText");
+        Require(primary.Text == "Prepare and play", "Existing build skips graphics preparation");
+        var payloadMarker = Path.Combine(root, ".pinyon-source-sha256");
+        File.WriteAllText(payloadMarker, "current payload");
         typeof(MainWindow).GetMethod("DetectExistingBuild", flags)!.Invoke(window, null);
         Require(typeof(MainWindow).GetField("_gameExecutable", flags)!.GetValue(window) is null,
             "Old build without matching release provenance is considered ready");
@@ -96,21 +149,41 @@ class Check {
             "Matching release build cannot prepare graphics");
         var output = typeof(MainWindow).GetMethod("HandleOutput", flags)!;
         output.Invoke(window, ["::pinyon::{\"stage\":\"shaders\",\"percent\":20,\"message\":\"Preparing graphics\"}"]);
-        Require((string)primary.Content == "PREPARING…", "Shader progress is not shown");
+        Require(primary.Text == "Preparing…", "Shader progress is not shown");
         output.Invoke(window, ["::pinyon::{\"stage\":\"play\",\"percent\":100,\"message\":\"Starting game\"}"]);
-        Require((string)primary.Content == "GAME RUNNING", "Launch status does not follow preparation");
-        var label = (TextBlock)window.FindName("BuildLocationText");
+        Require(primary.Text == "Game running", "Launch status does not follow preparation");
+
+        // A crash report made before the folder moved is found in the new reports folder.
+        var reports = Path.Combine(state, "reports");
+        Directory.CreateDirectory(reports);
+        var bundleName = "PinyonShift-abc123-20260930T000000Z.zip";
+        File.WriteAllText(Path.Combine(reports, bundleName), "bundle");
+        File.WriteAllText(Path.Combine(reports, "pending-report.json"), System.Text.Json.JsonSerializer.Serialize(new {
+            crash_id = "abc123", bundle = @"Z:\moved\away\data\source\0.1.1\.local\preview\reports\" + bundleName,
+            issue_url = "https://github.com/arcanite24/pinyon-shift/issues/new?title=x" }));
+        typeof(MainWindow).GetMethod("DetectPendingReport", flags)!.Invoke(window, null);
+        var pending = typeof(MainWindow).GetField("_pendingReport", flags)!.GetValue(window);
+        Require(pending is not null && (string)pending.GetType().GetProperty("Bundle")!.GetValue(pending)! ==
+            Path.Combine(Path.GetFullPath(reports), bundleName), "Moved crash report lost");
+        typeof(MainWindow).GetField("_pendingReport", flags)!.SetValue(window, null);
+
+        var label = (System.Windows.Documents.Run)window.FindName("BuildLocationRun");
         label.Text = @"D:\Games\A deliberately long installation directory\PinyonShift\source\0.1.0\.local\preview";
         ((FrameworkElement)window.FindName("LogPanel")).Visibility = Visibility.Visible;
+        ((FrameworkElement)window.FindName("LogBox")).Visibility = Visibility.Visible;
+        ((FrameworkElement)window.FindName("SetupPanel")).Visibility = Visibility.Visible;
+        var headline = (FrameworkElement)window.FindName("HeadlineText");
         var log = (TextBox)window.FindName("LogTextBox");
         log.Text = "CMake Error: example failure\nThe complete diagnostic remains readable here.";
         var content = (FrameworkElement)window.Content;
-        ((Panel)content).Background = window.Background;
+        if (content is Panel contentPanel) contentPanel.Background = window.Background;
+        else if (content is Border contentBorder && contentBorder.Background is null) contentBorder.Background = window.Background;
         foreach (var size in new[] { new Size(1080, 720), new Size(920, 640) }) {
             content.Measure(size);
             content.Arrange(new Rect(size));
             content.UpdateLayout();
-            Require(log.TranslatePoint(new Point(), (UIElement)log.Parent).Y > 0, "Log overlaps heading");
+            Require(log.ActualHeight > 0 && log.TranslatePoint(new Point(), content).Y >=
+                headline.TranslatePoint(new Point(), content).Y + headline.ActualHeight, "Log overlaps heading");
             if (args.Length != 0) {
                 Directory.CreateDirectory(args[0]);
                 var bitmap = new RenderTargetBitmap((int)size.Width, (int)size.Height, 96, 96, PixelFormats.Pbgra32);
@@ -130,7 +203,7 @@ class Check {
         File.WriteAllText(Path.Combine(root, "tools/setup-preview.ps1"), "");
         Require(Path.TrimEndingDirectorySeparator(Resolve(selected)) == Path.TrimEndingDirectorySeparator(root)
             && !CanChoose(), "Checkout relocated");
-        Console.WriteLine("Launcher folder selection, preservation, graphics preparation, progress and layout passed.");
+        Console.WriteLine("Launcher folder selection, portable installs, preservation, graphics preparation, progress and layout passed.");
         window.Close();
     }
 }

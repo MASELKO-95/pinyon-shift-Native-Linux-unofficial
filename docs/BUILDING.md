@@ -55,4 +55,6 @@ To build the distributable launcher package:
 
 That package contains a self-contained launcher executable and a source archive.
 It deliberately excludes the compiled preview, generated translations, and all
-game content.
+game content. An empty `portable.txt` beside the extracted launcher (or
+`--portable` on its command line) makes it a portable install that keeps
+everything in a `data` folder beside it; see "Portable install" in the README.
