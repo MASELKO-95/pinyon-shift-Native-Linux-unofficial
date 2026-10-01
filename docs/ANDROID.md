@@ -67,8 +67,16 @@ crash reports and route output to `.local/android/device-logs/`.
 
 ## Controls
 
-A controller over Bluetooth or USB works as on the PC. Touch controls are not
-written yet.
+A controller (built in, Bluetooth or USB) works as on the PC. On a touch
+screen, on-screen controls appear at the first touch: a steering stick
+wherever the left thumb lands, throttle (RT) and brake (LT) under the right
+thumb, A, B, X, Y, the bumpers, Back and Start. They hide 20 seconds after the
+last touch, so a controller player never sees them
+(`pinyon_shift_touch_controls` turns them off).
+
+Android's Back button or gesture opens SETTINGS, and inside the menus it steps
+back; tap a row to open or change it. SETTINGS also holds the trainer (with
+cheats on), SAVE PHOTO and the achievements, which have keyboard keys on the PC.
 
 ## Troubleshooting
 
@@ -76,5 +84,6 @@ written yet.
 | --- | --- |
 | The app closes at once | The game files are not on the device: run `push-data`. |
 | `VULKAN_CAPABILITY_REPORT` in the log | The device's features, formats and memory, logged at every start; attach it to reports. |
-| Rectangles or point sprites missing | The device has no geometry shaders and the vertex-shader fallback is still being qualified (AP-2.2). |
+| RESOLUTION SCALE offers only 1X | Higher scales need resolve buffers larger than a phone's shared memory holds; `android_allow_resolution_scale` lifts the limit for testing. |
+| `skipped a resolve` in the log | A guest copy the renderer cannot pack yet (one is known, in the title screen's attract sequence); the frame continues without it. |
 | No sound | No output device could be opened; the game runs silently instead of stopping. |

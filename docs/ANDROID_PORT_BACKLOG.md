@@ -41,7 +41,9 @@ tunnel. Rows that need the reference device stay open.
 | AP-3.1, AP-3.2 lifecycle | In progress | SDL app events reach a lifecycle listener in the UI thread before SDL blocks; the window drops and recreates its surface; GPU and audio pause |
 | AP-3.3 storage | **Done** | `game/base` and `state` in the app's external files folder, set by the activity |
 | AP-3.6 fonts, crash reports, logs | **Done** | Roboto fallback; crash reports with library and offset; logs to logcat and `state/logs`; `pull-logs` |
-| AP-4.4 keyboard-only features | **Done** | SETTINGS (reachable from the pause menu with a pad) gains TRAINER and SAVE PHOTO beside ACHIEVEMENTS |
+| AP-4.2 on-screen pad | **Done (emulator)** | Stick, triggers, A/B/X/Y, bumpers, Back and Start drawn by the host UI and read as a synthetic pad on user 0; shown on a touch, hidden 20 s after; SDL's touch-made mouse events no longer reach the mouse-and-keyboard driver. The feel of the layout waits for a player (AP-4.4's human test) |
+| AP-4.3 touch in the host UI | **Done** | A tap focuses and activates the row under it; Android Back steps back and, with no menu up, opens SETTINGS |
+| AP-4.4 keyboard-only features | **Done** | SETTINGS (reachable from the pause menu with a pad, or with Back on a touch screen) gains TRAINER and SAVE PHOTO beside ACHIEVEMENTS |
 | AP-5 audio | Partial | Silent fallback when no output opens; the stream is tagged with the game role; latency unmeasured |
 | AP-6.1 tooling | **Done** | `pinyon.py android doctor/build/package/install/push-data/run/stop/pull-logs` |
 | AP-6.2 boundary | **Done** | Policy, launcher payload and `.gitignore` refuse Android binaries; tests |
@@ -51,7 +53,8 @@ tunnel. Rows that need the reference device stay open.
 | AP-2.5 memory at 1x | **Done (clamp)** | The draw resolution scale is clamped to 1x on Android (`android_allow_resolution_scale` overrides) and SETTINGS offers 1X only; budget logging waits for AP-7.0 |
 | AP-2.6 pipeline cache | **Done** | A `VkPipelineCache` per title, vendor, device and driver, saved 30 s after new pipelines and at shutdown; reloads on the emulator |
 | AP-8.1 routes from the PC | **Done** | `pinyon.py android run --route FILE --seed DIR --wait` isolates the state, pushes the seed, runs and judges the session (captures, failures, simulation time) |
-| AP-2.3, AP-2.4, AP-2.7, AP-3.4 (kill test), AP-3.5, AP-4.1 to AP-4.3, AP-4.5, AP-6.3, AP-7, AP-8.2, AP-8.3 | Open | Need the reference device (formats, BC, memory and thermals, controllers, touch) or a second GPU vendor |
+| AP-8.2 CI | **Done** | A CI job cross-compiles the runtime, the GPU plugin and the host tests for android-arm64 with the pinned NDK and no game files |
+| AP-2.3, AP-2.4, AP-2.7, AP-3.4 (kill test), AP-3.5, AP-4.1, AP-4.5, AP-6.3, AP-7, AP-8.3 | Open | Need the reference device (formats, BC, memory and thermals, controllers, touch) or a second GPU vendor |
 
 ### Findings from the emulator runs
 
