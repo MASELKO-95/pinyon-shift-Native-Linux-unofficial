@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 - 2026-10-01
+
+- Fixed setup and launches with Direct3D 12 stopping while preparing graphics
+  because the shader sources were looked up in a developer checkout's path.
+
 ## 0.3.0 - 2026-10-01
 
 - Rendered the game with a native renderer for *Forza Horizon* on Vulkan (the
