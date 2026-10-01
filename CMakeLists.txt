@@ -10,93 +10,75 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # SDL uses native Windows HID and XInput backends here. Its optional libusb
 # probe is for platforms/controllers that need direct USB access and should not
 # make a normal Windows build look like it has a missing dependency.
+if(ANDROID)
+    # Every library in the package is position independent, the generated
+    # code's object library included.
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
 if(WIN32)
     set(SDL_HIDAPI_LIBUSB OFF CACHE BOOL "Disable optional libusb HID backend on Windows" FORCE)
 endif()
 
 include(cmake/PinyonShiftRexGlue.cmake)
 
+set(PINYON_SHIFT_HOST_SOURCES
+    src/main.cpp
+    src/cpu_baseline_guard.cpp
+    src/fh1_render_test.cpp
+    src/pinyon_shift_app.cpp
+    src/pinyon_shift_diagnostics.cpp
+    src/pinyon_shift_runtime_hooks.cpp
+    src/save_backups.cpp
+    src/cheats.cpp
+    src/cheats_map.cpp
+    src/dlc_treasure_map.cpp
+    src/save/car_cards.cpp
+    src/save/live_profile.cpp
+    src/save/profile_body.cpp
+    src/mod/mod_host.cpp
+    src/mod/overlay_device.cpp
+    src/ui/fh1_ui_api.cpp
+    src/ui/ui_strings.cpp
+    src/ui/host_style.cpp
+    src/ui/hostui/fh1_archive.cpp
+    src/ui/hostui/glyph_atlas.cpp
+    src/ui/hostui/host_ui.cpp
+    src/ui/hostui/menu.cpp
+    src/ui/hostui/vector_font.cpp
+    src/ui/hostui/xds_texture.cpp
+    src/ui/settings_menu.cpp
+    src/ui/photo_export.cpp
+    src/ui/png_writer.cpp
+    src/ui/xam_dialogs.cpp
+    src/ui/achievements_menu.cpp
+    src/config/host_config.cpp
+    src/platform/host_platform.cpp
+    src/platform/sha256.cpp
+    ${REXSDK_DIR}/thirdparty/crypto/sha256.cpp
+    src/native_renderer/graphics_hooks.cpp
+    src/native_renderer/guest_output_renderer.cpp
+    src/native_renderer/shader_capture.cpp
+)
+
 if(PINYON_SHIFT_HOST_TESTS_ONLY)
     # No game target; the tests and tools below still build.
 elseif(WIN32)
     add_executable(pinyon_shift WIN32
-        src/main.cpp
-        src/cpu_baseline_guard.cpp
-        src/fh1_render_test.cpp
-        src/pinyon_shift_app.cpp
-        src/pinyon_shift_diagnostics.cpp
+        ${PINYON_SHIFT_HOST_SOURCES}
         src/crash_reporter_win.cpp
-        src/pinyon_shift_runtime_hooks.cpp
-        src/save_backups.cpp
-        src/cheats.cpp
-        src/cheats_map.cpp
-        src/dlc_treasure_map.cpp
-        src/save/car_cards.cpp
-        src/save/live_profile.cpp
-        src/save/profile_body.cpp
-        src/mod/mod_host.cpp
-        src/mod/overlay_device.cpp
-        src/ui/fh1_ui_api.cpp
-        src/ui/ui_strings.cpp
-        src/ui/host_style.cpp
-        src/ui/hostui/fh1_archive.cpp
-        src/ui/hostui/glyph_atlas.cpp
-        src/ui/hostui/host_ui.cpp
-        src/ui/hostui/menu.cpp
-        src/ui/hostui/vector_font.cpp
-        src/ui/hostui/xds_texture.cpp
-        src/ui/settings_menu.cpp
-        src/ui/photo_export.cpp
-        src/ui/png_writer.cpp
-        src/ui/xam_dialogs.cpp
-        src/ui/achievements_menu.cpp
-        src/config/host_config.cpp
-        src/platform/host_platform.cpp
-        src/platform/sha256.cpp
-        ${REXSDK_DIR}/thirdparty/crypto/sha256.cpp
-        src/native_renderer/graphics_hooks.cpp
-        src/native_renderer/guest_output_renderer.cpp
-        src/native_renderer/shader_capture.cpp
     )
+elseif(ANDROID)
+    # SDL's activity loads the game as libmain.so and calls its SDL_main; the
+    # runtime, the GPU plugin and the facades are libraries beside it.
+    add_library(pinyon_shift SHARED
+        ${PINYON_SHIFT_HOST_SOURCES}
+        src/crash_reporter_posix.cpp
+    )
+    set_target_properties(pinyon_shift PROPERTIES OUTPUT_NAME main)
 else()
     add_executable(pinyon_shift
-        src/main.cpp
-        src/cpu_baseline_guard.cpp
-        src/fh1_render_test.cpp
-        src/pinyon_shift_app.cpp
-        src/pinyon_shift_diagnostics.cpp
+        ${PINYON_SHIFT_HOST_SOURCES}
         src/crash_reporter_posix.cpp
-        src/pinyon_shift_runtime_hooks.cpp
-        src/save_backups.cpp
-        src/cheats.cpp
-        src/cheats_map.cpp
-        src/dlc_treasure_map.cpp
-        src/save/car_cards.cpp
-        src/save/live_profile.cpp
-        src/save/profile_body.cpp
-        src/mod/mod_host.cpp
-        src/mod/overlay_device.cpp
-        src/ui/fh1_ui_api.cpp
-        src/ui/ui_strings.cpp
-        src/ui/host_style.cpp
-        src/ui/hostui/fh1_archive.cpp
-        src/ui/hostui/glyph_atlas.cpp
-        src/ui/hostui/host_ui.cpp
-        src/ui/hostui/menu.cpp
-        src/ui/hostui/vector_font.cpp
-        src/ui/hostui/xds_texture.cpp
-        src/ui/settings_menu.cpp
-        src/ui/photo_export.cpp
-        src/ui/png_writer.cpp
-        src/ui/xam_dialogs.cpp
-        src/ui/achievements_menu.cpp
-        src/config/host_config.cpp
-        src/platform/host_platform.cpp
-        src/platform/sha256.cpp
-        ${REXSDK_DIR}/thirdparty/crypto/sha256.cpp
-        src/native_renderer/graphics_hooks.cpp
-        src/native_renderer/guest_output_renderer.cpp
-        src/native_renderer/shader_capture.cpp
     )
 endif()
 

@@ -16,6 +16,9 @@ tools/prepare-fh1-shaders.ps1 (skip it with --skip-shader-preparation); on
 Linux the game runs on Vulkan and translates shaders itself, so there is
 nothing to prepare. A crash on Windows is bundled by
 tools/create-crash-report.ps1; elsewhere the exit code is reported.
+
+`android` builds, installs and runs the game on an Android device from this
+PC (AP-6.1); see tools/pinyon_android.py.
 """
 
 from __future__ import annotations
@@ -29,6 +32,9 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import pinyon_android  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 WINDOWS = os.name == "nt"
@@ -180,7 +186,10 @@ def main(argv: list[str] | None = None) -> int:
     start.add_argument("--timeout", type=float, help="seconds before the game is stopped")
     start.add_argument("--json", action="store_true", help="print the result as JSON")
     start.add_argument("game_arguments", nargs="*", help="after --, passed to the game")
+    pinyon_android.add_parser(commands)
     args = parser.parse_args(argv)
+    if args.command == "android":
+        return pinyon_android.main(args)
     try:
         result = launch(args)
     except LaunchError as error:

@@ -28,6 +28,9 @@ std::vector<std::filesystem::path> SystemFontCandidates() {
 #elif defined(__APPLE__)
   candidates.push_back("/System/Library/Fonts/Supplemental/Arial.ttf");
   candidates.push_back("/Library/Fonts/Arial.ttf");
+#elif defined(__ANDROID__)
+  candidates.push_back("/system/fonts/Roboto-Regular.ttf");
+  candidates.push_back("/system/fonts/RobotoStatic-Regular.ttf");
 #else
   candidates.push_back("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
   candidates.push_back("/usr/share/fonts/TTF/DejaVuSans.ttf");

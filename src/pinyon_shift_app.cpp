@@ -2,6 +2,7 @@
 #include "pinyon_shift_init.h"
 #include "fh1_render_test.h"
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <regex>
@@ -382,7 +383,11 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
 std::unique_ptr<rex::ui::WindowedApp> PinyonShiftApp::Create(
     rex::ui::WindowedAppContext& context) {
   if (!pinyon_shift::diagnostics::InitializeEarly()) {
+#if REX_PLATFORM_WIN32
     ExitProcess(ERROR_NOT_SUPPORTED);
+#else
+    std::_Exit(EXIT_FAILURE);
+#endif
   }
   return std::unique_ptr<PinyonShiftApp>(
       new PinyonShiftApp(context, "pinyon_shift", PPCImageConfig));

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "package": "com.pinyonshift.fh1",
+  "activity": "com.pinyonshift.fh1.PinyonShiftActivity",
+  "abi": "arm64-v8a",
+  "min_sdk": 33,
+  "target_sdk": 35,
+  "android_sdk": {
+    "ndk": "29.0.14206865",
+    "build_tools": "36.0.0",
+    "platform": "android-36",
+    "packages": [
+      "ndk;29.0.14206865",
+      "build-tools;36.0.0",
+      "platforms;android-36",
+      "platform-tools"
+    ]
+  },
+  "jdk_major": 17,
+  "configure_preset": "android-arm64-release"
+}
