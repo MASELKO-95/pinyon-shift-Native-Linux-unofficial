@@ -9,6 +9,18 @@
   Built on your own PC from your own disc, with internal resolutions up to 4K.
 </p>
 
+<p align="center">
+  <a href="https://github.com/arcanite24/pinyon-shift/releases/latest"><b>Download the launcher</b></a>
+  ·
+  <a href="#play">How to play</a>
+  ·
+  <a href="#roadmap">Roadmap</a>
+</p>
+
+<p align="center">
+  <img src=".github/launcher-ready.png" alt="The Pinyon Shift launcher, ready to play: Vulkan at 1x (1280 × 720), with Play and Settings buttons" width="800">
+</p>
+
 Pinyon Shift is not an emulator. The game's PowerPC code is translated ahead of
 time into C++ with [ShiftGlue](https://github.com/arcanite24/shiftglue-sdk), our
 fork of ReXGlue, and compiled for x86-64 on your computer. The GPU command stream
@@ -21,10 +33,10 @@ the pinned ShiftGlue submodule needed to create the preview on your own
 computer. It does **not** contain the game, game assets, generated translations
 or a prebuilt game executable.
 
-> **Preview.** Rendering regressions, accelerated crowd animations at high frame
-> rates, and slowdowns in some areas remain possible. See the latest
-> [preview release notes](docs/releases/0.2.0-preview.3.md) for what the last
-> published build contains.
+> **Early days.** Rendering regressions, accelerated crowd animations at high
+> frame rates, and slowdowns in some areas remain possible. See the
+> [0.3.0 release notes](docs/releases/0.3.0.md) for what the latest release
+> contains and its known limitations.
 
 ## Highlights
 
@@ -121,14 +133,18 @@ Vulkan path got here is in the [performance backlog](docs/PERFORMANCE_BACKLOG.md
 ## Play
 
 1. Download `PinyonShift-Launcher.zip` from the latest release.
-2. Extract the two files to a folder and run `PinyonShift.Launcher.exe`.
+2. Extract the two files to a folder and run `PinyonShiftLauncher.exe`.
 3. Drop the ISO you personally dumped from a supported original disc onto the
    launcher, or choose it with **Choose ISO**.
-4. Confirm ownership, then choose **Verify & Build**.
+4. Confirm ownership, then choose **Verify and build**.
 5. Leave the launcher open while it installs the Windows build tools and builds
    the preview. The first build can take 20–60 minutes and needs roughly 25 GB of
    free disk space.
-6. Choose **Play Pinyon Shift**. Press **F6** in game for settings.
+6. Choose **Play**. Press **F6** in game for settings.
+
+<p align="center">
+  <img src=".github/launcher-settings.png" alt="The launcher's Settings panel: graphics API, internal resolution, output scaling, the resulting resolutions and the Treasure Map toggle" width="800">
+</p>
 
 **Settings** in the launcher picks the graphics API (Vulkan, recommended, or
 Direct3D 12), the internal resolution and the output scaling (bilinear, CAS or
@@ -153,8 +169,8 @@ the disc locally, generates the translation locally and compiles the executable
 locally. Administrator permission is requested only if Visual Studio Build Tools
 must be installed.
 
-To build on another drive, use **Change folder** under **Local build** in the
-packaged launcher. The launcher remembers your choice for subsequent launches.
+To build on another drive, choose **Change** next to **Installs to** on the
+setup screen of the packaged launcher. The launcher remembers your choice for subsequent launches.
 This selects an installation; it does not move an existing installation or save.
 You can also override the remembered location from PowerShell:
 
@@ -167,15 +183,52 @@ Source, downloaded tools, extracted game data and the default save and cache
 tree live beneath that folder. Existing installations and saves are not moved;
 an existing `PINYON_SHIFT_STATE_ROOT` override still takes precedence for saves
 and caches. Launchers inside a repository checkout continue to use that
-checkout. This is a custom build location, not a portable binary distribution:
-Microsoft Build Tools still need system-drive space, and generated CMake paths
-are tied to the build location.
+checkout. This is a custom build location, not a portable install: the choice
+is remembered in `%LOCALAPPDATA%\PinyonShift\install-root.txt`, and Microsoft
+Build Tools still need system-drive space.
 
-If setup fails, `.local/logs/setup-error.json` includes the failed command's
-exit code, build-log path and last 80 output lines. The complete configure and
-build logs are in the same folder. Include the first actual compiler or CMake
-error when reporting a failure; the final "build failed" line alone cannot
-identify it.
+If setup fails, the launcher shows which step failed, its exit code, the first
+real compiler, CMake or file-copy error from that step's log and a hint for
+common causes (a full disk, low memory, antivirus, a file in use). The same
+report is saved in `.local/logs/setup-error.json`, next to the complete logs.
+Include that report when filing an issue; the final "build failed" line alone
+cannot identify the cause.
+
+### Portable install
+
+To keep everything in one folder you can move or carry, put an empty file named
+`portable.txt` next to `PinyonShiftLauncher.exe` (or start the launcher with
+`--portable` for a single run). The launcher then keeps the release source,
+downloaded build tools, the build, logs, crash reports, saves, settings,
+photos, save backups and shader caches in a `data` folder beside itself, and
+the setup screen reads **Portable:** followed by that folder:
+
+```text
+PinyonShift\
+  PinyonShiftLauncher.exe
+  pinyon-shift-source.zip
+  portable.txt
+  data\source\<version>\                  release source, tools, build, setup logs
+  data\source\<version>\.local\preview\   saves, settings, game logs, crash reports
+  data\temp\                              temporary files of setup and crash reports
+```
+
+Nothing is written to `%LOCALAPPDATA%\PinyonShift` or the registry, and
+`PINYON_SHIFT_INSTALL_ROOT` and `PINYON_SHIFT_STATE_ROOT` are ignored. No
+absolute path is stored: the launcher finds every location from its own folder
+at each start, so the whole folder can move to another drive or Windows PC. A
+build moved this way plays as it is; the next rebuild (after an update)
+configures the moved build folder afresh and recompiles.
+
+Extract a portable install into a folder you can write to, such as
+`D:\Games\PinyonShift`: the launcher refuses read-only locations like Program
+Files with an explanation. Keep the path short, too: the build creates files
+about 185 characters below `data`, so the launcher will not start a build when
+the `data` folder's path is longer than 70 characters. Outside the launcher's
+control are Visual Studio Build Tools (a system install, added again on another
+PC at its next build), the graphics driver's own shader cache, and the files
+.NET unpacks from the launcher into `%TEMP%\.net` when it starts (set
+`DOTNET_BUNDLE_EXTRACT_BASE_DIR` to a folder of your choice to move them too).
 
 ### Requirements
 
@@ -221,27 +274,45 @@ the launcher for Linux builds. See [Building](docs/BUILDING.md) and
 
 ## Roadmap
 
-Longer-term direction, in no particular order. The ordered plan, with vertical
-slices, sizes, dependencies and acceptance gates, is the
-[native port backlog](docs/NATIVE_PORT_BACKLOG.md); renderer performance work is
-in the [performance backlog](docs/PERFORMANCE_BACKLOG.md).
+Where the project is going; the open items are in no particular order. The
+ordered plan, with vertical slices, sizes, dependencies and acceptance gates,
+is the [native port backlog](docs/NATIVE_PORT_BACKLOG.md); renderer
+performance work is in the [performance backlog](docs/PERFORMANCE_BACKLOG.md).
+
+Done since 0.1:
+
+- [x] Change resolution and render scale while the game is running
+- [x] Apply graphics settings without restarting the preview (all but the
+  graphics API)
+- [x] Support ultrawide (21:9 and wider) displays, with a 16:9 HUD and a field
+  of view setting
+- [x] Ship a modding API for loading custom content: native plugins, file and
+  archive overrides, database patches and texture replacement
+- [x] Let mods add HUD labels, menu actions and replacement text
+- [x] Play in any of the disc's 18 languages
+- [x] Achievements, photo export, save backups and a trainer in game
+- [x] Support portable installs
+
+Next:
 
 - [ ] Lower the hardware requirements and qualify AMD and Intel GPUs
 - [ ] Fix the remaining rendering regressions
 - [ ] Keep crowd and purchase animations at the right speed above 30 fps
+- [ ] Hold 120 fps in every race, and reach 4K at 120 fps on Vulkan
 - [ ] Make the first build faster and fully validated
-- [ ] Support more disc regions and languages
-- [x] Change resolution and render scale while the game is running
-- [x] Apply graphics settings without restarting the preview (all but the
-  graphics API)
-- [ ] Support ultrawide (21:9 and wider) displays
-- [ ] Ship the UI extension API
-- [ ] Ship a modding API for loading custom content
-- [ ] Build for macOS and Linux
-- [ ] Port the runtime to Android
-- [ ] Ship a Steam Deck build
-- [ ] Support portable installs
+- [ ] Update to a new release from inside the launcher
+- [ ] Install, enable and order mods from the launcher
 - [ ] Sign the launcher and preview executables
+- [ ] Support more disc regions
+- [ ] Load the car-pack add-ons from your own Xbox 360 content
+- [ ] Import a save from an Xbox 360
+- [ ] More trainer options: unlock cars and events, and let any car enter any
+  event
+- [ ] Verify DualSense, Steam Input and variable refresh rate displays
+- [ ] Let mods add items to the game's own menus
+- [ ] Build for macOS and Linux
+- [ ] Ship a Steam Deck build
+- [ ] Port the runtime to Android
 - [ ] Import cars from *Forza Horizon 2*
 
 Measured findings and validation rules are in
