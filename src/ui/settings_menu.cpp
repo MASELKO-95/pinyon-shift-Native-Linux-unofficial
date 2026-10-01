@@ -946,6 +946,24 @@ std::unique_ptr<MenuScreen> SettingsPages::Root() {
     };
     rows.push_back(std::move(row));
   }
+  if (services_.trainer && pinyon_shift::cheats::Enabled()) {
+    MenuRow row;
+    row.label = "TRAINER";
+    row.activate = [self = shared_from_this()] {
+      self->host_ui_.Push(CreateTrainerMenu(self->host_ui_, self->config_));
+    };
+    rows.push_back(std::move(row));
+  }
+  if (services_.save_photo) {
+    MenuRow row;
+    row.label = "SAVE PHOTO";
+    // After the menu closes, so the photo is the game alone.
+    row.activate = [self = shared_from_this()] {
+      self->host_ui_.Close();
+      self->services_.save_photo();
+    };
+    rows.push_back(std::move(row));
+  }
   return std::make_unique<MenuScreen>("SETTINGS", std::move(rows));
 }
 

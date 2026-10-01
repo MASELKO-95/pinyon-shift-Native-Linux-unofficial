@@ -660,6 +660,12 @@ void PinyonShiftApp::OpenSettingsMenu() {
                ? std::pair{height * 16 / 9, height}
                : std::pair{width, width * 9 / 16};
   };
+  services.save_photo = [this] {
+    pinyon_shift::ui::SavePhoto(runtime() && runtime()->graphics_system()
+                                    ? runtime()->graphics_system()->presenter()
+                                    : nullptr);
+  };
+  services.trainer = true;
   host_ui_->Open(pinyon_shift::ui::CreateSettingsMenu(*host_ui_, *host_config_, services));
 }
 
