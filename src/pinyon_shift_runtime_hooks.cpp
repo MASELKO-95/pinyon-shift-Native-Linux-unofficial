@@ -4674,11 +4674,7 @@ static bool PinyonShiftGuestRangeReadable(uint32_t address, uint32_t size) {
   while (cursor <= end) {
     auto* host_address =
         memory->TranslateVirtual(static_cast<uint32_t>(cursor));
-    size_t region_length = page_size;
-    rex::memory::PageAccess host_access =
-        rex::memory::PageAccess::kNoAccess;
-    if (!rex::memory::QueryProtect(host_address, region_length, host_access) ||
-        host_access == rex::memory::PageAccess::kNoAccess) {
+    if (!rex::memory::IsHostReadable(host_address)) {
       return false;
     }
 

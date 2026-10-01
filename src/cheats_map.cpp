@@ -124,10 +124,7 @@ bool Readable(uint32_t address, uint32_t size) {
   uint64_t cursor = address;
   while (cursor <= end) {
     auto* host = memory->TranslateVirtual(static_cast<uint32_t>(cursor));
-    size_t length = page_size;
-    rex::memory::PageAccess access = rex::memory::PageAccess::kNoAccess;
-    if (!rex::memory::QueryProtect(host, length, access) ||
-        access == rex::memory::PageAccess::kNoAccess) {
+    if (!rex::memory::IsHostReadable(host)) {
       return false;
     }
     const size_t page_left = page_size - (reinterpret_cast<uintptr_t>(host) % page_size);
