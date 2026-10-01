@@ -1,7 +1,7 @@
 # Pinyon Shift
 
 <p align="center">
-  <img src=".github/pinyon-shift-logo.png" alt="Pinyon Shift logo" width="720">
+  <img src=".github/pinyon-shift-banner.png" alt="Pinyon Shift logo" width="800">
 </p>
 
 <p align="center">
