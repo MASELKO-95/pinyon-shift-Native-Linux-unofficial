@@ -51,6 +51,9 @@
 
         <!-- The title's 16:9 at any width; letterboxed by the presenter. -->
         <meta-data android:name="android.max_aspect" android:value="3.0" />
+        <!-- PERFORMANCE and BATTERY game modes (res/xml/game_mode_config.xml). -->
+        <meta-data android:name="android.game_mode_config"
+            android:resource="@xml/game_mode_config" />
 
         <activity
             android:name="com.pinyonshift.fh1.PinyonShiftActivity"

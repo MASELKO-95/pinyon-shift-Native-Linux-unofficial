@@ -280,8 +280,11 @@ def package(args: argparse.Namespace, tools: Tools | None = None) -> int:
     manifest = manifest.replace("<manifest ", f'<manifest package="{PACKAGE}" ', 1)
     (staging / "AndroidManifest.xml").write_text(manifest, encoding="utf-8")
     unsigned = staging / "unsigned.apk"
+    # The manifest's resources (the game mode config) compiled for the link.
+    resources = staging / "resources.zip"
+    run([tools.aapt2, "compile", "--dir", ROOT / "android" / "res", "-o", resources])
     run([tools.aapt2, "link", "-o", unsigned, "-I", tools.android_jar,
-         "--manifest", staging / "AndroidManifest.xml",
+         "--manifest", staging / "AndroidManifest.xml", resources,
          "--min-sdk-version", str(CONFIG["min_sdk"]),
          "--target-sdk-version", str(CONFIG["target_sdk"]),
          "--version-name", version_name, "--version-code", str(version_code),
