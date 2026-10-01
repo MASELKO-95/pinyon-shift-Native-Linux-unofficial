@@ -275,7 +275,8 @@ def package(args: argparse.Namespace, tools: Tools | None = None) -> int:
          "--manifest", staging / "AndroidManifest.xml",
          "--min-sdk-version", str(CONFIG["min_sdk"]),
          "--target-sdk-version", str(CONFIG["target_sdk"]),
-         "--version-name", version_name, "--version-code", str(version_code)])
+         "--version-name", version_name, "--version-code", str(version_code),
+         *(["--debug-mode"] if getattr(args, "debuggable", False) else [])])
 
     sdl_java = ROOT / "thirdparty" / "shiftglue-sdk" / "thirdparty" / "sdl3" / "android-project" \
         / "app" / "src" / "main" / "java"
@@ -504,7 +505,11 @@ def add_parser(commands) -> None:
     parser.add_argument("--install", action="store_true", help="install missing SDK packages")
     parser = command("build", build, "cross-compile the game and package the APK")
     parser.add_argument("--jobs", type=int)
-    command("package", package, "package already built libraries into the APK")
+    parser.add_argument("--debuggable", action="store_true",
+                        help="let adb attach (thread dumps with debuggerd, run-as)")
+    parser = command("package", package, "package already built libraries into the APK")
+    parser.add_argument("--debuggable", action="store_true",
+                        help="let adb attach (thread dumps with debuggerd, run-as)")
     command("install", install, "install the APK on the device")
     parser = command("push-data", push_data, "copy the extracted game files to the device")
     parser.add_argument("--game-root", type=Path)
