@@ -144,6 +144,8 @@ const char* PresenterName(rex::system::NativeGuestOutputPresenter presenter) {
   switch (presenter) {
     case rex::system::NativeGuestOutputPresenter::kNativeExecutor:
       return "native";
+    case rex::system::NativeGuestOutputPresenter::kNull:
+      return "null";
   }
   return "unknown";
 }
@@ -182,6 +184,8 @@ struct TestState {
   bool capture_complete = false;
   bool stopping = false;
   rex::ui::Presenter* presenter = nullptr;
+  // gpu_backend=null: no presenter, captures are skipped.
+  bool headless = false;
   rex::ui::WindowedAppContext* app_context = nullptr;
   rex::ui::Window* window = nullptr;
   std::function<void()> before_close;
@@ -571,6 +575,9 @@ uint64_t Fnv1a64(const std::vector<uint8_t>& data) {
   return hash;
 }
 
+void RecordCaptureEvent(const Capture& capture, uint32_t width, uint32_t height,
+                        const char* source, const std::string& raw_hash);
+
 bool WritePpm(const Capture& capture, const rex::ui::RawImage& image,
               const char* source, const char* suffix = "",
               bool record_event = true) {
@@ -592,6 +599,17 @@ bool WritePpm(const Capture& capture, const rex::ui::RawImage& image,
     return false;
   }
   if (record_event) {
+    std::ostringstream raw_hash;
+    raw_hash << std::hex << std::uppercase << std::setw(16) << std::setfill('0')
+             << Fnv1a64(image.data);
+    RecordCaptureEvent(capture, image.width, image.height, source, raw_hash.str());
+  }
+  return true;
+}
+
+void RecordCaptureEvent(const Capture& capture, uint32_t width, uint32_t height,
+                        const char* source, const std::string& raw_hash) {
+  {
     bool vehicle_pose_valid = false;
     float vehicle_x = 0.0f;
     float vehicle_y = 0.0f;
@@ -615,8 +633,8 @@ bool WritePpm(const Capture& capture, const rex::ui::RawImage& image,
        {"capture_end_elapsed_us", std::to_string(
            std::chrono::duration_cast<std::chrono::microseconds>(
                std::chrono::steady_clock::now() - g_test.clock_origin).count())},
-       {"width", std::to_string(image.width)},
-       {"height", std::to_string(image.height)},
+       {"width", std::to_string(width)},
+       {"height", std::to_string(height)},
        {"source", source},
        {"presenter", PresenterName(capture.presenter)},
        {"session_renderer", "native"},
@@ -624,14 +642,8 @@ bool WritePpm(const Capture& capture, const rex::ui::RawImage& image,
        {"vehicle_x", std::to_string(vehicle_x)},
        {"vehicle_y", std::to_string(vehicle_y)},
        {"vehicle_z", std::to_string(vehicle_z)},
-       {"raw_hash", [&] {
-          std::ostringstream text;
-          text << std::hex << std::uppercase << std::setw(16)
-               << std::setfill('0') << Fnv1a64(image.data);
-          return text.str();
-        }()}});
+       {"raw_hash", raw_hash}});
   }
-  return true;
 }
 
 bool WaitSatisfied(const WaitStep& wait) {
@@ -737,8 +749,13 @@ void Worker() {
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - g_test.clock_origin).count());
     rex::ui::RawImage image;
-    const bool captured = g_test.presenter->CaptureGuestOutput(image) &&
-                          WritePpm(capture, image, "guest_output");
+    // The null GPU backend draws nothing: the route runs, captures are noted.
+    const bool skipped = g_test.headless;
+    if (skipped) {
+      RecordCaptureEvent(capture, 0, 0, "none_null_gpu_backend", "");
+    }
+    const bool captured = skipped || (g_test.presenter->CaptureGuestOutput(image) &&
+                                      WritePpm(capture, image, "guest_output"));
     {
       std::lock_guard lock(g_test.mutex);
       if (!captured) {
@@ -1024,7 +1041,8 @@ bool ObserveOutput(
       // the whole window when the last paint drew only UI (a paused title).
       double x = 0.0, y = 0.0, width = window->GetActualPhysicalWidth(),
              height = window->GetActualPhysicalHeight();
-      if (auto rect = presenter->GetPaintedGuestOutputRectFromUIThread()) {
+      if (auto rect = presenter ? presenter->GetPaintedGuestOutputRectFromUIThread()
+                                : std::nullopt) {
         x = rect->x;
         y = rect->y;
         width = rect->width;
@@ -1148,8 +1166,13 @@ void Start(rex::system::IGraphicsSystem* graphics_system,
   g_test.app_context = app_context;
   g_test.window = window;
   g_test.before_close = std::move(before_close);
-  if (!g_test.presenter || !g_test.app_context || !g_test.window) {
+  g_test.headless = !g_test.presenter && graphics_system &&
+                   rex::cvar::GetFlagByName("gpu_backend") == "null";
+  if ((!g_test.presenter && !g_test.headless) || !g_test.app_context || !g_test.window) {
     Fail("presenter_unavailable");
+  }
+  if (g_test.headless) {
+    diagnostics::RecordEvent("fh1.render_test.headless", {{"gpu_backend", "null"}});
   }
   g_test.worker = std::thread(&Worker);
 }
