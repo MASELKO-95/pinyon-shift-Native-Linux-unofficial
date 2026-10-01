@@ -633,6 +633,7 @@ void HostUi::Draw(rex::ui::UIDrawContext& context) {
     }
   } else {
     DrawHud(context);
+    DrawOverlay(context);
   }
   DrawToasts(context);
   if (!registered_ && toasts_.empty() && !HasHud()) {
@@ -640,7 +641,55 @@ void HostUi::Draw(rex::ui::UIDrawContext& context) {
   }
 }
 
-bool HostUi::HasHud() const { return hud_source_ && !hud_source_().empty(); }
+bool HostUi::HasHud() const {
+  return (hud_source_ && !hud_source_().empty()) ||
+         (overlay_source_ && !overlay_source_().empty());
+}
+
+void HostUi::DrawOverlay(rex::ui::UIDrawContext& context) {
+  if (!overlay_source_) return;
+  const auto discs = overlay_source_();
+  if (discs.empty() || !PrepareCanvas(context)) return;
+  drawer_.Begin(context, float(context.render_target_width()),
+                float(context.render_target_height()));
+  for (const auto& disc : discs) {
+    DrawDisc(disc.x, disc.y, disc.radius, disc.pressed ? Rgba(255, 255, 255, 120)
+                                                       : Rgba(255, 255, 255, 45));
+    if (!disc.label.empty()) {
+      // Labels in title units: the canvas maps them back to these pixels.
+      const float size = std::max(14.0f, disc.radius / canvas_.scale * 0.55f);
+      DrawText(Face::kLabel, size, disc.label, (disc.x - canvas_.x) / canvas_.scale,
+               (disc.y - canvas_.y) / canvas_.scale + size * 0.35f, Rgba(255, 255, 255, 210),
+               0.5f);
+    }
+  }
+  Flush();
+  drawer_.End();
+  // The controls fade out after a while without a touch.
+  RequestPaint();
+}
+
+void HostUi::DrawDisc(float x, float y, float radius, uint32_t color) {
+  ImmediateTexture* texture = white_.get();
+  if (batches_.empty() || batches_.back().texture != texture ||
+      batches_.back().vertices.size() > 60000) {
+    batches_.push_back(Batch{.texture = texture});
+  }
+  Batch& batch = batches_.back();
+  constexpr int kSegments = 32;
+  const auto centre = uint16_t(batch.vertices.size());
+  batch.vertices.push_back({x, y, 0.5f, 0.5f, color});
+  for (int i = 0; i <= kSegments; ++i) {
+    const float angle = float(i) * 6.2831853f / float(kSegments);
+    batch.vertices.push_back(
+        {x + radius * std::cos(angle), y + radius * std::sin(angle), 0.5f, 0.5f, color});
+  }
+  for (int i = 0; i < kSegments; ++i) {
+    batch.indices.push_back(centre);
+    batch.indices.push_back(uint16_t(centre + 1 + i));
+    batch.indices.push_back(uint16_t(centre + 2 + i));
+  }
+}
 
 void HostUi::HudChanged() {
   if (HasHud() && LoadAssets()) {

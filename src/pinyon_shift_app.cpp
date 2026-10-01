@@ -41,6 +41,7 @@
 #include "ui/photo_export.h"
 #include "ui/xam_dialogs.h"
 #include "ui/settings_menu.h"
+#include "ui/touch_pad.h"
 
 #include <cstdio>
 
@@ -48,6 +49,10 @@
 extern "C" int __llvm_profile_dump(void);
 #endif
 
+REXCVAR_DEFINE_BOOL(pinyon_shift_touch_controls, REX_PLATFORM_ANDROID, "Pinyon Shift",
+                    "On-screen controls for touch screens: a steering stick, throttle, brake "
+                    "and buttons, shown on a touch and hidden after a while without one")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 REXCVAR_DEFINE_UINT32(pinyon_shift_config_schema, 27, "Pinyon Shift",
                       "Pinyon Shift host configuration schema version");
 REXCVAR_DEFINE_STRING(enabled_mods, "", "Mods",
@@ -557,6 +562,20 @@ void PinyonShiftApp::OnPreSetup(rex::RuntimeConfig& config) {
           ? "fh1-producer"
           : "fh1";
   pinyon_shift::fh1_render_test::Configure(config);
+  // The on-screen controls feed user 0 beside any controller (AP-4.2);
+  // routes keep their scripted pad alone.
+  if (REXCVAR_GET(pinyon_shift_touch_controls) && !pinyon_shift::fh1_render_test::Enabled() &&
+      config.input_factory) {
+    config.input_factory = [base = config.input_factory](bool tool_mode) {
+      auto input = base(tool_mode);
+      if (!tool_mode) {
+        if (auto* system = dynamic_cast<rex::input::InputSystem*>(input.get())) {
+          system->AddDriver(pinyon_shift::ui::TouchPad::Get().CreateDriver());
+        }
+      }
+      return input;
+    };
+  }
   pinyon_shift::diagnostics::RecordEvent(
       "runtime.setup.begin",
       {{"graphics_requested", (config.graphics || !config.gpu_plugin.empty()) ? "1" : "0"},
@@ -613,6 +632,34 @@ bool PinyonShiftApp::EnsureHostUi() {
       });
     }
   });
+  if (REXCVAR_GET(pinyon_shift_touch_controls)) {
+    auto& pad = pinyon_shift::ui::TouchPad::Get();
+    window()->AddInputListener(&pad, 0);
+    pad.SetChangedCallback([this] {
+      if (window()) {
+        window()->app_context().CallInUIThreadDeferred([this] {
+          if (host_ui_) host_ui_->HudChanged();
+        });
+      }
+    });
+    host_ui_->SetOverlaySource([this] {
+      std::vector<pinyon_shift::hostui::HostUi::OverlayDisc> discs;
+      auto& pad = pinyon_shift::ui::TouchPad::Get();
+      if (!window() || !pad.Visible() || (host_ui_ && host_ui_->is_open())) {
+        return discs;
+      }
+      for (const auto& shape : pad.Shapes(float(window()->GetActualPhysicalWidth()),
+                                          float(window()->GetActualPhysicalHeight()))) {
+        discs.push_back({shape.x, shape.y, shape.radius, shape.stick ? "" : shape.label,
+                         shape.pressed && !shape.stick});
+        if (shape.stick) {
+          discs.push_back({shape.stick_x, shape.stick_y, shape.radius * 0.45f, "",
+                           shape.pressed});
+        }
+      }
+      return discs;
+    });
+  }
   host_ui_->HudChanged();
   if (REXCVAR_GET(pinyon_shift_host_xam_dialogs)) {
     xam_dialogs_ = pinyon_shift::ui::CreateXamDialogs(*host_ui_, [this] {

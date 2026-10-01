@@ -51,6 +51,7 @@ set(PINYON_SHIFT_HOST_SOURCES
     src/ui/png_writer.cpp
     src/ui/xam_dialogs.cpp
     src/ui/achievements_menu.cpp
+    src/ui/touch_pad.cpp
     src/config/host_config.cpp
     src/platform/host_platform.cpp
     src/platform/sha256.cpp
