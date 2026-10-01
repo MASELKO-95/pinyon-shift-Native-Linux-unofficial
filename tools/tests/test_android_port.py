@@ -93,6 +93,25 @@ class AndroidPortTest(unittest.TestCase):
         self.assertIn("max-page-size=16384", variables["CMAKE_SHARED_LINKER_FLAGS"])
         self.assertNotIn("-msse", json.dumps(base))
 
+    def test_pushed_files_are_opened_to_the_app(self):
+        # On Android 15 the app cannot list what adb pushed into its own
+        # folder; the shell opens what it owns, and only that.
+        calls = []
+        original = pinyon_android.adb
+        pinyon_android.adb = lambda tools, args, *command, **kwargs: calls.append(command)
+        try:
+            pinyon_android.share_with_app(None, None, "/sdcard/app/game", "/sdcard/app/state")
+        finally:
+            pinyon_android.adb = original
+        self.assertEqual(len(calls), 2)
+        for command, path in zip(calls, ("/sdcard/app/game", "/sdcard/app/state")):
+            self.assertEqual(command[0], "shell")
+            self.assertIn(f"find '{path}' -user shell", command[1])
+            self.assertIn("chmod a+rwX", command[1])
+        source = (ROOT / "tools" / "pinyon_android.py").read_text(encoding="utf-8")
+        push_data = source[source.index("def push_data"):source.index("def _pid")]
+        self.assertIn("share_with_app(", push_data)
+
 
 if __name__ == "__main__":
     unittest.main()

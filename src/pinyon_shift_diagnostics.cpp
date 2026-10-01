@@ -187,6 +187,9 @@ bool InitializeEarly() {
   for (const char* directory : {"cache", "config", "crashes", "logs", "update", "user"}) {
     std::filesystem::create_directories(g_state_root / directory, error);
     if (error) {
+      // The only trace of a silent exit on Android: logcat.
+      REXLOG_ERROR("Cannot create the state folder {}: {}",
+                   (g_state_root / directory).string(), error.message());
       return false;
     }
   }

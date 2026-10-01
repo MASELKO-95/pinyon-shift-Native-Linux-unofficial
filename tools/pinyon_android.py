@@ -154,6 +154,15 @@ def adb(tools: Tools, args: argparse.Namespace, *command: str, **kwargs):
     return run(prefix + list(command), **kwargs)
 
 
+def share_with_app(tools: Tools, args: argparse.Namespace, *remote: str) -> None:
+    """What adb pushes into the app's folder belongs to the shell user, and
+    the app cannot even list it on the Android 15 emulator (16 lets it).
+    The shell may open its own files to everyone: the app's folder itself is
+    closed to other apps, so this reaches the app alone."""
+    for path in remote:
+        adb(tools, args, "shell", f"find '{path}' -user shell -exec chmod a+rwX {{}} +")
+
+
 def build_directory(configuration: str) -> Path:
     return ROOT / "out" / "build" / f"android-arm64-{configuration.lower()}"
 
@@ -346,6 +355,7 @@ def push_data(args: argparse.Namespace) -> int:
         raise AndroidError(f"the extracted game is not at {game}")
     adb(tools, args, "shell", "mkdir", "-p", f"{DEVICE_FILES}/game/base", f"{DEVICE_FILES}/state")
     adb(tools, args, "push", "--sync", f"{game}{os.sep}.", f"{DEVICE_FILES}/game/base")
+    share_with_app(tools, args, f"{DEVICE_FILES}/game", f"{DEVICE_FILES}/state")
     return 0
 
 
@@ -396,6 +406,8 @@ def run_game(args: argparse.Namespace) -> int:
         if not any("pinyon_shift_repair_car_cards" in argument for argument in game_arguments):
             game_arguments.append("--pinyon_shift_repair_car_cards=false")
         print(f"route output: {remote_output}")
+    if args.seed or args.route:
+        share_with_app(tools, args, f"{DEVICE_FILES}/state")
     if game_arguments:
         extras += ["--esa", "args", ",".join(game_arguments)]
     adb(tools, args, "shell", "am", "start", "-S", "-W", "-n", f"{PACKAGE}/{ACTIVITY}", *extras,
