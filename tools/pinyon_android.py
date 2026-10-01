@@ -11,7 +11,7 @@ game files travel from the PC to the device over adb.
   pinyon.py android package              package already built libraries
   pinyon.py android install              adb install -r the package
   pinyon.py android push-data            copy the extracted game to the device
-  pinyon.py android run [--null-gpu] [--route FILE] [-- game arguments]
+  pinyon.py android run [--null-gpu] [--route FILE [--seed DIR] --wait] [-- args]
   pinyon.py android pull-logs            copy the state's logs and crashes back
   pinyon.py android stop                 stop the game on the device
 
@@ -298,6 +298,17 @@ def package(args: argparse.Namespace, tools: Tools | None = None) -> int:
     manifest = _build_manifest(tools, version_name, libraries)
     (staging / "pinyon_shift_build.json").write_text(json.dumps(manifest, indent=2) + "\n",
                                                      encoding="utf-8")
+    # Android 15 devices with 16 KiB pages refuse libraries whose load
+    # segments are aligned to less (AP-3.5).
+    readelf = tools.llvm_bin / _exe("llvm-readelf")
+    for library in stripped:
+        segments = subprocess.run([str(readelf), "-lW", str(library)], capture_output=True,
+                                  text=True).stdout.splitlines()
+        aligns = {int(line.split()[-1], 16) for line in segments
+                  if line.strip().startswith("LOAD")}
+        if not aligns or min(aligns) < 0x4000:
+            raise AndroidError(f"{library.name} has load segments aligned below 16 KiB")
+
     with zipfile.ZipFile(unsigned, "a", compression=zipfile.ZIP_DEFLATED) as apk:
         apk.write(staging / "dex" / "classes.dex", "classes.dex")
         apk.write(staging / "pinyon_shift_build.json", "assets/pinyon_shift_build.json")
@@ -349,6 +360,27 @@ def run_game(args: argparse.Namespace) -> int:
     game_arguments = list(args.game_arguments)
     if args.null_gpu:
         game_arguments.append("--gpu_backend=null")
+    if args.seed:
+        # Routes start from a pinned seed (tools/create-render-seed.py), never
+        # from the device's own progress: its user and config replace the
+        # state's; the seed on the PC is only read.
+        seed = args.seed.resolve()
+        if not (seed / "user").is_dir():
+            raise AndroidError(f"{seed} is not a render seed (no user folder)")
+        # Like the Windows runner's private state per run: nothing a previous
+        # run left (caches, backups, mods, repaired saves) carries over; only
+        # the logs, crash reports and route output stay.
+        kept = ("logs", "crashes", "reports", "render-tests", "render-test-output")
+        listing = subprocess.run([str(tools.adb)] + (["-s", args.serial] if args.serial else [])
+                                 + ["shell", "ls", f"{DEVICE_FILES}/state/"],
+                                 capture_output=True, text=True).stdout.split()
+        stale = [f"{DEVICE_FILES}/state/{name}" for name in listing if name not in kept]
+        if stale:
+            adb(tools, args, "shell", "rm", "-rf", *stale)
+        for folder in ("user", "config"):
+            if (seed / folder).is_dir():
+                adb(tools, args, "push", seed / folder, f"{DEVICE_FILES}/state/{folder}",
+                    stdout=subprocess.DEVNULL)
     if args.route:
         remote_route = f"{DEVICE_FILES}/state/render-tests/{args.route.name}"
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -358,6 +390,10 @@ def run_game(args: argparse.Namespace) -> int:
         extras += ["--es", "env.PINYON_SHIFT_FH1_RENDER_TEST_SCRIPT", remote_route,
                    "--es", "env.PINYON_SHIFT_FH1_RENDER_TEST_OUTPUT", remote_output]
         game_arguments.append("--pinyon_shift_skip_opening_movies=true")
+        # As tools/run-fh1-render-test.py does: seeds are fixed snapshots, so
+        # keep their car cards (and thumbnails) as saved unless asked.
+        if not any("pinyon_shift_repair_car_cards" in argument for argument in game_arguments):
+            game_arguments.append("--pinyon_shift_repair_car_cards=false")
         print(f"route output: {remote_output}")
     if game_arguments:
         extras += ["--esa", "args", ",".join(game_arguments)]
@@ -475,6 +511,8 @@ def add_parser(commands) -> None:
     parser = command("run", run_game, "start the game on the device")
     parser.add_argument("--null-gpu", action="store_true", help="no renderer (gpu_backend=null)")
     parser.add_argument("--route", type=Path, help="a render-test route to run")
+    parser.add_argument("--seed", type=Path,
+                        help="a render seed whose user and config replace the device state's")
     parser.add_argument("--wait", action="store_true", help="wait until the game exits")
     parser.add_argument("--timeout", type=float, default=1800)
     parser.add_argument("game_arguments", nargs="*", help="after --, passed to the game")
