@@ -232,6 +232,19 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         self.assertNotIn("'powershell.exe'", provision)
         self.assertIn("(Get-Process -Id $PID).Path", provision)
 
+    @unittest.skipUnless((ROOT / ".git").exists(), "needs the repository's git metadata")
+    def test_release_sdk_revision_matches_the_submodule(self):
+        # A packaged install fetches this revision instead of the submodule, so
+        # an SDK bump that missed it built releases against an older SDK.
+        toolchain = json.loads((ROOT / "config/release-toolchain.json").read_text(encoding="utf-8"))
+        tree = subprocess.run(
+            ["git", "ls-tree", "HEAD", toolchain["rexglue"]["submodule_path"]],
+            cwd=ROOT, capture_output=True, text=True, check=True,
+        ).stdout.split()
+
+        self.assertEqual(tree[1], "commit")
+        self.assertEqual(toolchain["rexglue"]["revision"], tree[2])
+
     def test_llvm_is_extracted_with_windows_tar(self):
         # GNU tar from Git's Unix tools reads "E:\..." as a remote host.
         common = (ROOT / "tools/release-common.ps1").read_text(encoding="utf-8")
