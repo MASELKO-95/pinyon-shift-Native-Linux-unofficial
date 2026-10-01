@@ -82,7 +82,7 @@ cheats on), SAVE PHOTO and the achievements, which have keyboard keys on the PC.
 
 | Symptom | Cause |
 | --- | --- |
-| The app closes at once | The game files are not on the device: run `push-data`. |
+| The app closes at once | The game files are not on the device: run `push-data`. If logcat says `Cannot create the state folder`, files were copied into the app's folder by hand: run `push-data` again, which lets the app use them. |
 | `VULKAN_CAPABILITY_REPORT` in the log | The device's features, formats and memory, logged at every start; attach it to reports. |
 | RESOLUTION SCALE offers only 1X | Higher scales need resolve buffers larger than a phone's shared memory holds; `android_allow_resolution_scale` lifts the limit for testing. |
 | `skipped a resolve` in the log | A guest copy the renderer cannot pack yet (one is known, in the title screen's attract sequence); the frame continues without it. |

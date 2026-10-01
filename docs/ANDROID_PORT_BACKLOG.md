@@ -32,7 +32,7 @@ tunnel. Rows that need the reference device stay open.
 | AP-0.3 ARM64 build | **Done (Android)** | `android-arm64-*` presets; every target links with NDK r29; Linux ARM64 presets not added |
 | AP-0.4 boot and opening route | **Done (Android)** | `fh1-opening-sync` completes on the emulator with `--null-gpu`, simulation-time ratio 1.037; fixes on the way: memfd shared memory, reserve-then-fix guest arena, module library names, fault-handler chaining, socket permission |
 | AP-0.5 parity gates | **Mostly done** | On the emulator with `--gpu_backend=null`: `fh1-opening-sync`, `fh1-buy-car` (three consecutive runs), `fh1-race-sync`, `fh1-free-roam`, `fh1-pause` and `fh1-timing-straight` pass with simulation-time ratios 1.01-1.07; the vehicle state matches Windows to three decimals at `event-ready`. Found and fixed on the way: APCs never delivered (bionic `sigqueue` takes a process id), a second `pthread_join` aborting on bionic. The hour-long soak passes too: `fh1-long-drive` stretched to 216,000 frames ran 4,011 simulated seconds in 63.6 minutes (ratio 1.05, frame median 16.8 ms, p99 62 ms) without a hang or a failure; the car is parked after the drive, so it covers the threads and timers rather than the physics. Open: save payload hashes (they differ between any two runs, Windows included, so they need a deterministic route first) |
-| AP-0.6 16 KiB pages | Open | Needs a 16 KiB kernel; every packaged library is checked for 16 KiB-aligned load segments |
+| AP-0.6, AP-3.5 16 KiB pages | **Partial (emulator)** | On Android 15's 16 KB-page arm64 emulator (`google_apis_ps16k`, host page 0x4000) the libraries load, the guest arena reserves and maps, the three XEX modules load and the guest threads start; the log reads `physical heap at E0000000 offset 0x1000`. Every packaged library has 16 KiB-aligned load segments. Open: the route matrix, which needs the 7.2 GB of game data on a 16 KB device (it did not fit the emulator host's free disk), and the write-watch fault count |
 | AP-1.1 to AP-1.4 | **Done** | NDK presets, SDK CMake for Android, `main_android.h` glue, `libmain.so` with `SDL_main`, ANativeWindow surface, activity without Gradle |
 | AP-1.5 title screen | **Done (emulator)** | The FH1 executor draws the title screen through Vulkan on the emulator |
 | AP-2.0 capability report | **Done** | `VULKAN_CAPABILITY_REPORT` log line, on by default on Android; the emulator's report is in [docs/android/](android/capability-emulator-apple-m4-pro.json); the reference device's goes beside it |
@@ -51,12 +51,12 @@ tunnel. Rows that need the reference device stay open.
 | AP-6.2 boundary | **Done** | Policy, launcher payload and `.gitignore` refuse Android binaries; tests |
 | AP-6.4 provenance | **Done** | `pinyon_shift_build.json` as an APK asset, read through `PINYON_SHIFT_BUILD_MANIFEST` |
 | AP-6.5 documentation | **Done** | [ANDROID.md](ANDROID.md) |
-| AP-7.2 thread priorities | Partial | Guest priorities map to nice values on Android (no `SCHED_FIFO` for apps); placement left to the scheduler until AP-7.0 measures |
+| AP-7.2 thread placement | **Done (unmeasured)** | Guest priorities map to nice values on Android (no `SCHED_FIFO` for apps). The main guest thread, the GPU commands, recorder and vblank threads are pinned to the cores whose `cpu_capacity` is at least half the largest (on an 8 Gen 2, the prime and four big cores, not the three A510s), on by default on Android (`latency_critical_thread_placement`); a CPU whose cores are alike, as the emulator's, gets no preference. Its gain waits for AP-7.0 |
 | AP-2.5 memory at 1x | **Done (clamp)** | The draw resolution scale is clamped to 1x on Android (`android_allow_resolution_scale` overrides) and SETTINGS offers 1X only; budget logging waits for AP-7.0 |
 | AP-2.6 pipeline cache | **Done** | A `VkPipelineCache` per title, vendor, device and driver, saved 30 s after new pipelines and at shutdown; reloads on the emulator |
 | AP-8.1 routes from the PC | **Done** | `pinyon.py android run --route FILE --seed DIR --wait` isolates the state, pushes the seed, runs and judges the session (captures, failures, simulation time) |
 | AP-8.2 CI | **Done** | A CI job cross-compiles the runtime, the GPU plugin and the host tests for android-arm64 with the pinned NDK and no game files |
-| AP-2.3, AP-2.4, AP-2.7, AP-3.4 (kill test), AP-3.5, AP-4.1, AP-6.3, AP-7, AP-8.3 | Open | Need the reference device (formats, BC, memory and thermals, controllers, touch) or a second GPU vendor |
+| AP-2.3, AP-2.4, AP-2.7, AP-3.4 (kill test), AP-4.1, AP-6.3, AP-7.0, AP-7.1, AP-7.3 to AP-7.6, AP-8.3 | Open | Need the reference device (formats, BC, memory and thermals, controllers, touch) or a second GPU vendor |
 
 ### Findings from the emulator runs
 
@@ -84,6 +84,13 @@ tunnel. Rows that need the reference device stay open.
   frame is clean. Candidates: the missing `shaderStorageImageMultisample`, or
   a tiling or format path the translation layer handles differently. To check
   on the Adreno reference device before anything else in AP-2.3.
+- **Files pushed with adb are closed to the app on Android 15.** What `adb push`
+  creates in the app's folder belongs to the shell user; Android 16 lets the
+  app read and write it, Android 15 does not even let it list it, so the
+  game exited at once (creating `state/logs` failed, silently) and then
+  could not see `game/base`. `push-data` and `run --seed` now open what the
+  shell owns to the app (the app's folder stays closed to other apps), and
+  the failure is logged. Handhelds on Android 13 to 15 would have hit it.
 - **No socket permission, no single player.** The title opens system-link
   sockets at the single-player menu and dereferences null when `socket()`
   fails, so the package asks for `INTERNET`.
