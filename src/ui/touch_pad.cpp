@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cmath>
 
+#include <rex/logging.h>
 #include <rex/ui/ui_event.h>
+#include <rex/ui/window.h>
 
 namespace pinyon_shift::ui {
 namespace {
@@ -118,12 +120,24 @@ void TouchPad::SetSuspended(bool suspended) {
   Changed();
 }
 
+void TouchPad::Place(const Layout& control, float width, float height, float& x,
+                     float& y) const {
+  // The layout's fractions span the safe area, so no control sits under a
+  // camera cutout or a rounded corner.
+  const float safe_width = std::max(1.0f, width - safe_left_ - safe_right_);
+  const float safe_height = std::max(1.0f, height - safe_top_ - safe_bottom_);
+  x = safe_left_ + control.x * safe_width;
+  y = safe_top_ + control.y * safe_height;
+}
+
 TouchPad::Control TouchPad::Hit(float x, float y, float width, float height) const {
   Control best = Control::kNone;
   float best_distance = 0.0f;
   for (const Layout& control : Controls()) {
-    const float dx = x - control.x * width;
-    const float dy = y - control.y * height;
+    float control_x, control_y;
+    Place(control, width, height, control_x, control_y);
+    const float dx = x - control_x;
+    const float dy = y - control_y;
     // A generous target: a thumb lands off-centre.
     const float reach = control.radius * height * 1.25f;
     const float distance = std::sqrt(dx * dx + dy * dy);
@@ -152,6 +166,16 @@ void TouchPad::OnTouchEvent(rex::ui::TouchEvent& e) {
     std::lock_guard lock(mutex_);
     width_ = width;
     height_ = height;
+    const auto insets = window->GetSafeAreaInsets();
+    if (float(insets.left) != safe_left_ || float(insets.top) != safe_top_ ||
+        float(insets.right) != safe_right_ || float(insets.bottom) != safe_bottom_) {
+      REXLOG_INFO("Touch controls: safe area insets left {} top {} right {} bottom {}",
+                  insets.left, insets.top, insets.right, insets.bottom);
+    }
+    safe_left_ = float(insets.left);
+    safe_top_ = float(insets.top);
+    safe_right_ = float(insets.right);
+    safe_bottom_ = float(insets.bottom);
     if (suspended_) {
       return;
     }
@@ -259,8 +283,7 @@ std::vector<TouchPad::Shape> TouchPad::Shapes(float width, float height) const {
   std::lock_guard lock(mutex_);
   for (const Layout& control : Controls()) {
     Shape shape;
-    shape.x = control.x * width;
-    shape.y = control.y * height;
+    Place(control, width, height, shape.x, shape.y);
     shape.radius = control.radius * height;
     shape.label = control.label;
     for (const auto& [id, finger] : fingers_) {
@@ -271,8 +294,7 @@ std::vector<TouchPad::Shape> TouchPad::Shapes(float width, float height) const {
   // The stick where the finger holds it, or its resting place.
   Shape stick;
   stick.stick = true;
-  stick.x = 0.16f * width;
-  stick.y = 0.70f * height;
+  Place({Control::kStick, "", 0.16f, 0.70f, kStickTravel}, width, height, stick.x, stick.y);
   stick.radius = kStickTravel * height;
   stick.stick_x = stick.x;
   stick.stick_y = stick.y;

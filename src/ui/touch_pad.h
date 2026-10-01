@@ -77,12 +77,16 @@ class TouchPad final : public rex::ui::WindowInputListener {
   };
 
   static const std::vector<Layout>& Controls();
+  // A control's centre in window pixels, inside the safe area.
+  void Place(const Layout& control, float width, float height, float& x, float& y) const;
   Control Hit(float x, float y, float width, float height) const;
   void Changed();
 
   mutable std::mutex mutex_;
   std::map<uint32_t, Finger> fingers_;
   float width_ = 0.0f, height_ = 0.0f;
+  // The display cutout's margins (Window::GetSafeAreaInsets), in pixels.
+  float safe_left_ = 0.0f, safe_top_ = 0.0f, safe_right_ = 0.0f, safe_bottom_ = 0.0f;
   bool suspended_ = false;
   std::chrono::steady_clock::time_point last_touch_{};
   std::function<void()> changed_;
