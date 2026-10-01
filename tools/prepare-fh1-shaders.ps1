@@ -124,12 +124,20 @@ try {
     # shader such a rebuild newly reaches is recorded as a pack miss and
     # prepared on the next launch; a stale pipeline catalog only costs a
     # pipeline created on first use.
+    # Key names keep the checkout's "thirdparty/shiftglue-sdk/" prefix, but the
+    # files are read from wherever the SDK is: a release install has no
+    # submodule and clones the pinned SDK to .local/rexglue (issue #322).
     $sdk = 'thirdparty/shiftglue-sdk'
-    $rootPrefix = [IO.Path]::GetFullPath($root).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    $sdkRoot = Resolve-PinyonRexGlueRoot
+    $sdkPrefix = $sdkRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    function Resolve-KeyInput($Relative) {
+        if ($Relative.StartsWith("$sdk/")) { return Join-Path $sdkRoot $Relative.Substring($sdk.Length + 1) }
+        Join-Path $root $Relative
+    }
     $graphicsSources = [Collections.Generic.List[string]]::new()
     foreach ($directory in @("$sdk/include/rex/graphics/pipeline/shader", "$sdk/src/graphics/pipeline/shader")) {
-        foreach ($file in Get-ChildItem -LiteralPath (Join-Path $root $directory) -File) {
-            $relative = $file.FullName.Substring($rootPrefix.Length).Replace([IO.Path]::DirectorySeparatorChar, '/')
+        foreach ($file in Get-ChildItem -LiteralPath (Resolve-KeyInput $directory) -File) {
+            $relative = "$sdk/" + $file.FullName.Substring($sdkPrefix.Length).Replace([IO.Path]::DirectorySeparatorChar, '/')
             if ($relative -notmatch '(?i)spirv') { $graphicsSources.Add($relative) }
         }
     }
@@ -146,7 +154,7 @@ try {
         'src/native_renderer/shader_capture.cpp'
     ))
     foreach ($relative in @($graphicsSources | Sort-Object -Unique -CaseSensitive)) {
-        $inputs.files[$relative] = (Get-FileHash -LiteralPath (Join-Path $root $relative)).Hash
+        $inputs.files[$relative] = (Get-FileHash -LiteralPath (Resolve-KeyInput $relative)).Hash
     }
     $legacyShaderCache = Join-Path $cache 'shaders/shareable'
     $legacyFiles = @('4D5309C9.xsh', '4D5309C9.rtv.d3d12.xpso')

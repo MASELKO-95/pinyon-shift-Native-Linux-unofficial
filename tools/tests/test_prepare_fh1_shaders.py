@@ -34,17 +34,20 @@ class ShaderPreparationTests(unittest.TestCase):
                 "out/build/win-amd64-release/pinyon_shift.exe",
                 "out/build/win-amd64-release/rexgpu-fh1.dll",
                 "out/build/win-amd64-release/rexruntime.dll",
-                "config/release-toolchain.json", "config/supported-dumps.json",
+                "config/supported-dumps.json",
                 "config/render-tests/fh1-shader-preparation.fh1test",
                 "tools/extract-fh1-shader-corpus.py", "tools/build-fh1-gpu-prewarm.py",
                 "tools/fh1_archive_extract.cpp",
                 "tools/native-shader-pack.py",
                 "src/native_renderer/shader_capture.cpp",
-                *GRAPHICS_SOURCES,
+                # A release install has no .git and no submodule: setup clones
+                # the pinned SDK to .local/rexglue (issue #322).
+                *(path.replace(SDK, ".local/rexglue", 1) for path in GRAPHICS_SOURCES),
             ):
                 target = root / path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text("input")
+            shutil.copyfile(ROOT / "config/release-toolchain.json", root / "config/release-toolchain.json")
             for name in ("prepare-fh1-shaders.ps1", "release-common.ps1"):
                 shutil.copyfile(ROOT / "tools" / name, root / "tools" / name)
             (root / "tools/produce-fh1-artifacts.ps1").write_text(r'''
@@ -142,10 +145,10 @@ function Get-Process { return $null }
             # prepared graphics; a translator change prepares them again.
             for binary in ("pinyon_shift.exe", "rexgpu-fh1.dll", "rexruntime.dll"):
                 (root / "out/build/win-amd64-release" / binary).write_text("rebuilt")
-            (root / SDK / "src/graphics/pipeline/shader/spirv_translator.cpp").write_text("edited")
+            (root / ".local/rexglue" / "src/graphics/pipeline/shader/spirv_translator.cpp").write_text("edited")
             run()
             self.assertEqual(len(calls()), 6)
-            (root / SDK / "src/graphics/pipeline/shader/dxbc_translator.cpp").write_text("edited")
+            (root / ".local/rexglue" / "src/graphics/pipeline/shader/dxbc_translator.cpp").write_text("edited")
             run()
             run()
             self.assertEqual(len(calls()), 7)
