@@ -494,6 +494,19 @@ address = 0x823EDA10
 name = "PinyonShiftTraceFrameTelemetry"
 registers = ["r28", "r31"]
 
+# FH1's render job queue (sub_823F4B30) keeps a producer at most twice its
+# threshold ahead of the job thread by yielding, then gives up after 1000
+# yields and posts anyway. On the 360 that wait outlasts a render thread
+# stall; on the host NtYieldExecution returns at once, so a slow GPU frame
+# let the main thread queue hundreds of jobs, the job thread then filled
+# more than the render thread's 12 slots in one pass, and the render thread
+# read a slot early (AV in sub_82416A00) or waited on a lost signal (hang).
+# The hook, before the yield, waits in host time instead: still bounded.
+[[midasm_hook]]
+address = 0x823F4F60
+name = "PinyonShiftThrottleRenderJobs"
+registers = ["r1"]
+
 # FH1 has finalized the variable gameplay delta in f31 immediately before
 # storing it at +448 on the main-loop owner and dispatching update systems.
 # Accumulate that title-authored delta for wall-time validation without

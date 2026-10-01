@@ -15,6 +15,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -3940,6 +3941,29 @@ void ApplyUiMutationExperiment() {
   if (g_ui_experiment_applied &&
       PinyonShiftGuestRangeReadable(g_ui_experiment_button + 160u, 1u)) {
     StoreGuestU8(g_ui_experiment_button + 160u, 0u);
+  }
+}
+
+// Before each yield of the render job queue's producer wait (sub_823F4B30,
+// counter at 84(r1), 1000 down to 0, run only while the queue is over its
+// limit): sleep briefly instead of a bare yield, and keep the loop going
+// until the job thread catches up or two seconds pass, so the title's own
+// escape needs a real stall, as on the 360.
+void PinyonShiftThrottleRenderJobs(PPCRegister& r1) {
+  using Clock = std::chrono::steady_clock;
+  constexpr uint32_t kIterations = 1000;
+  constexpr auto kLimit = std::chrono::seconds(2);
+  thread_local Clock::time_point started;
+  const uint32_t counter = r1.u32 + 84;
+  const uint32_t left = LoadGuestU32(counter);
+  const Clock::time_point now = Clock::now();
+  if (left >= kIterations) {
+    started = now;
+    return;  // The first pass yields as before: usually that is enough.
+  }
+  if (now - started < kLimit) {
+    if (left < 2) StoreGuestU32(counter, 2);
+    std::this_thread::sleep_for(std::chrono::microseconds(50));
   }
 }
 
