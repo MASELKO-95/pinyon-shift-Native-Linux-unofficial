@@ -5,6 +5,7 @@ import android.os.Bundle;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.util.Log;
+import android.view.WindowManager;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -70,6 +71,10 @@ public class PinyonShiftActivity extends SDLActivity {
             }
         }
         super.onCreate(savedInstanceState);
+        // A race played on a controller touches nothing, and a screen that
+        // times out sends the game to the background, where it pauses (a
+        // scripted route stalls the same way). Only while this window shows.
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 
     // The C++ runtime first, then the ReXGlue runtime, which holds SDL and
