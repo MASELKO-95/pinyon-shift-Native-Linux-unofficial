@@ -42,6 +42,9 @@
 
 REXCVAR_DEFINE_BOOL(pinyon_shift_skip_opening_movies, false, "Pinyon Shift",
                     "Complete the opening splash movies immediately");
+REXCVAR_DEFINE_BOOL(pinyon_shift_record_file_opens, false, "Pinyon Shift",
+                    "Record each distinct game file the title opens as a guest.file.opened "
+                    "session event (which files a route needs, for a partial device copy)");
 REXCVAR_DEFINE_BOOL(
     pinyon_shift_stabilize_vehicle_presentation, false, "Pinyon Shift",
     "Suppress isolated implausible player-vehicle presentation transforms");
@@ -591,6 +594,18 @@ void PinyonShiftObserveGuestFileOpen(std::string_view guest_path) {
     }
   }
   pinyon_shift::fh1_render_test::ObserveFileOpened(path);
+  if (REXCVAR_GET(pinyon_shift_record_file_opens)) {
+    static std::mutex opened_mutex;
+    static std::set<std::string> opened;
+    bool first = false;
+    {
+      std::lock_guard lock(opened_mutex);
+      first = opened.insert(path).second;
+    }
+    if (first) {
+      pinyon_shift::diagnostics::RecordEvent("guest.file.opened", {{"path", path}});
+    }
+  }
   if (pinyon_shift::mod::HasSubscribers(PINYON_HOOK_FILE_OPEN)) {
     PinyonHookEvent event{};
     event.hook = PINYON_HOOK_FILE_OPEN;
