@@ -101,10 +101,10 @@
                                        FontFamily="Bahnschrift SemiBold" FontSize="17" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
-                    <Button x:Name="GraphicsSettingsButton" Content="Graphics" Style="{StaticResource QuietButton}"
+                    <Button x:Name="GraphicsSettingsButton" Content="Settings" Style="{StaticResource QuietButton}"
                             Height="54" Padding="24,0" Margin="12,0,0,0" Visibility="Collapsed"
                             Click="GraphicsSettingsButton_Click"
-                            AutomationProperties.HelpText="Choose the graphics API and the internal resolution."/>
+                            AutomationProperties.HelpText="Choose the graphics API, the resolution and the Treasure Map."/>
                 </StackPanel>
 
                 <!-- Setup steps, while there is setup left to do. -->
@@ -225,6 +225,7 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="1.3*"/>
@@ -259,7 +260,15 @@
                         <TextBlock Grid.Row="2" Grid.ColumnSpan="5" x:Name="ResolutionLineText" Margin="0,14,0,0"
                                    FontSize="13.5" Foreground="{StaticResource FogBrush}" TextWrapping="Wrap"
                                    AutomationProperties.LiveSetting="Polite"/>
-                        <DockPanel Grid.Row="3" Grid.ColumnSpan="5" Margin="0,22,0,0">
+                        <CheckBox Grid.Row="3" Grid.ColumnSpan="5" x:Name="TreasureMapCheckBox" Margin="0,20,0,0"
+                                  FontFamily="Bahnschrift" FontSize="13" IsChecked="True"
+                                  AutomationProperties.Name="Treasure Map">
+                            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource FogBrush}">
+                                <Run Text="Treasure Map"/><Run Foreground="{StaticResource MutedBrush}"
+                                     Text=" · Every discount sign and barn find on the map. Once applied, it stays with that save."/>
+                            </TextBlock>
+                        </CheckBox>
+                        <DockPanel Grid.Row="4" Grid.ColumnSpan="5" Margin="0,22,0,0">
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                                 <Button x:Name="RestoreGraphicsButton" Content="Restore backup" Style="{StaticResource LinkButton}"
                                         VerticalAlignment="Center" Click="RestoreGraphicsButton_Click"/>

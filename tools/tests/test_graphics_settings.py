@@ -161,6 +161,17 @@ class GraphicsSettingsTests(unittest.TestCase):
             self.run_tool(state, "-Action", "Apply", "-ResolutionScale", "2")
             self.assertIn('present_effect = "fsr"', config.read_text(encoding="utf-8"))
 
+    def test_treasure_map_is_on_unless_the_file_turns_it_off(self):
+        with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:
+            state = pathlib.Path(temporary)
+            config = state / "config/pinyon_shift.toml"
+            config.parent.mkdir(parents=True)
+            config.write_text("pinyon_shift_config_schema = 27\n", encoding="utf-8")
+            self.assertTrue(self.run_tool(state, "-Action", "Get")["settings"]["treasure_map"])
+            result = self.run_tool(state, "-Action", "Apply", "-TreasureMap", "false")
+            self.assertIn("pinyon_shift_dlc_treasure_map = false", config.read_text(encoding="utf-8"))
+            self.assertFalse(result["settings"]["treasure_map"])
+
     def test_reset_writes_supported_defaults_and_preserves_backup(self):
         with tempfile.TemporaryDirectory(prefix="pinyon-settings-") as temporary:
             state = pathlib.Path(temporary)

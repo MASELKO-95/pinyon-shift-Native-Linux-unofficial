@@ -519,6 +519,9 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         # The output scaling, with the rendered and shown sizes beside it.
         self.assertIn('"-OutputScaling", SelectedTag(OutputScalingComboBox)', launcher)
         self.assertIn("ResolutionLineText", launcher_xaml)
+        # The Treasure Map, on unless the player turns it off.
+        self.assertIn('"-TreasureMap", TreasureMapCheckBox.IsChecked == true', launcher)
+        self.assertIn('x:Name="TreasureMapCheckBox"', launcher_xaml)
         self.assertNotIn("NativeRendererComboBox", launcher_xaml)
         self.assertNotIn("ResetRendererButton", launcher_xaml)
         # The renderer choice is gone: native is the only renderer.

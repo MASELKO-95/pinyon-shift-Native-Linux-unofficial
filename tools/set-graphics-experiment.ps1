@@ -12,6 +12,8 @@ param(
     [string]$GraphicsApi = 'vulkan',
     [ValidateSet('bilinear', 'cas', 'fsr')]
     [string]$OutputScaling = 'bilinear',
+    [ValidateSet('true', 'false')]
+    [string]$TreasureMap = 'true',
     [ValidateSet('custom', 'shipping_1x', 'experimental_2x', 'experimental_3x')]
     [string]$Preset = 'custom',
     [ValidateSet(0, 30, 60, 120, 240)]
@@ -188,6 +190,8 @@ function Get-SettingsResult([string]$Text, [string]$BackupPath, [string]$Operati
             window_width = [int](Get-TomlValue $Text 'window_width' '0')
             window_height = [int](Get-TomlValue $Text 'window_height' '0')
             letterbox = (Get-TomlValue $Text 'present_letterbox' 'true') -eq 'true'
+            # The game turns the Treasure Map on unless the file says false.
+            treasure_map = (Get-TomlValue $Text 'pinyon_shift_dlc_treasure_map' 'true') -eq 'true'
             clear_memory_page_state = $clearPageState
             vsync = $vsyncEnabled
             host_present_fps_limit = $presentationFps
@@ -275,6 +279,9 @@ switch ($Action) {
             # Vulkan records draws on a second thread; Direct3D 12 keeps one.
             $text = Set-TomlValue $text 'gpu_backend' ('"' + $GraphicsApi + '"')
             $text = Set-TomlValue $text 'gpu_record_thread' ($(if ($GraphicsApi -eq 'vulkan') { 'true' } else { 'false' }))
+        }
+        if ($bound.ContainsKey('TreasureMap')) {
+            $text = Set-TomlValue $text 'pinyon_shift_dlc_treasure_map' $TreasureMap
         }
         if ($bound.ContainsKey('OutputScaling')) {
             $text = Set-TomlValue $text 'present_effect' ('"' + $OutputScaling + '"')

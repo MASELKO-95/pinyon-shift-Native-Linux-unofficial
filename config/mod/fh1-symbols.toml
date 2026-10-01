@@ -43,6 +43,10 @@ sha256 = "DB40DF605ADE49A6"  # prefix of the supported default.xex SHA-256
 "profile.credits" = 0x824E4F78           # r3 profile -> r3 credits (Main/Credits)
 "profile.set_credits" = 0x824F2FA0       # r3 profile, r4 credits (clamped to 999,999,999); tells the balance's listeners (the HUD), saved with the profile
 "profile.add_value" = 0x824F2850         # r3 profile, r4 field path (C string, e.g. "Main/TotalWinnings"), r5 amount added to that u32 field
+"activities.all_revealed" = 0x828AF780   # r3 activity manager -> r3 1 when every revealable activity with a saved record is revealed (the Treasure Map is owned); the pause map offers BUY TREASURE MAP while it is 0
+"activity.reveal" = 0x828A52F0           # r3 activity: sets activity.revealed and its saved record's collectible_state.revealed once (the shared start of each activity's vtable +72 reveal)
+"treasure_map.consumed" = 0x82560B80     # r3 CTreasureMapConsumeAssetTransaction (vtable 0x8201D920, slot +28), r4 result: 0 (Tokens consumed by the Forza token service) shows the TREASURE MAP notification and runs activities.reveal_all
+"content.mount_marketplace" = 0x82516630 # r3 content manager, r4 user index, r5 enumerate flags: enumerates marketplace content (type 2), mounts each package as DLCRoot<n>, takes the offer ID from its media\<hex>.puboffer and ORs the package licence mask into that offer; r3 1 when the enumeration started
 
 # Byte offsets inside title objects, as the hooks above read them.
 [offsets]

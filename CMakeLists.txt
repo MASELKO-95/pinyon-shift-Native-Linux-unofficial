@@ -30,6 +30,7 @@ elseif(WIN32)
         src/save_backups.cpp
         src/cheats.cpp
         src/cheats_map.cpp
+        src/dlc_treasure_map.cpp
         src/save/car_cards.cpp
         src/save/live_profile.cpp
         src/save/profile_body.cpp
@@ -69,6 +70,7 @@ else()
         src/save_backups.cpp
         src/cheats.cpp
         src/cheats_map.cpp
+        src/dlc_treasure_map.cpp
         src/save/car_cards.cpp
         src/save/live_profile.cpp
         src/save/profile_body.cpp

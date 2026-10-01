@@ -963,6 +963,7 @@ public partial class MainWindow : Window
             "-ResolutionScale", SelectedTag(ResolutionComboBox),
             "-GraphicsApi", SelectedTag(GraphicsApiComboBox),
             "-OutputScaling", SelectedTag(OutputScalingComboBox),
+            "-TreasureMap", TreasureMapCheckBox.IsChecked == true ? "true" : "false",
             "-Json"
         }) startInfo.ArgumentList.Add(argument);
         using var process = Process.Start(startInfo) ??
@@ -992,6 +993,7 @@ public partial class MainWindow : Window
             ? "vulkan" : result.Settings.GraphicsApi);
         SelectTag(OutputScalingComboBox, string.IsNullOrWhiteSpace(result.Settings.OutputScaling)
             ? "bilinear" : result.Settings.OutputScaling);
+        TreasureMapCheckBox.IsChecked = result.Settings.TreasureMap;
         UpdateResolutionLine();
     }
 
@@ -1136,6 +1138,7 @@ public partial class MainWindow : Window
         ResolutionComboBox.IsEnabled = enabled;
         GraphicsApiComboBox.IsEnabled = enabled;
         OutputScalingComboBox.IsEnabled = enabled;
+        TreasureMapCheckBox.IsEnabled = enabled;
         SaveGraphicsButton.IsEnabled = enabled;
         ResetGraphicsButton.IsEnabled = enabled;
         RestoreGraphicsButton.IsEnabled = enabled;
@@ -1171,6 +1174,7 @@ public partial class MainWindow : Window
         [property: JsonPropertyName("window_width")] int WindowWidth,
         [property: JsonPropertyName("window_height")] int WindowHeight,
         [property: JsonPropertyName("letterbox")] bool Letterbox,
+        [property: JsonPropertyName("treasure_map")] bool TreasureMap,
         [property: JsonPropertyName("clear_memory_page_state")] bool ClearMemoryPageState,
         [property: JsonPropertyName("vsync")] bool Vsync);
 }
