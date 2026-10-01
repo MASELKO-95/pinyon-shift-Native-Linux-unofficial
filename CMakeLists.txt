@@ -93,8 +93,9 @@ add_executable(pinyon_shift_fh1_shader_pack_tests EXCLUDE_FROM_ALL
     tests/native_renderer/fh1_shader_pack_test.cpp
     ${REXSDK_DIR}/src/graphics/fh1_shader_pack.cpp
 )
+# The SDK root too: off Windows the pack hashes with its bundled SHA-256.
 target_include_directories(pinyon_shift_fh1_shader_pack_tests PRIVATE
-    ${REXSDK_DIR}/include)
+    ${REXSDK_DIR}/include ${REXSDK_DIR})
 target_link_libraries(pinyon_shift_fh1_shader_pack_tests PRIVATE rex::runtime)
 if(WIN32)
     target_link_libraries(pinyon_shift_fh1_shader_pack_tests PRIVATE bcrypt)

@@ -6,7 +6,9 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#ifdef _WIN32
 #include <Windows.h>
+#endif
 
 #include <rex/graphics/fh1_shader_pack.h>
 
@@ -31,10 +33,13 @@ int main(int argc, char** argv) {
   assert(entry);
   assert(entry->bytecode.size() == 9);
   assert(std::memcmp(entry->bytecode.data(), "DXBCpixel", 9) == 0);
+#ifdef _WIN32
+  // The bytecode is read from the read-only file mapping, not copied.
   MEMORY_BASIC_INFORMATION mapping_info{};
   assert(VirtualQuery(entry->bytecode.data(), &mapping_info, sizeof(mapping_info)));
   assert(mapping_info.Type == MEM_MAPPED);
   assert(mapping_info.Protect == PAGE_READONLY);
+#endif
   assert(entry->texture_bindings.size() == 1);
   assert(entry->texture_bindings[0].fetch_constant == 3);
   assert(entry->sampler_bindings.size() == 1);
@@ -49,11 +54,13 @@ int main(int argc, char** argv) {
   assert(pack.Load(std::filesystem::path(argv[1]), config, &error));
   pack.Clear();
   assert(pack.size() == 0);
+#ifdef _WIN32
   // Clearing must release the read-only mapping and its write-denying handle.
   HANDLE writable = CreateFileW(std::filesystem::path(argv[1]).c_str(), GENERIC_WRITE,
                                  FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
   assert(writable != INVALID_HANDLE_VALUE);
   CloseHandle(writable);
+#endif
 
   const auto damaged = std::filesystem::path(argv[1]).concat(".damaged");
   std::filesystem::copy_file(argv[1], damaged, std::filesystem::copy_options::overwrite_existing);
