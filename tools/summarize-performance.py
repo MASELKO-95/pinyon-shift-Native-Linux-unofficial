@@ -188,7 +188,12 @@ def summarize(path: pathlib.Path) -> dict[str, Any]:
             "present_delta_ns": 0,
         }
         rows_seen = 0
-        for row_number, row in enumerate(reader, start=2):
+        rows = list(reader)
+        # A session ended by the system (an Android process stopped when the
+        # route finished, a crash) can leave its last row half written.
+        if rows and None in rows[-1].values():
+            rows.pop()
+        for row_number, row in enumerate(rows, start=2):
             rows_seen += 1
             frame_time = finite_number(row["frame_time_us"], column="frame_time_us", row_number=row_number)
             row_totals = {
