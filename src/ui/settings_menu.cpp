@@ -366,6 +366,28 @@ std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
   // renders at 1x and scales to the display with FSR 1; at 2x the race's
   // busiest part runs at a 12.7 ms median (79 fps), so it holds 60. At 3x
   // Vulkan is GPU-bound at about 29 ms, where Direct3D 12 takes 17.5 ms.
+#if defined(__ANDROID__)
+  // AP-7.5: a handheld renders at 1x (AP-2.5) and trades frame rate for
+  // battery and heat. BATTERY 30 is the Xbox 360's own rate (the guest
+  // vblank at 60 Hz); SMOOTH 60 doubles it and sharpens the upscale to the
+  // panel with FSR 1. Starting points until the reference device measures
+  // which one holds its frame time after twenty minutes.
+  rows.push_back(Setting("GRAPHICS PRESET",
+                         {{"BATTERY 30",
+                           {{"gpu_backend", "\"vulkan\""},
+                            {"gpu_record_thread", "true"},
+                            {"draw_resolution_scale_x", "1"},
+                            {"draw_resolution_scale_y", "1"},
+                            {"present_effect", "\"bilinear\""},
+                            {"pinyon_shift_fh1_render_fps_limit", "30"}}},
+                          {"SMOOTH 60",
+                           {{"gpu_backend", "\"vulkan\""},
+                            {"gpu_record_thread", "true"},
+                            {"draw_resolution_scale_x", "1"},
+                            {"draw_resolution_scale_y", "1"},
+                            {"present_effect", "\"fsr\""},
+                            {"pinyon_shift_fh1_render_fps_limit", "60"}}}}));
+#else
   rows.push_back(Setting("GRAPHICS PRESET",
                          {{"PERFORMANCE 120",
                            {{"gpu_backend", "\"vulkan\""},
@@ -381,6 +403,7 @@ std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
                             {"draw_resolution_scale_y", "2"},
                             {"present_effect", "\"bilinear\""},
                             {"pinyon_shift_fh1_render_fps_limit", "60"}}}}));
+#endif
   // Vulkan (the default since config schema 27) records draws on a second
   // thread; Direct3D 12 loads prebuilt shader packs and keeps one thread.
 #if !defined(__ANDROID__)

@@ -56,7 +56,8 @@ tunnel. Rows that need the reference device stay open.
 | AP-2.6 pipeline cache | **Done** | A `VkPipelineCache` per title, vendor, device and driver, saved 30 s after new pipelines and at shutdown; reloads on the emulator |
 | AP-8.1 routes from the PC | **Done** | `pinyon.py android run --route FILE --seed DIR --wait` isolates the state, pushes the seed, runs and judges the session (captures, failures, simulation time) |
 | AP-8.2 CI | **Done** | A CI job cross-compiles the runtime, the GPU plugin and the host tests for android-arm64 with the pinned NDK and no game files |
-| AP-2.3, AP-2.4, AP-2.7, AP-3.4 (kill test), AP-4.1, AP-6.3, AP-7.0, AP-7.1, AP-7.3 to AP-7.6, AP-8.3 | Open | Need the reference device (formats, BC, memory and thermals, controllers, touch) or a second GPU vendor |
+| AP-7.5 presets | Partial | SETTINGS on Android offers BATTERY 30 (the guest vblank at 60 Hz, bilinear) and SMOOTH 60 (FSR 1 to the panel), both 1x on Vulkan with the recorder thread, in place of the desktop's 120 and 2x presets; chosen by tapping on the emulator. Which holds its frame time after twenty minutes, and so the default, waits for the reference device |
+| AP-2.3, AP-2.4, AP-2.7, AP-3.4 (kill test), AP-4.1, AP-6.3, AP-7.0, AP-7.1, AP-7.3, AP-7.4, AP-7.6, AP-8.3 | Open | Need the reference device (formats, BC, memory and thermals, controllers, touch) or a second GPU vendor |
 
 ### Findings from the emulator runs
 
