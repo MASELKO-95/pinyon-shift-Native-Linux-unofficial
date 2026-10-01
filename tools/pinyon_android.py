@@ -22,6 +22,7 @@ Pinned versions live in config/android-toolchain.json.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import platform
@@ -216,6 +217,36 @@ def _keystore(tools: Tools) -> Path:
     return keystore
 
 
+def _git(*command: str, cwd: Path = ROOT) -> str:
+    completed = subprocess.run(["git", *command], cwd=cwd, capture_output=True, text=True)
+    return completed.stdout.strip() if completed.returncode == 0 else "unknown"
+
+
+def _build_manifest(tools: Tools, version_name: str, libraries: list[Path]) -> dict:
+    """The provenance the game logs at start and puts in crash reports
+    (AP-6.4), as tools/build-preview.ps1 writes it beside the executable."""
+    sdk = ROOT / "thirdparty" / "shiftglue-sdk"
+    main = next(path for path in libraries if path.name == "libmain.so")
+    return {
+        "schema_version": 3,
+        "configuration": "Release",
+        "platform": "android-arm64",
+        "version": version_name,
+        "cpu_baseline": "armv8-a",
+        "ndk": CONFIG["android_sdk"]["ndk"],
+        "min_sdk": CONFIG["min_sdk"],
+        "created_utc": datetime.now(timezone.utc).isoformat(),
+        "executable": "libmain.so",
+        "executable_sha256": hashlib.sha256(main.read_bytes()).hexdigest().upper(),
+        "generated_locally": True,
+        "pinyon_shift_commit": _git("rev-parse", "HEAD"),
+        "pinyon_shift_dirty": str(bool(_git("status", "--porcelain", "--", ".",
+                                            ":!BUGS.md", ":!docs"))).lower(),
+        "rexglue_commit": _git("rev-parse", "HEAD", cwd=sdk),
+        "rexglue_dirty": str(bool(_git("status", "--porcelain", cwd=sdk))).lower(),
+    }
+
+
 def package(args: argparse.Namespace, tools: Tools | None = None) -> int:
     tools = tools or Tools()
     directory = build_directory(args.configuration)
@@ -264,8 +295,12 @@ def package(args: argparse.Namespace, tools: Tools | None = None) -> int:
         run([tools.strip, "--strip-debug", "-o", target, library])
         stripped.append(target)
 
+    manifest = _build_manifest(tools, version_name, libraries)
+    (staging / "pinyon_shift_build.json").write_text(json.dumps(manifest, indent=2) + "\n",
+                                                     encoding="utf-8")
     with zipfile.ZipFile(unsigned, "a", compression=zipfile.ZIP_DEFLATED) as apk:
         apk.write(staging / "dex" / "classes.dex", "classes.dex")
+        apk.write(staging / "pinyon_shift_build.json", "assets/pinyon_shift_build.json")
         for library in stripped:
             apk.write(library, f"lib/{CONFIG['abi']}/{library.name}")
 
@@ -337,7 +372,63 @@ def run_game(args: argparse.Namespace) -> int:
             adb(tools, args, "shell", "am", "force-stop", PACKAGE)
             raise AndroidError(f"timed out after {args.timeout} seconds")
         time.sleep(2)
-    return 0
+    if not args.route:
+        return 0
+    result = route_result(tools, args)
+    print(json.dumps(result, indent=2))
+    return 0 if result["result"] == "pass" else 1
+
+
+def route_result(tools: Tools, args: argparse.Namespace) -> dict:
+    """The newest session's events, judged as tools/run-fh1-render-test.py
+    judges a Windows run's (AP-8.1): completed once, every capture taken, no
+    failure event."""
+    listing = subprocess.run([str(tools.adb)] + (["-s", args.serial] if args.serial else [])
+                             + ["shell", "ls", "-t", f"{DEVICE_FILES}/state/logs/"],
+                             capture_output=True, text=True).stdout.split()
+    sessions = [name for name in listing if name.endswith(".jsonl")]
+    if not sessions:
+        return {"result": "fail", "reason": "no session log on the device"}
+    destination = WORK / "device-logs" / "routes"
+    destination.mkdir(parents=True, exist_ok=True)
+    for suffix in (".jsonl", ".perf.csv"):
+        name = sessions[0][: -len(".jsonl")] + suffix
+        subprocess.run([str(tools.adb)] + (["-s", args.serial] if args.serial else [])
+                       + ["pull", f"{DEVICE_FILES}/state/logs/{name}", str(destination / name)],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    events = []
+    for line in (destination / sessions[0]).read_text(encoding="utf-8",
+                                                     errors="replace").splitlines():
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            pass  # a line cut off when the process was stopped
+    names = [str(event.get("event", "")) for event in events]
+    failures = [event for event in events if str(event.get("event", "")).endswith(".failure")]
+    completed = [event for event in events if event.get("event") == "fh1.render_test.complete"]
+    captures = [event for event in events if event.get("event") == "fh1.render_test.capture"]
+    result = {
+        "result": "pass" if completed and not failures else "fail",
+        "session": sessions[0],
+        "captures": [{"name": event.get("name"), "frame": event.get("frame"),
+                      "vehicle": [event.get(f"vehicle_{axis}") for axis in "xyz"]
+                      if event.get("vehicle_pose_valid") == "1" else None}
+                     for event in captures],
+        "failures": failures[:3],
+        "events": len(names),
+        "log": str(destination / sessions[0]),
+    }
+    perf = destination / (sessions[0][: -len(".jsonl")] + ".perf.csv")
+    if perf.is_file():
+        summary = subprocess.run([sys.executable, str(ROOT / "tools" / "summarize-performance.py"),
+                                  str(perf), "--format", "json"], capture_output=True, text=True)
+        try:
+            performance = json.loads(summary.stdout)
+            result["simulation_time"] = performance.get("presentation", {}).get("simulation_time")
+            result["frame_time_us"] = performance["frames"]["frame_time_us"]
+        except (json.JSONDecodeError, KeyError):
+            pass
+    return result
 
 
 def stop(args: argparse.Namespace) -> int:

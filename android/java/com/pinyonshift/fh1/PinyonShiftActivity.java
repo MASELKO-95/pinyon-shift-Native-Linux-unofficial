@@ -7,6 +7,10 @@ import android.system.Os;
 import android.util.Log;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 
 import org.libsdl.app.SDLActivity;
 
@@ -40,6 +44,19 @@ public class PinyonShiftActivity extends SDLActivity {
                 new File(base, "state").getAbsolutePath());
         setDefaultEnvironment("PINYON_SHIFT_GAME_ROOT",
                 new File(base, "game/base").getAbsolutePath());
+        // The build's provenance, packaged as an asset, for logs and crash
+        // reports (the game reads it beside the executable elsewhere).
+        File manifest = new File(getFilesDir(), "pinyon_shift_build.json");
+        try (InputStream in = getAssets().open("pinyon_shift_build.json");
+             OutputStream out = new FileOutputStream(manifest)) {
+            byte[] buffer = new byte[8192];
+            for (int read; (read = in.read(buffer)) > 0; ) {
+                out.write(buffer, 0, read);
+            }
+            setEnvironment("PINYON_SHIFT_BUILD_MANIFEST", manifest.getAbsolutePath());
+        } catch (IOException error) {
+            Log.w(TAG, "no build manifest in the package", error);
+        }
         Intent intent = getIntent();
         Bundle extras = intent != null ? intent.getExtras() : null;
         if (extras != null) {

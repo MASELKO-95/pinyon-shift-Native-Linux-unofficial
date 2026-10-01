@@ -113,8 +113,11 @@ std::string JsonStringField(const std::string& json, std::string_view key) {
 
 BuildProvenance LoadBuildProvenance() {
   BuildProvenance result;
-  std::ifstream input(ExecutableDirectory() / "pinyon_shift_build.json",
-                      std::ios::binary);
+  // Beside the executable; Android packages it as an asset the activity
+  // copies out and names in PINYON_SHIFT_BUILD_MANIFEST.
+  const auto manifest = EnvironmentPath("PINYON_SHIFT_BUILD_MANIFEST")
+                            .value_or(ExecutableDirectory() / "pinyon_shift_build.json");
+  std::ifstream input(manifest, std::ios::binary);
   if (!input) {
     return result;
   }
