@@ -446,6 +446,8 @@ def run_game(args: argparse.Namespace) -> int:
         remote_output = f"{DEVICE_FILES}/state/render-test-output/{args.route.stem}-{stamp}"
         adb(tools, args, "shell", "mkdir", "-p", f"{DEVICE_FILES}/state/render-tests")
         adb(tools, args, "push", args.route.resolve(), remote_route, stdout=subprocess.DEVNULL)
+        # A device that slept between runs shows the route over its lock.
+        extras += ["--ez", "show_when_locked", "true"]
         extras += ["--es", "env.PINYON_SHIFT_FH1_RENDER_TEST_SCRIPT", remote_route,
                    "--es", "env.PINYON_SHIFT_FH1_RENDER_TEST_OUTPUT", remote_output]
         game_arguments.append("--pinyon_shift_skip_opening_movies=true")

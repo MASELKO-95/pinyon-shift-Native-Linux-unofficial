@@ -79,6 +79,13 @@ public class PinyonShiftActivity extends SDLActivity {
         // times out sends the game to the background, where it pauses (a
         // scripted route stalls the same way). Only while this window shows.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        // Scripted routes started from the PC: over the lock screen, with the
+        // screen on, so a device that slept between runs does not hold the
+        // game behind the lock. A launch from the home screen never asks.
+        if (getIntent().getBooleanExtra("show_when_locked", false)) {
+            setShowWhenLocked(true);
+            setTurnScreenOn(true);
+        }
     }
 
     // The C++ runtime first, then the ReXGlue runtime, which holds SDL and
