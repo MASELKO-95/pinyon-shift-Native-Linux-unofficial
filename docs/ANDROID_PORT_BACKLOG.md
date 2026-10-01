@@ -45,7 +45,8 @@ tunnel. Rows that need the reference device stay open.
 | AP-4.2 on-screen pad | **Done (emulator)** | Stick, triggers, A/B/X/Y, bumpers, Back and Start drawn by the host UI and read as a synthetic pad on user 0; shown on a touch, hidden 20 s after; SDL's touch-made mouse events no longer reach the mouse-and-keyboard driver. The feel of the layout waits for a player (AP-4.4's human test) |
 | AP-4.3 touch in the host UI | **Done** | A tap focuses and activates the row under it; Android Back steps back and, with no menu up, opens SETTINGS |
 | AP-4.4 keyboard-only features | **Done** | SETTINGS (reachable from the pause menu with a pad, or with Back on a touch screen) gains TRAINER and SAVE PHOTO beside ACHIEVEMENTS |
-| AP-5 audio | Partial | Silent fallback when no output opens; the stream is tagged with the game role; latency unmeasured |
+| AP-5 audio | Partial | Silent fallback when no output opens; the stream is tagged with the game role; it opens SDL's default output, which SDL3 moves to headphones or a Bluetooth output when one connects; it stops in the background (AP-3.1) but does not request audio focus. Latency unmeasured |
+| AP-4.5 haptics | Partial | The title's rumble reaches pads through `SDL_RumbleGamepad`; feeling it needs a pad on the reference device; no phone vibration for the on-screen pad |
 | AP-6.1 tooling | **Done** | `pinyon.py android doctor/build/package/install/push-data/run/stop/pull-logs` |
 | AP-6.2 boundary | **Done** | Policy, launcher payload and `.gitignore` refuse Android binaries; tests |
 | AP-6.4 provenance | **Done** | `pinyon_shift_build.json` as an APK asset, read through `PINYON_SHIFT_BUILD_MANIFEST` |
@@ -55,7 +56,7 @@ tunnel. Rows that need the reference device stay open.
 | AP-2.6 pipeline cache | **Done** | A `VkPipelineCache` per title, vendor, device and driver, saved 30 s after new pipelines and at shutdown; reloads on the emulator |
 | AP-8.1 routes from the PC | **Done** | `pinyon.py android run --route FILE --seed DIR --wait` isolates the state, pushes the seed, runs and judges the session (captures, failures, simulation time) |
 | AP-8.2 CI | **Done** | A CI job cross-compiles the runtime, the GPU plugin and the host tests for android-arm64 with the pinned NDK and no game files |
-| AP-2.3, AP-2.4, AP-2.7, AP-3.4 (kill test), AP-3.5, AP-4.1, AP-4.5, AP-6.3, AP-7, AP-8.3 | Open | Need the reference device (formats, BC, memory and thermals, controllers, touch) or a second GPU vendor |
+| AP-2.3, AP-2.4, AP-2.7, AP-3.4 (kill test), AP-3.5, AP-4.1, AP-6.3, AP-7, AP-8.3 | Open | Need the reference device (formats, BC, memory and thermals, controllers, touch) or a second GPU vendor |
 
 ### Findings from the emulator runs
 
