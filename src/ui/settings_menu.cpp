@@ -662,6 +662,9 @@ std::unique_ptr<MenuScreen> SettingsPages::TrainerWorld() {
   }
   rows.push_back(Setting("TIME OF DAY", std::move(times)));
   rows.push_back(Toggle("FREE CAMERA", "cheat_free_camera"));
+  // The discount signs and barn finds not yet found, on the map and minimap
+  // (NP-8.6).
+  rows.push_back(Toggle("SHOW COLLECTIBLES", "cheat_show_collectibles"));
   return std::make_unique<MenuScreen>("WORLD", std::move(rows));
 }
 

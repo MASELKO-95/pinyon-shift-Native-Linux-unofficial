@@ -29,6 +29,7 @@ elseif(WIN32)
         src/pinyon_shift_runtime_hooks.cpp
         src/save_backups.cpp
         src/cheats.cpp
+        src/cheats_map.cpp
         src/save/car_cards.cpp
         src/save/live_profile.cpp
         src/save/profile_body.cpp
@@ -67,6 +68,7 @@ else()
         src/pinyon_shift_runtime_hooks.cpp
         src/save_backups.cpp
         src/cheats.cpp
+        src/cheats_map.cpp
         src/save/car_cards.cpp
         src/save/live_profile.cpp
         src/save/profile_body.cpp

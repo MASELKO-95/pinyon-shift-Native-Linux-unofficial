@@ -31,6 +31,7 @@
 #include "fh1_render_test.h"
 #include "pinyon_shift_runtime_hooks.h"
 #include "cheats.h"
+#include "cheats_map.h"
 #include "mod/mod_host.h"
 #include "mod/overlay_device.h"
 #include "save/live_profile.h"
@@ -3928,6 +3929,9 @@ void ApplyUiMutationExperiment() {
 void PinyonShiftTraceFrameTelemetry(PPCRegister& r28, PPCRegister& r31) {
   PROFILE_SIMULATION_TICK();
   ApplyUiMutationExperiment();
+  // The trainer's collectible markers (NP-8.6) queue their pass here, so it
+  // also runs while the pause map is open.
+  pinyon_shift::cheats::UpdateCollectibleMarkers();
   // frame.tick for mods: their guest tasks, then the hook.
   pinyon_shift::mod::RunGuestTasks();
   if (pinyon_shift::mod::HasSubscribers(PINYON_HOOK_FRAME_TICK)) {
