@@ -55,6 +55,15 @@ __pycache__/
 *.trace
 *.obj
 *.lib
+# Android packages, libraries and signing keys (built from the player's disc).
+*.so
+*.apk
+*.aab
+*.idsig
+*.keystore
+*.jks
+*.dex
+*.class
 .artifacts/
 launcher/**/bin/
 launcher/**/obj/

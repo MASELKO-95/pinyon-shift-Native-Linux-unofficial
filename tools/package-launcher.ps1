@@ -118,7 +118,8 @@ $sourceProvenancePath = Join-Path $payloadRoot 'config/source-provenance.json'
     [Text.UTF8Encoding]::new($false))
 
 Get-ChildItem -LiteralPath $payloadRoot -Recurse -File | Where-Object {
-    $_.Extension -in @('.exe', '.dll', '.obj', '.lib', '.pdb', '.iso', '.xex', '.dxil', '.pnsp')
+    $_.Extension -in @('.exe', '.dll', '.obj', '.lib', '.pdb', '.iso', '.xex', '.dxil', '.pnsp',
+        '.so', '.apk', '.aab', '.idsig', '.keystore', '.jks', '.dex')
 } | ForEach-Object { throw "Forbidden file entered launcher payload: $($_.FullName)" }
 
 New-DeterministicZip -SourceDirectory $payloadRoot -DestinationPath $payloadZip
