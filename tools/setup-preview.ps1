@@ -13,22 +13,42 @@ if (Test-Path variable:PSNativeCommandUseErrorActionPreference) {
 
 . (Join-Path $PSScriptRoot 'release-common.ps1')
 $root = Get-PinyonRepoRoot
-$config = Get-PinyonReleaseToolchain
-$resolvedIso = (Resolve-Path -LiteralPath $IsoPath).Path
-$gameRoot = Resolve-PinyonLocalPath -RelativePath '.local/game/base'
-$statePath = Resolve-PinyonLocalPath -RelativePath '.local/setup-state.json'
 $logs = Resolve-PinyonLocalPath -RelativePath '.local/logs'
 [void](New-Item -ItemType Directory -Force -Path $logs)
-
-if (-not [Environment]::Is64BitOperatingSystem) {
-    throw 'Pinyon Shift requires 64-bit Windows.'
-}
-$windowsBuild = [Environment]::OSVersion.Version.Build
-if ($windowsBuild -lt [int]$config.minimum_windows_build) {
-    throw "Pinyon Shift requires Windows build $($config.minimum_windows_build) or newer."
-}
+$errorPath = Join-Path $logs 'setup-error.json'
+# A report from an earlier attempt must not be mistaken for this one.
+if (Test-Path -LiteralPath $errorPath) { Remove-Item -LiteralPath $errorPath -Force }
 
 try {
+    $config = Get-PinyonReleaseToolchain
+    $resolvedIso = (Resolve-Path -LiteralPath $IsoPath).Path
+    $gameRoot = Resolve-PinyonLocalPath -RelativePath '.local/game/base'
+    $statePath = Resolve-PinyonLocalPath -RelativePath '.local/setup-state.json'
+    if (-not [Environment]::Is64BitOperatingSystem) {
+        throw 'Pinyon Shift requires 64-bit Windows.'
+    }
+    $windowsBuild = [Environment]::OSVersion.Version.Build
+    if ($windowsBuild -lt [int]$config.minimum_windows_build) {
+        throw "Pinyon Shift requires Windows build $($config.minimum_windows_build) or newer."
+    }
+
+    $runningPreview = @(Get-Process -Name 'pinyon_shift' -ErrorAction SilentlyContinue)
+    if ($runningPreview.Count -gt 0) {
+        throw 'Close every running Pinyon Shift preview before building. Windows locks the runtime files while the game is open.'
+    }
+    # Tools built beside the game (for example the archive extractor used
+    # while preparing graphics) load the same runtime DLL.
+    $buildTree = [IO.Path]::GetFullPath((Join-Path $root 'out/build')).TrimEnd('\', '/') +
+        [IO.Path]::DirectorySeparatorChar
+    $buildTreeProcesses = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+        $path = $null
+        try { $path = $_.Path } catch { }
+        $path -and $path.StartsWith($buildTree, [StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($buildTreeProcesses.Count -gt 0) {
+        $names = ($buildTreeProcesses | ForEach-Object { "$($_.ProcessName).exe (PID $($_.Id))" }) -join ', '
+        throw "Close $names before building. It was started from the Pinyon Shift build folder and keeps its runtime files locked."
+    }
     Write-PinyonEvent verify 2 'Reading the disc image. Nothing is uploaded.' -JsonEvents:$JsonEvents
     $verification = & (Join-Path $PSScriptRoot 'verify-game.ps1') -IsoPath $resolvedIso -Json |
         ConvertFrom-Json
@@ -66,6 +86,7 @@ try {
     Write-PinyonEvent extract 58 'Local game files are verified and ready.' -JsonEvents:$JsonEvents
 
     & (Join-Path $PSScriptRoot 'build-preview.ps1') -JsonEvents:$JsonEvents | Out-Host
+    & (Join-Path $PSScriptRoot 'prepare-fh1-shaders.ps1') -GameRoot $gameRoot -JsonEvents:$JsonEvents | Out-Host
     $state = [ordered]@{
         schema_version = 1
         completed_utc = [DateTime]::UtcNow.ToString('o')
@@ -78,17 +99,25 @@ try {
     Write-PinyonEvent play 100 'Ready to play.' -JsonEvents:$JsonEvents
 }
 catch {
-    $errorRecord = [ordered]@{
-        schema_version = 1
-        created_utc = [DateTime]::UtcNow.ToString('o')
-        message = $_.Exception.Message
-        category = [string]$_.CategoryInfo.Category
-        script = $_.InvocationInfo.ScriptName
-        line = $_.InvocationInfo.ScriptLineNumber
+    # Report the failure as plain text and exit with a code. Write-Error under
+    # $ErrorActionPreference = 'Stop' turns into a second, terminating error
+    # whose position is the Write-Error line itself ("At ...:92 char:5"),
+    # which hides the real step and its output.
+    $failure = $_
+    $errorRecord = $null
+    try {
+        $errorRecord = New-PinyonFailureRecord -ErrorRecord $failure
+        $errorRecord.system = Get-PinyonSystemSummary -Root $root
+        [IO.File]::WriteAllText($errorPath, ($errorRecord | ConvertTo-Json -Depth 4) + [Environment]::NewLine,
+            [Text.UTF8Encoding]::new($false))
+        foreach ($line in (Format-PinyonFailureRecord -Record $errorRecord)) { [Console]::Out.WriteLine($line) }
+        [Console]::Out.WriteLine("Failure details: $errorPath")
     }
-    $errorPath = Join-Path $logs 'setup-error.json'
-    [IO.File]::WriteAllText($errorPath, ($errorRecord | ConvertTo-Json) + [Environment]::NewLine,
-        [Text.UTF8Encoding]::new($false))
-    Write-Error $_
+    catch {
+        [Console]::Out.WriteLine("Setup failed: $($failure.Exception.Message)")
+        [Console]::Out.WriteLine("The failure report could not be written: $($_.Exception.Message)")
+    }
+    [Console]::Out.Flush()
+    [Console]::Error.WriteLine("Setup failed: $($failure.Exception.Message)")
     exit 1
 }

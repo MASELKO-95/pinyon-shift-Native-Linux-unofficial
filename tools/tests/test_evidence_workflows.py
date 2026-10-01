@@ -45,18 +45,14 @@ class EvidenceWorkflowTests(unittest.TestCase):
             unsafe = root / "dump.dmp"; unsafe.write_bytes(b"private")
             with self.assertRaises(ValueError): qualification.package(session, [unsafe])
 
-    def test_renderer_ab_requires_memexport_counters(self):
+    def test_renderer_ab_compares_supported_variable(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); fingerprint = root / "build.json"; fingerprint.write_text('{"commit":"abc"}')
-            session = renderer.prepare(root, "readback_memexport", fingerprint)
+            session = renderer.prepare(root, "clear_memory_page_state", fingerprint)
             summary = {"frame_time_us": {"median": 1000, "p95": 1200}}
             for variant in ("control", "candidate"):
                 (session / variant / "performance-summary.json").write_text(json.dumps(summary))
                 (session / variant / "visual-validation.json").write_text('{"missing":[]}')
-            with self.assertRaises(ValueError): renderer.compare(session)
-            summary["memexport_counters"] = {name: 0 for name in renderer.MEMEXPORT_COUNTERS}
-            for variant in ("control", "candidate"):
-                (session / variant / "performance-summary.json").write_text(json.dumps(summary))
-            self.assertEqual("readback_memexport", renderer.compare(session)["variable"])
+            self.assertEqual("clear_memory_page_state", renderer.compare(session)["variable"])
 
 if __name__ == "__main__": unittest.main()

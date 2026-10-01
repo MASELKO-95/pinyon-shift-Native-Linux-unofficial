@@ -30,9 +30,57 @@ verified before use.
 ## The build fails
 
 Restart Windows after a Build Tools installation, make at least 25 GB free, and
-try again. If it still fails, open the build log from the launcher and include
-the last relevant lines in a bug report. Never attach game files or generated
-source.
+close every running Pinyon Shift preview before trying again. If it still
+fails, choose **Open logs** in the launcher and attach `launcher.log` to the bug
+report. This log contains build output and local paths, but no game data or
+generated source. Never attach game files or generated source.
+
+## A portable install cannot start or build
+
+A launcher with `portable.txt` beside it (or started with `--portable`) keeps
+everything in the `data` folder next to it; see "Portable install" in the
+README.
+
+- **"Portable folder is not writable"**: the launcher folder is read-only for
+  your account, typically because it was extracted into Program Files or onto
+  read-only media. Move the whole folder somewhere you own, such as
+  `D:\Games\PinyonShift`, or delete `portable.txt` to install under
+  `%LOCALAPPDATA%\PinyonShift` instead.
+- **"Portable folder path is too long"**: the build creates files about 185
+  characters below `data`, and Git, CMake and the compilers stop at Windows'
+  260-character limit. Move the launcher folder so the `data` folder's path is
+  70 characters or fewer, for example `D:\PinyonShift\data`. An existing build
+  in a deeper folder still plays.
+- **After moving the folder** the first rebuild configures the build folder
+  again and recompiles, which takes about as long as the first build. Playing
+  an existing build needs no rebuild. On a PC without Visual Studio Build
+  Tools, the next build installs them again.
+
+## Gameplay stutters
+
+Some one-time stutter while the preview encounters new effects is expected in
+this early release. If severe stutter continues after revisiting the same route,
+report whether it happens only on the first pass or every pass and include the
+latest performance CSV and runtime log from `.local/preview/logs`. Those two
+cases have different causes, and the measurements are needed for a targeted
+fix.
+
+## Something is missing the first time a screen appears
+
+The preview draws only with shaders prepared before launch. When the game
+builds a shader that preparation did not reach, those draws are skipped for
+that session and the shader is recorded. The next launch prepares graphics
+again ("Preparing graphics ... This only runs when needed.") and includes it.
+If the same thing stays missing after relaunching, report it with the latest
+runtime log from `.local/preview/logs`.
+
+## Graphics setup fails with a resolution scale error
+
+The renderer supports internal resolution scales of 1x, 2x, 3x and 4x only,
+with the same value horizontally and vertically. Any other `draw_resolution_scale_x`
+or `draw_resolution_scale_y` in `.local/preview/config/pinyon_shift.toml`
+stops graphics setup with an error that names the requested scale. Choose a
+supported scale in the launcher, or remove the file to reset runtime settings.
 
 ## The game does not start
 
@@ -73,5 +121,14 @@ arranges a private transfer for a specific investigation.
 ## Start over
 
 Close the launcher and delete `.local` and `out` from the repository or the
-launcher source folder under `%LOCALAPPDATA%\PinyonShift`. Your original ISO is
-outside those folders and is never deleted by project scripts.
+launcher source folder under `%LOCALAPPDATA%\PinyonShift` (for a portable
+install, under `data\source` beside the launcher). Your original ISO is outside
+those folders and is never deleted by project scripts.
+
+## Uninstall completely
+
+Close the launcher and preview, then delete the extracted launcher folder and
+`%LOCALAPPDATA%\PinyonShift`; a portable install is only its own folder. The
+preview does not install a Windows service or registry startup entry. Microsoft
+Visual Studio Build Tools are shared system tools and should be removed
+separately from **Installed apps** only if no other development work uses them. The original ISO remains wherever you stored it.

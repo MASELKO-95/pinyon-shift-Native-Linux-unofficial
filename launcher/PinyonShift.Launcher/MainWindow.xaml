@@ -1,296 +1,322 @@
 <Window x:Class="PinyonShift.Launcher.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Pinyon Shift" Width="1080" Height="720" MinWidth="920" MinHeight="640"
+        Title="Pinyon Shift" Width="1120" Height="720" MinWidth="940" MinHeight="640"
         WindowStartupLocation="CenterScreen" Background="{StaticResource InkBrush}"
-        Foreground="{StaticResource FogBrush}">
-    <Grid>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="330"/>
-            <ColumnDefinition Width="*"/>
-        </Grid.ColumnDefinitions>
+        Foreground="{StaticResource FogBrush}" Icon="Branding/pinyon-shift.ico"
+        WindowStyle="SingleBorderWindow" ResizeMode="CanResize" AllowDrop="True"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display"
+        DragOver="Window_DragOver" Drop="Window_Drop">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="52" ResizeBorderThickness="6" GlassFrameThickness="0"
+                      CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
 
-        <Border Grid.Column="0" Background="#131713" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,1,0">
-            <Grid Margin="38,34,34,30">
+    <Border x:Name="RootBorder" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="52"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="44"/>
+            </Grid.RowDefinitions>
+
+            <!-- Art behind the title bar and the body; the ridges are the horizon. -->
+            <Grid Grid.RowSpan="2" ClipToBounds="True">
+                <Border Background="{StaticResource HeroGradient}"/>
+                <!-- In a zero-size canvas, so the art never sizes the rows it spans. -->
+                <Canvas HorizontalAlignment="Right" VerticalAlignment="Top" Width="0" Height="0">
+                    <Image Source="Branding/mark-light.png" Height="400" Opacity="0.05"
+                           Canvas.Left="-470" Canvas.Top="0" RenderOptions.BitmapScalingMode="HighQuality"/>
+                </Canvas>
+                <Path VerticalAlignment="Bottom" Height="170" Stretch="Fill" Opacity="0.55"
+                      Data="M0,150 L0,96 L70,62 L120,84 L190,40 L260,78 L330,52 L400,86 L470,48 L560,82 L630,58 L720,90 L800,50 L880,80 L960,44 L1040,76 L1120,54 L1180,70 L1180,150 Z">
+                    <Path.Fill>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#1E4A30" Offset="0"/>
+                            <GradientStop Color="#0A0F0C" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Path.Fill>
+                </Path>
+                <Path VerticalAlignment="Bottom" Height="100" Stretch="Fill" Opacity="0.9"
+                      Data="M0,92 L0,64 L40,44 L60,56 L90,30 L120,52 L170,38 L230,60 L290,34 L340,56 L400,42 L470,66 L540,36 L600,58 L660,44 L740,64 L820,32 L880,54 L950,40 L1020,62 L1090,38 L1140,52 L1180,44 L1180,92 Z">
+                    <Path.Fill>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#123321" Offset="0"/>
+                            <GradientStop Color="#0A0F0C" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Path.Fill>
+                </Path>
+            </Grid>
+
+            <!-- Title bar. -->
+            <DockPanel Grid.Row="0" LastChildFill="False">
+                <Image DockPanel.Dock="Left" Source="Branding/logo-light.png" Height="22" Margin="28,0,0,0"
+                       VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top"
+                            WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button Style="{StaticResource CaptionButton}" Click="MinimizeButton_Click"
+                            AutomationProperties.Name="Minimize">
+                        <Path Data="M0,0.5 L10,0.5" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1" SnapsToDevicePixels="True"/>
+                    </Button>
+                    <Button x:Name="MaximizeButton" Style="{StaticResource CaptionButton}"
+                            Click="MaximizeButton_Click" AutomationProperties.Name="Maximize">
+                        <Path x:Name="MaximizeGlyph" Data="M0.5,0.5 H9.5 V9.5 H0.5 Z"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1" SnapsToDevicePixels="True"/>
+                    </Button>
+                    <Button Style="{StaticResource CloseCaptionButton}" Click="CloseButton_Click"
+                            AutomationProperties.Name="Close">
+                        <Path Data="M0,0 L10,10 M10,0 L0,10"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1.1"/>
+                    </Button>
+                </StackPanel>
+            </DockPanel>
+
+            <!-- Body: the state in one headline, one line of detail, the action,
+                 and a panel when there is something to do here. -->
+            <StackPanel Grid.Row="1" VerticalAlignment="Center" Margin="56,0,56,36">
+            <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-
-                <StackPanel>
-                    <TextBlock Text="PINYON" FontFamily="Bahnschrift Condensed" FontWeight="SemiBold"
-                               FontSize="42"/>
-                    <TextBlock Text="SHIFT" FontFamily="Bahnschrift Condensed" FontWeight="Light"
-                               FontSize="42" Margin="0,-11,0,0" Foreground="{StaticResource AmberBrush}"/>
-                    <Border Width="56" Height="3" Background="{StaticResource AmberBrush}"
-                            HorizontalAlignment="Left" Margin="1,18,0,0"/>
-                    <TextBlock Text="W I N D O W S   P L A Y A B L E   P R E V I E W" FontSize="11"
-                               Foreground="{StaticResource MutedBrush}" Margin="1,15,0,0"/>
+                <TextBlock x:Name="HeadlineText" Text="Build your preview"
+                           FontFamily="Bahnschrift SemiBold" FontSize="44"
+                           AutomationProperties.LiveSetting="Polite"/>
+                <TextBlock Grid.Row="1" x:Name="SubheadText" MaxWidth="640" HorizontalAlignment="Left"
+                           TextWrapping="Wrap" LineHeight="22" FontSize="15" Foreground="{StaticResource MutedBrush}"
+                           Margin="0,8,0,0" Text="Verified, extracted and compiled on this PC. Nothing is uploaded."/>
+                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,28,0,0">
+                    <Button x:Name="PrimaryButton" Style="{StaticResource PrimaryButton}" MinWidth="200"
+                            IsEnabled="False" Click="PrimaryButton_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <Path x:Name="PrimaryIcon" Data="M0,0 L0,14 L11,7 Z" Fill="{StaticResource InkBrush}"
+                                  VerticalAlignment="Center" Margin="0,0,12,0" Visibility="Collapsed"/>
+                            <TextBlock x:Name="PrimaryButtonText" Text="Verify and build"
+                                       Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                       FontFamily="Bahnschrift SemiBold" FontSize="17" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="GraphicsSettingsButton" Content="Settings" Style="{StaticResource QuietButton}"
+                            Height="54" Padding="24,0" Margin="12,0,0,0" Visibility="Collapsed"
+                            Click="GraphicsSettingsButton_Click"
+                            AutomationProperties.HelpText="Choose the graphics API, the resolution and the Treasure Map."/>
                 </StackPanel>
 
-                <TextBlock Grid.Row="1" Margin="0,38,0,24" TextWrapping="Wrap" LineHeight="22"
-                           Foreground="{StaticResource MutedBrush}"
-                           Text="Your game stays yours. This launcher verifies your disc image, builds the native translation on this PC, and keeps every generated file local."/>
-
-                <ItemsControl Grid.Row="2" x:Name="RouteList" Margin="0,6,0,0">
+                <!-- Setup steps, while there is setup left to do. -->
+                <ItemsControl Grid.Row="3" x:Name="RouteList" Margin="0,30,0,0" Focusable="False">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Rows="1"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Grid Margin="0,0,0,22">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="34"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
+                            <Grid Margin="0,0,14,0">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
-                                <Border Grid.RowSpan="2" Width="22" Height="22" CornerRadius="11"
-                                        HorizontalAlignment="Left" VerticalAlignment="Top"
-                                        Background="{Binding Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
-                                    <TextBlock Text="{Binding Marker}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                               FontSize="10" FontWeight="Bold" Foreground="{StaticResource InkBrush}"/>
-                                </Border>
-                                <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="14" FontWeight="SemiBold"/>
-                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Detail}" FontSize="11"
-                                           Foreground="{StaticResource MutedBrush}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                                <Border Height="3" CornerRadius="1.5" Background="{Binding Brush}"/>
+                                <TextBlock Grid.Row="1" Text="{Binding Title}" FontSize="13"
+                                           Foreground="{StaticResource MutedBrush}" Margin="0,9,0,0"/>
                             </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-
-                <StackPanel Grid.Row="3">
-                    <Border Height="1" Background="{StaticResource LineBrush}" Margin="0,0,0,16"/>
-                    <TextBlock Text="Unofficial community project" FontSize="11" Foreground="{StaticResource MutedBrush}"/>
-                    <TextBlock Text="Not affiliated with Microsoft or Playground Games" FontSize="10"
-                               Foreground="#747B74" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <Grid Grid.Column="1" Margin="48,40,48,38">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-
-            <DockPanel>
-                <StackPanel DockPanel.Dock="Left">
-                    <TextBlock x:Name="EyebrowText" Text="READY FOR YOUR DISC" Foreground="{StaticResource AmberBrush}"
-                               FontSize="11" FontWeight="SemiBold"/>
-                    <TextBlock x:Name="HeadlineText" Text="Build your preview." FontFamily="Bahnschrift SemiCondensed"
-                               FontSize="34" FontWeight="SemiBold" Margin="0,7,0,0"/>
-                </StackPanel>
-                <Border DockPanel.Dock="Right" Background="{StaticResource PanelBrush}" CornerRadius="18"
-                        Padding="12,7" VerticalAlignment="Top">
-                    <StackPanel Orientation="Horizontal">
-                        <Ellipse x:Name="StatusDot" Width="8" Height="8" Fill="{StaticResource GreenBrush}" Margin="0,0,8,0"/>
-                        <TextBlock x:Name="StatusText" Text="SYSTEM READY" FontSize="10"/>
-                    </StackPanel>
-                </Border>
-            </DockPanel>
-
-            <Border Grid.Row="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}"
-                    BorderThickness="1" CornerRadius="5" Padding="22" Margin="0,30,0,0">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <TextBlock Text="FORZA HORIZON DISC IMAGE" FontSize="11" FontWeight="SemiBold"
-                                   Foreground="{StaticResource MutedBrush}"/>
-                        <TextBox x:Name="IsoPathTextBox" Margin="0,10,14,0" IsReadOnly="True"
-                                 ToolTip="Select your personally dumped supported Xbox 360 disc image."/>
-                    </StackPanel>
-                    <Button Grid.Column="1" x:Name="BrowseButton" Content="CHOOSE ISO" Style="{StaticResource QuietButton}"
-                            VerticalAlignment="Bottom" Click="BrowseButton_Click"/>
-                </Grid>
-            </Border>
-
-            <Grid Grid.Row="2" Margin="0,18,0,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}"
-                        BorderThickness="1" CornerRadius="5" Padding="18,15" Margin="0,0,8,0">
-                    <StackPanel>
-                        <TextBlock Text="SUPPORTED INPUT" FontSize="10" Foreground="{StaticResource MutedBrush}"/>
-                        <TextBlock Text="USA retail · MS-2505" FontSize="14" Margin="0,5,0,0"/>
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}"
-                        BorderThickness="1" CornerRadius="5" Padding="18,15" Margin="8,0,0,0">
-                    <StackPanel>
-                        <TextBlock Text="LOCAL BUILD" FontSize="10" Foreground="{StaticResource MutedBrush}"/>
-                        <TextBlock x:Name="BuildLocationText" Text="%LOCALAPPDATA%\PinyonShift" FontSize="14" Margin="0,5,0,0"/>
-                    </StackPanel>
-                </Border>
             </Grid>
 
-            <Border Grid.Row="3" x:Name="LogPanel" Background="#0B0E0B" BorderBrush="{StaticResource LineBrush}"
-                    BorderThickness="1" CornerRadius="5" Margin="0,18,0,0" Visibility="Collapsed">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <DockPanel Margin="17,13">
-                        <TextBlock Text="BUILD LOG" FontSize="10" Foreground="{StaticResource MutedBrush}"/>
-                        <TextBlock x:Name="ProgressText" DockPanel.Dock="Right" Text="0%" FontSize="10"
-                                   Foreground="{StaticResource AmberBrush}"/>
-                    </DockPanel>
-                    <TextBox Grid.Row="1" x:Name="LogTextBox" BorderThickness="0" Background="Transparent"
-                             FontSize="11" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                             Padding="17,0,17,15"/>
-                </Grid>
-            </Border>
+            <Grid Margin="0,32,0,0">
 
-            <Border Grid.Row="3" x:Name="CrashPanel" Background="#201714" BorderBrush="{StaticResource RedBrush}"
-                    BorderThickness="1" CornerRadius="5" Margin="0,18,0,0" Visibility="Collapsed"
-                    AutomationProperties.Name="Crash report ready">
-                <Grid Margin="24,20">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <TextBlock Text="The game closed unexpectedly." FontFamily="Bahnschrift SemiCondensed"
-                               FontSize="24" FontWeight="SemiBold"/>
-                    <TextBlock Grid.Row="1" Margin="0,8,0,0" Foreground="#C8B7AF" TextWrapping="Wrap"
-                               LineHeight="20"
-                               Text="We caught the crash and prepared a privacy-safe diagnostic ZIP. One click opens a prefilled GitHub report and selects the file you need to attach."/>
-                    <Border Grid.Row="2" Background="#15110F" BorderBrush="#573C35" BorderThickness="1"
-                            CornerRadius="4" Padding="16,12" Margin="0,17,0,0">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="1.1*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="CRASH ID" FontSize="10" Foreground="#C8B7AF"/>
-                                <TextBlock x:Name="CrashIdText" Text="pscrash-v1-pending" FontFamily="Cascadia Mono, Consolas"
-                                           FontSize="13" Margin="0,5,0,0" TextTrimming="CharacterEllipsis"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1">
-                                <TextBlock Text="SAFE TO ATTACH" FontSize="10" Foreground="#C8B7AF"/>
-                                <TextBlock Text="No game files, saves, generated code, or memory dump"
-                                           FontSize="12" Margin="0,5,0,0" TextWrapping="Wrap"/>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-                    <TextBlock Grid.Row="3" Margin="0,15,0,0" VerticalAlignment="Top" Foreground="#C8B7AF"
-                               FontSize="11" TextWrapping="Wrap"
-                               Text="The local crash dump stays on this computer. Maintainers may request it privately if the sanitized report is not enough."/>
-                </Grid>
-            </Border>
-
-            <Border Grid.Row="1" Grid.RowSpan="3" x:Name="GraphicsPanel" Background="{StaticResource PanelBrush}"
-                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="5"
-                    Margin="0,18,0,0" Visibility="Collapsed"
-                    AutomationProperties.Name="Experimental graphics settings">
-                <Grid Margin="24,20">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <DockPanel>
-                        <Button DockPanel.Dock="Right" Content="BACK" Style="{StaticResource QuietButton}"
-                                Click="CloseGraphicsButton_Click" AutomationProperties.Name="Close graphics settings"/>
+                <!-- Setup: the disc image. -->
+                <Border x:Name="SetupPanel" CornerRadius="14" Padding="26,22" VerticalAlignment="Top"
+                        Background="{StaticResource SurfaceBrush}">
+                    <Grid>
+                        <Rectangle RadiusX="14" RadiusY="14" Margin="-26,-22"
+                                   Stroke="{StaticResource LineStrongBrush}" StrokeThickness="1.5"
+                                   StrokeDashArray="5 4" IsHitTestVisible="False"/>
                         <StackPanel>
-                            <TextBlock Text="EXPERIMENTAL GRAPHICS" FontSize="10" FontWeight="SemiBold"
-                                       Foreground="{StaticResource AmberBrush}"/>
-                            <TextBlock Text="Tune the translated renderer." FontFamily="Bahnschrift SemiCondensed"
-                                       FontSize="25" FontWeight="SemiBold" Margin="0,5,0,0"/>
-                        </StackPanel>
-                    </DockPanel>
-                    <TextBlock Grid.Row="1" Margin="0,10,0,16" Foreground="{StaticResource MutedBrush}"
-                               TextWrapping="Wrap" LineHeight="19"
-                               Text="Changes are validated and backed up before they are saved. Restart the preview to apply them."/>
-                    <Grid Grid.Row="2">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="16"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="16"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="TEXTURE FILTERING" FontSize="10" Foreground="{StaticResource MutedBrush}"/>
-                            <ComboBox x:Name="AnisotropyComboBox" Margin="0,8,0,0" SelectedIndex="0"
-                                      AutomationProperties.Name="Texture filtering">
-                                <ComboBoxItem Tag="4"><TextBlock Text="4× anisotropic" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
-                                <ComboBoxItem Tag="8"><TextBlock Text="8× anisotropic" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
-                                <ComboBoxItem Tag="16"><TextBlock Text="16× anisotropic" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
-                            </ComboBox>
-                        </StackPanel>
-                        <StackPanel Grid.Column="2">
-                            <TextBlock Text="EDGE SMOOTHING" FontSize="10" Foreground="{StaticResource MutedBrush}"/>
-                            <ComboBox x:Name="PostEffectComboBox" Margin="0,8,0,0" SelectedIndex="0"
-                                      AutomationProperties.Name="Edge smoothing">
-                                <ComboBoxItem Tag="none"><TextBlock Text="Off" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
-                                <ComboBoxItem Tag="fxaa"><TextBlock Text="FXAA" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
-                                <ComboBoxItem Tag="fxaa_extreme"><TextBlock Text="FXAA Extreme" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
-                            </ComboBox>
-                        </StackPanel>
-                        <StackPanel Grid.Column="4">
-                            <TextBlock Text="INTERNAL RESOLUTION" FontSize="10" Foreground="{StaticResource MutedBrush}"/>
-                            <ComboBox x:Name="ResolutionComboBox" Margin="0,8,0,0" SelectedIndex="0"
-                                      AutomationProperties.Name="Internal resolution">
-                                <ComboBoxItem Tag="1"><TextBlock Text="Native · 1×" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
-                                <ComboBoxItem Tag="2"><TextBlock Text="Experimental · 2×" Foreground="{StaticResource InkBrush}"/></ComboBoxItem>
-                            </ComboBox>
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" x:Name="BrowseButton" Content="Choose ISO"
+                                        Style="{StaticResource QuietButton}" VerticalAlignment="Center"
+                                        Click="BrowseButton_Click"/>
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock x:Name="DropHintText" Text="Drop your Forza Horizon .iso here"
+                                               FontSize="17" FontFamily="Bahnschrift SemiBold" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="The USA retail disc (MS-2505), dumped from your own copy."
+                                               FontSize="13" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </DockPanel>
+                            <TextBox x:Name="IsoPathTextBox" Margin="0,16,0,0" IsReadOnly="True" Visibility="Collapsed"
+                                     AutomationProperties.Name="Disc image"/>
+                            <CheckBox x:Name="OwnershipCheckBox" Margin="0,18,0,0"
+                                      FontFamily="Bahnschrift" FontSize="13" Checked="InputChanged" Unchecked="InputChanged">
+                                <TextBlock Text="I own this copy and dumped it from my own disc." TextWrapping="Wrap"
+                                           Foreground="{StaticResource FogBrush}"/>
+                            </CheckBox>
+                            <DockPanel Margin="0,18,0,0">
+                                <Button DockPanel.Dock="Right" x:Name="ChooseInstallRootButton" Content="Change"
+                                        IsEnabled="False" Style="{StaticResource LinkButton}" VerticalAlignment="Center"
+                                        Click="ChooseInstallRootButton_Click"
+                                        ToolTip="Existing files and saves stay where they are."/>
+                                <TextBlock VerticalAlignment="Center" FontSize="12.5" Foreground="{StaticResource MutedBrush}"
+                                           TextTrimming="CharacterEllipsis">
+                                    <Run x:Name="BuildLocationPrefixRun" Text="Installs to "/><Run x:Name="BuildLocationRun" Text="%LOCALAPPDATA%\PinyonShift"
+                                                                   Foreground="{StaticResource FogBrush}"/>
+                                </TextBlock>
+                            </DockPanel>
                         </StackPanel>
                     </Grid>
-                    <Border Grid.Row="3" Background="#171B17" BorderBrush="{StaticResource LineBrush}"
-                            BorderThickness="1" CornerRadius="4" Padding="14,11" Margin="0,17,0,0">
-                        <TextBlock x:Name="GraphicsStatusText" Text="Loading current settings…" TextWrapping="Wrap"
-                                   Foreground="{StaticResource MutedBrush}" FontSize="11"
-                                   AutomationProperties.LiveSetting="Polite"/>
-                    </Border>
-                    <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
-                        <Button x:Name="RestoreGraphicsButton" Content="RESTORE BACKUP" Style="{StaticResource QuietButton}"
-                                Margin="0,0,10,0" Click="RestoreGraphicsButton_Click"/>
-                        <Button x:Name="ResetGraphicsButton" Content="RESET DEFAULTS" Style="{StaticResource QuietButton}"
-                                Margin="0,0,10,0" Click="ResetGraphicsButton_Click"/>
-                        <Button x:Name="SaveGraphicsButton" Content="SAVE SETTINGS" Style="{StaticResource ActionButton}"
-                                Click="SaveGraphicsButton_Click"/>
-                    </StackPanel>
-                </Grid>
-            </Border>
+                </Border>
 
-            <Grid Grid.Row="4" Margin="0,22,0,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <CheckBox x:Name="OwnershipCheckBox" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"
-                          FontFamily="Bahnschrift" FontSize="12" Checked="InputChanged" Unchecked="InputChanged">
-                    <TextBlock Text="I own this copy and dumped it from my own disc." TextWrapping="Wrap"/>
-                </CheckBox>
-                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button x:Name="GraphicsSettingsButton" Content="GRAPHICS" Style="{StaticResource QuietButton}"
-                            Visibility="Collapsed" Margin="0,0,12,0" Click="GraphicsSettingsButton_Click"
-                            AutomationProperties.HelpText="Open validated experimental graphics settings."/>
-                    <Button x:Name="ReportProblemButton" Content="REPORT A PROBLEM" Style="{StaticResource QuietButton}"
-                            Margin="0,0,12,0" Click="ReportProblemButton_Click"
-                            AutomationProperties.HelpText="Open the Pinyon Shift bug report form on GitHub."/>
-                    <Button x:Name="OpenLogsButton" Content="OPEN LOGS" Style="{StaticResource QuietButton}"
-                            Visibility="Collapsed" Margin="0,0,12,0" Click="OpenLogsButton_Click"/>
-                    <Button x:Name="PrimaryButton" Content="VERIFY &amp; BUILD" Style="{StaticResource ActionButton}"
-                            MinWidth="180" IsEnabled="False" Click="PrimaryButton_Click"/>
-                </StackPanel>
+                <!-- Progress and the build log. -->
+                <Border x:Name="LogPanel" Background="{StaticResource SurfaceBrush}" CornerRadius="14" Visibility="Collapsed">
+                    <Grid Margin="24,18,24,16">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Right" x:Name="ProgressText" Text="0%" FontSize="13"
+                                       FontFamily="Bahnschrift SemiBold" Foreground="{StaticResource AccentBrush}"/>
+                            <TextBlock x:Name="ProgressMessageText" FontSize="13"
+                                       TextTrimming="CharacterEllipsis" Margin="0,0,16,0"/>
+                        </DockPanel>
+                        <ProgressBar Grid.Row="1" x:Name="BuildProgress" Minimum="0" Maximum="100" Value="0"
+                                     Margin="0,12,0,0"/>
+                        <Button Grid.Row="2" x:Name="LogToggleButton" Content="Hide details" HorizontalAlignment="Left"
+                                Style="{StaticResource LinkButton}" Margin="-8,10,0,0" Click="LogToggleButton_Click"/>
+                        <Border Grid.Row="3" x:Name="LogBox" Background="#0B120E" CornerRadius="10" Margin="0,4,0,0"
+                                Height="190">
+                            <TextBox x:Name="LogTextBox" BorderThickness="0" Background="Transparent"
+                                     FontSize="11.5" IsReadOnly="True" TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto" Padding="14,10"
+                                     AutomationProperties.Name="Setup log"/>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- A caught crash. -->
+                <Border x:Name="CrashPanel" Background="#1D1512" BorderBrush="{StaticResource RedBrush}"
+                        BorderThickness="1" CornerRadius="14" Visibility="Collapsed" VerticalAlignment="Top"
+                        AutomationProperties.Name="Crash report ready">
+                    <StackPanel Margin="26,22">
+                        <TextBlock Foreground="#E3D3CC" TextWrapping="Wrap" LineHeight="21" FontSize="14"
+                                   Text="A privacy-safe diagnostic ZIP is ready. Report crash opens a prefilled GitHub issue and selects the ZIP to attach. It holds no game files, saves, generated code or memory dump."/>
+                        <TextBlock Margin="0,14,0,0" FontSize="12.5" Foreground="#C8B7AF">
+                            <Run Text="Crash ID "/><Run x:Name="CrashIdRun" Text="pscrash-v1-pending"
+                                                       FontFamily="Cascadia Mono, Consolas" Foreground="{StaticResource FogBrush}"/>
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+
+                <!-- Graphics settings read before the game starts. -->
+                <Border x:Name="GraphicsPanel" Background="{StaticResource SurfaceBrush}" CornerRadius="14"
+                        Visibility="Collapsed" VerticalAlignment="Top" AutomationProperties.Name="Graphics settings">
+                    <Grid Margin="26,22">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.3*"/>
+                            <ColumnDefinition Width="18"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="18"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Graphics API" FontSize="13" Foreground="{StaticResource MutedBrush}"/>
+                        <ComboBox Grid.Row="1" x:Name="GraphicsApiComboBox" Margin="0,8,0,0" SelectedIndex="0"
+                                  AutomationProperties.Name="Graphics API">
+                            <ComboBoxItem Tag="vulkan">Vulkan, best at 1× and 2×</ComboBoxItem>
+                            <ComboBoxItem Tag="d3d12">Direct3D 12, best at 3× and 4×</ComboBoxItem>
+                        </ComboBox>
+                        <TextBlock Grid.Column="2" Text="Internal resolution" FontSize="13" Foreground="{StaticResource MutedBrush}"/>
+                        <ComboBox Grid.Row="1" Grid.Column="2" x:Name="ResolutionComboBox" Margin="0,8,0,0" SelectedIndex="0"
+                                  AutomationProperties.Name="Internal resolution"
+                                  SelectionChanged="GraphicsChoice_SelectionChanged">
+                            <ComboBoxItem Tag="1">1×</ComboBoxItem>
+                            <ComboBoxItem Tag="2">2×</ComboBoxItem>
+                            <ComboBoxItem Tag="3">3×</ComboBoxItem>
+                            <ComboBoxItem Tag="4">4×</ComboBoxItem>
+                        </ComboBox>
+                        <TextBlock Grid.Column="4" Text="Output scaling" FontSize="13" Foreground="{StaticResource MutedBrush}"/>
+                        <ComboBox Grid.Row="1" Grid.Column="4" x:Name="OutputScalingComboBox" Margin="0,8,0,0" SelectedIndex="0"
+                                  AutomationProperties.Name="Output scaling"
+                                  SelectionChanged="GraphicsChoice_SelectionChanged">
+                            <ComboBoxItem Tag="bilinear">Bilinear</ComboBoxItem>
+                            <ComboBoxItem Tag="cas">CAS sharpening</ComboBoxItem>
+                            <ComboBoxItem Tag="fsr">FSR 1</ComboBoxItem>
+                        </ComboBox>
+                        <TextBlock Grid.Row="2" Grid.ColumnSpan="5" x:Name="ResolutionLineText" Margin="0,14,0,0"
+                                   FontSize="13.5" Foreground="{StaticResource FogBrush}" TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite"/>
+                        <CheckBox Grid.Row="3" Grid.ColumnSpan="5" x:Name="TreasureMapCheckBox" Margin="0,20,0,0"
+                                  FontFamily="Bahnschrift" FontSize="13" IsChecked="True"
+                                  AutomationProperties.Name="Treasure Map">
+                            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource FogBrush}">
+                                <Run Text="Treasure Map"/><Run Foreground="{StaticResource MutedBrush}"
+                                     Text=" · Every discount sign and barn find on the map. Once applied, it stays with that save."/>
+                            </TextBlock>
+                        </CheckBox>
+                        <DockPanel Grid.Row="4" Grid.ColumnSpan="5" Margin="0,22,0,0">
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button x:Name="RestoreGraphicsButton" Content="Restore backup" Style="{StaticResource LinkButton}"
+                                        VerticalAlignment="Center" Click="RestoreGraphicsButton_Click"/>
+                                <Button x:Name="ResetGraphicsButton" Content="Reset to defaults" Style="{StaticResource LinkButton}"
+                                        VerticalAlignment="Center" Margin="4,0,14,0" Click="ResetGraphicsButton_Click"/>
+                                <Button Content="Cancel" Style="{StaticResource QuietButton}" Margin="0,0,10,0"
+                                        Click="CloseGraphicsButton_Click"/>
+                                <Button x:Name="SaveGraphicsButton" Content="Save" Style="{StaticResource ActionButton}"
+                                        MinWidth="96" Click="SaveGraphicsButton_Click"/>
+                            </StackPanel>
+                            <TextBlock x:Name="GraphicsStatusText" TextWrapping="Wrap" FontSize="12.5"
+                                       Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"
+                                       Margin="0,0,18,0" AutomationProperties.LiveSetting="Polite"
+                                       Text="Everything else is in the game: press F6 while playing."/>
+                        </DockPanel>
+                    </Grid>
+                </Border>
             </Grid>
+            </StackPanel>
+
+            <!-- Footer. -->
+            <DockPanel Grid.Row="2" Margin="46,0,46,0" LastChildFill="False">
+                <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" FontSize="12"
+                           Foreground="{StaticResource FaintBrush}">
+                    <Run x:Name="VersionRun" Text="Pinyon Shift"/><Run Text=" · Not affiliated with Microsoft or Playground Games"/>
+                </TextBlock>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="OpenStateFolderButton" Content="Saves" Style="{StaticResource LinkButton}"
+                            Visibility="Collapsed" Click="OpenStateFolderButton_Click"
+                            AutomationProperties.HelpText="Open the folder with your saves and settings."/>
+                    <Button x:Name="OpenLogsButton" Content="Logs" Style="{StaticResource LinkButton}"
+                            Visibility="Collapsed" Click="OpenLogsButton_Click"/>
+                    <Button x:Name="ReportProblemButton" Content="Report a problem" Style="{StaticResource LinkButton}"
+                            Click="ReportProblemButton_Click"
+                            AutomationProperties.HelpText="Open the Pinyon Shift bug report form on GitHub."/>
+                    <Button Content="GitHub" Style="{StaticResource LinkButton}"
+                            Click="ProjectButton_Click" AutomationProperties.HelpText="Open the project on GitHub."/>
+                </StackPanel>
+            </DockPanel>
+
+            <!-- Shown while an .iso is dragged over the window. -->
+            <Border x:Name="DropOverlay" Grid.RowSpan="3" Background="#E60A0F0C" Visibility="Collapsed"
+                    IsHitTestVisible="False">
+                <Border BorderBrush="{StaticResource AccentBrush}" BorderThickness="2" CornerRadius="18" Margin="40">
+                    <TextBlock Text="Drop to use this disc image" FontSize="26" FontFamily="Bahnschrift SemiBold"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+            </Border>
         </Grid>
-    </Grid>
+    </Border>
 </Window>

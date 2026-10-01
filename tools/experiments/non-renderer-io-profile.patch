@@ -1,0 +1,64 @@
+diff --git a/src/kernel/xboxkrnl/xboxkrnl_io.cpp b/src/kernel/xboxkrnl/xboxkrnl_io.cpp
+index f6a36bf..3ee6072 100644
+--- a/src/kernel/xboxkrnl/xboxkrnl_io.cpp
++++ b/src/kernel/xboxkrnl/xboxkrnl_io.cpp
+@@ -12,6 +12,9 @@
+ // Disable warnings about unused parameters for kernel functions
+ #pragma GCC diagnostic ignored "-Wunused-parameter"
+ 
++#include <chrono>
++#include <rex/cvar.h>
++
+ #include <rex/filesystem/device.h>
+ #include <rex/kernel/xboxkrnl/private.h>
+ #include <rex/logging.h>
+@@ -29,6 +32,9 @@
+ #include <rex/system/xtypes.h>
+ #include <rex/thread/mutex.h>
+ 
++REXCVAR_DEFINE_BOOL(profile_guest_file_reads, false, "Kernel",
++                   "Log guest open/read durations for isolated profiling runs");
++
+ namespace rex::kernel::xboxkrnl {
+ using namespace rex::system;
+ 
+@@ -186,10 +192,19 @@ u32 NtCreateFile_entry(mapped_u32 handle_out, u32 desired_access,
+   // Attempt open (or create).
+   rex::filesystem::File* vfs_file;
+   rex::filesystem::FileAction file_action;
++  const bool profile_open = REXCVAR_GET(profile_guest_file_reads);
++  const auto open_start = profile_open ? std::chrono::steady_clock::now()
++                                      : std::chrono::steady_clock::time_point{};
+   X_STATUS result = REX_KERNEL_FS()->OpenFile(
+       root_entry, target_path, rex::filesystem::FileDisposition((uint32_t)creation_disposition),
+       desired_access, (create_options & CreateOptions::FILE_DIRECTORY_FILE) != 0,
+       (create_options & CreateOptions::FILE_NON_DIRECTORY_FILE) != 0, &vfs_file, &file_action);
++  if (profile_open) {
++    const auto open_us = std::chrono::duration_cast<std::chrono::microseconds>(
++        std::chrono::steady_clock::now() - open_start).count();
++    REXKRNL_INFO("IO_PROFILE open path={:?} us={} status={:08X}",
++                 target_path, open_us, static_cast<uint32_t>(result));
++  }
+   object_ref<XFile> file = nullptr;
+ 
+   X_HANDLE handle = X_INVALID_HANDLE_VALUE;
+@@ -267,9 +282,19 @@ u32 NtReadFile_entry(u32 file_handle, u32 event_handle, mapped_void apc_routine_
+   if (XSUCCEEDED(result)) {
+     if (true || file->is_synchronous()) {
+       // Synchronous.
++      const bool profile_read = REXCVAR_GET(profile_guest_file_reads);
++      const auto read_start = profile_read ? std::chrono::steady_clock::now()
++                                          : std::chrono::steady_clock::time_point{};
+       result = file->Read(buffer.guest_address(), buffer_length,
+                           byte_offset_ptr ? static_cast<uint64_t>(*byte_offset_ptr) : -1,
+                           &bytes_read, apc_context.guest_address());
++      if (profile_read) {
++        const auto read_us = std::chrono::duration_cast<std::chrono::microseconds>(
++            std::chrono::steady_clock::now() - read_start).count();
++        REXKRNL_INFO("IO_PROFILE read handle={:08X} requested={} bytes={} us={} status={:08X}",
++                     static_cast<uint32_t>(file_handle), static_cast<uint32_t>(buffer_length),
++                     bytes_read, read_us, static_cast<uint32_t>(result));
++      }
+       if (io_status_block) {
+         io_status_block->status = result;
+         io_status_block->information = bytes_read;

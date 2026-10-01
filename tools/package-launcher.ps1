@@ -54,23 +54,36 @@ foreach ($path in @($publish, $payloadRoot)) {
     [void](New-Item -ItemType Directory -Force -Path $path)
 }
 
+$release = Get-Content (Join-Path $root 'config/release.json') -Raw | ConvertFrom-Json
+# Keep AssemblyVersion (the existing installation directory) stable so updates
+# retain user state, while Windows file/product metadata identifies this release.
+$fileVersion = ($release.version -split '-', 2)[0] + '.0'
 & dotnet publish (Join-Path $root 'launcher/PinyonShift.Launcher/PinyonShift.Launcher.csproj') `
-    -c $Configuration -r win-x64 --self-contained true -o $publish
+    -c $Configuration -r win-x64 --self-contained true -o $publish `
+    "-p:Version=$($release.version)" "-p:FileVersion=$fileVersion"
 if ($LASTEXITCODE -ne 0) { throw 'Launcher publish failed.' }
 
 $include = @(
     'CMakeLists.txt', 'CMakePresets.json', 'LICENSE', 'README.md', 'THIRD_PARTY_NOTICES.md',
     'cmake', 'config/gamecontrollerdb.txt', 'config/release.json', 'config/release-toolchain.json', 'config/supported-dumps.json',
-    'config/rexglue', 'patches/rexglue', 'src',
+    'config/rexglue', 'include', 'mods_src', 'src', 'tests/config', 'tests/native_renderer',
+    'tests/save', 'tests/ui',
+    'tools/fh1_archive_extract.cpp', 'tools/fh1_texture_import.cpp', 'tools/thread_sampler.cpp',
+    'tools/extract-fh1-shader-corpus.py', 'tools/build-fh1-gpu-prewarm.py',
+    'tools/produce-fh1-artifacts.ps1', 'tools/prepare-fh1-shaders.ps1', 'config/render-tests',
     'tools/build-preview.ps1', 'tools/create-crash-report.ps1', 'tools/install-build-tools.ps1',
     'tools/launch-preview.ps1', 'tools/prepare-rexglue.ps1',
+    'tools/build-mod-patches.py', 'tools/build-mod-archives.py', 'tools/install-sample-mod.py',
+    'tools/pinyon.py',
+    'tools/fh1-profile.py', 'tools/fh1-strings.py', 'tools/inspect-fh1-ui.py',
+    'tools/native-shader-pack.py',
     'tools/provision-toolchain.ps1', 'tools/release-common.ps1',
-    'tools/set-graphics-experiment.ps1', 'tools/setup-preview.ps1',
+    'tools/host-config.ps1', 'tools/set-graphics-experiment.ps1', 'tools/setup-preview.ps1',
     'tools/verify-codegen-log.ps1', 'tools/verify-game.ps1'
 )
 foreach ($relative in $include) {
     $source = Join-Path $root $relative
-    if (-not (Test-Path -LiteralPath $source)) { continue }
+    if (-not (Test-Path -LiteralPath $source)) { throw "Required launcher payload source is missing: $relative" }
     $destination = Join-Path $payloadRoot $relative
     if (Test-Path -LiteralPath $source -PathType Container) {
         [void](New-Item -ItemType Directory -Force -Path $destination)
@@ -105,7 +118,7 @@ $sourceProvenancePath = Join-Path $payloadRoot 'config/source-provenance.json'
     [Text.UTF8Encoding]::new($false))
 
 Get-ChildItem -LiteralPath $payloadRoot -Recurse -File | Where-Object {
-    $_.Extension -in @('.exe', '.dll', '.obj', '.lib', '.pdb', '.iso', '.xex')
+    $_.Extension -in @('.exe', '.dll', '.obj', '.lib', '.pdb', '.iso', '.xex', '.dxil', '.pnsp')
 } | ForEach-Object { throw "Forbidden file entered launcher payload: $($_.FullName)" }
 
 New-DeterministicZip -SourceDirectory $payloadRoot -DestinationPath $payloadZip

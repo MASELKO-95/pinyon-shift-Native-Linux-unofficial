@@ -1,0 +1,24 @@
+pinyon-shift-fh1-render-test-v1
+# clock-hz 60
+# Boot the installed FH1 profile without depending on physical input. Captures
+# are intentionally spaced while this trace is calibrated against scene gates.
+# expect-performance 50000 55 80 500
+# expect-simulation-time 0.95 1.08 2
+# expect-image probe-1200 12 30 1.00
+# expect-image probe-1500 12 30 1.00
+# expect-image probe-1800 12 30 1.00
+input 0 0000 0 0 0 0 0 0
+input 360 1000 0 0 0 0 0 0
+input 366 0000 0 0 0 0 0 0
+input 480 1000 0 0 0 0 0 0
+input 486 0000 0 0 0 0 0 0
+input 600 1000 0 0 0 0 0 0
+input 606 0000 0 0 0 0 0 0
+input 720 1000 0 0 0 0 0 0
+input 726 0000 0 0 0 0 0 0
+input 780 0000 0 0 0 0 0 0
+input 930 0000 0 0 0 0 0 0
+capture 1200 probe-1200
+capture 1500 probe-1500
+capture 1800 probe-1800
+stop 1830

@@ -17,7 +17,8 @@
         "CMAKE_C_FLAGS": "-msse4.1",
         "CMAKE_CXX_FLAGS": "-msse4.1",
         "PINYON_SHIFT_CPU_BASELINE": "sse4.1",
-        "REXSDK_DIR": "${sourceDir}/.local/rexglue",
+        "REXSDK_DIR": "${sourceDir}/thirdparty/shiftglue-sdk",
+        "REXGLUE_USE_VULKAN": "ON",
         "PINYON_SHIFT_GENERATED_ROOT": "${sourceDir}/.local/generated",
         "PINYON_SHIFT_GENERATED_DIR": "${sourceDir}/.local/generated/default"
       },
@@ -25,6 +26,27 @@
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
+      }
+    },
+    {
+      "name": "linux-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_C_FLAGS": "-msse4.1",
+        "CMAKE_CXX_FLAGS": "-msse4.1",
+        "PINYON_SHIFT_CPU_BASELINE": "sse4.1",
+        "REXSDK_DIR": "${sourceDir}/thirdparty/shiftglue-sdk",
+        "PINYON_SHIFT_GENERATED_ROOT": "${sourceDir}/.local/generated",
+        "PINYON_SHIFT_GENERATED_DIR": "${sourceDir}/.local/generated/default"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
       }
     },
     {
@@ -50,6 +72,30 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "linux-amd64-debug",
+      "displayName": "Linux AMD64 Debug",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "linux-amd64-relwithdebinfo",
+      "displayName": "Linux AMD64 RelWithDebInfo",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "linux-amd64-release",
+      "displayName": "Linux AMD64 Release",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     }
   ],
   "buildPresets": [
@@ -64,6 +110,18 @@
     {
       "name": "win-amd64-release",
       "configurePreset": "win-amd64-release"
+    },
+    {
+      "name": "linux-amd64-debug",
+      "configurePreset": "linux-amd64-debug"
+    },
+    {
+      "name": "linux-amd64-relwithdebinfo",
+      "configurePreset": "linux-amd64-relwithdebinfo"
+    },
+    {
+      "name": "linux-amd64-release",
+      "configurePreset": "linux-amd64-release"
     }
   ]
 }

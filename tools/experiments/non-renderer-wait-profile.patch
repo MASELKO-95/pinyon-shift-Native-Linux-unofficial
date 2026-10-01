@@ -1,0 +1,99 @@
+diff --git a/src/system/xobject.cpp b/src/system/xobject.cpp
+index d358f39..599a7c6 100644
+--- a/src/system/xobject.cpp
++++ b/src/system/xobject.cpp
+@@ -10,6 +10,10 @@
+  */
+ 
+ #include <vector>
++#include <algorithm>
++#include <chrono>
++#include <rex/cvar.h>
++#include <rex/logging.h>
+ 
+ #include <rex/chrono/clock.h>
+ #include <rex/stream.h>
+@@ -27,8 +31,34 @@
+ #include <rex/system/xsymboliclink.h>
+ #include <rex/system/xthread.h>
+ 
++REXCVAR_DEFINE_BOOL(profile_guest_object_waits, false, "Kernel",
++                   "Log completed guest object wait durations for isolated profiling");
++
+ namespace rex::system {
+ 
++template <typename Callback>
++static auto ProfileObjectWait(const char* kind, Callback callback) {
++  if (!REXCVAR_GET(profile_guest_object_waits)) return callback();
++  const auto start = std::chrono::steady_clock::now();
++  auto result = callback();
++  const auto end = std::chrono::steady_clock::now();
++  const auto us = std::chrono::duration_cast<std::chrono::microseconds>(
++      end - start).count();
++  // One bucket per thread and call site; avoid logging every zero-time poll.
++  static thread_local uint64_t count = 0, total_us = 0, maximum_us = 0;
++  static thread_local auto last_report = start;
++  ++count;
++  total_us += us;
++  maximum_us = std::max(maximum_us, static_cast<uint64_t>(us));
++  if (count >= 1024 || end - last_report >= std::chrono::seconds(1)) {
++    REXLOG_INFO("WAIT_PROFILE kind={} count={} total_us={} max_us={}",
++                kind, count, total_us, maximum_us);
++    count = total_us = maximum_us = 0;
++    last_report = end;
++  }
++  return result;
++}
++
+ XObject::XObject(Type type) : kernel_state_(nullptr), pointer_ref_count_(1), type_(type) {
+   handles_.reserve(10);
+ }
+@@ -213,7 +243,9 @@ X_STATUS XObject::Wait(uint32_t wait_reason, uint32_t processor_mode, uint32_t a
+                                 : std::chrono::milliseconds::max();
+ 
+   XThread::CheckTitleTermination();
+-  auto result = rex::thread::Wait(wait_handle, alertable ? true : false, timeout_ms);
++  auto result = ProfileObjectWait("single", [&] {
++    return rex::thread::Wait(wait_handle, alertable ? true : false, timeout_ms);
++  });
+   XThread::CheckTitleTermination();
+   switch (result) {
+     case rex::thread::WaitResult::kSuccess:
+@@ -239,9 +271,10 @@ X_STATUS XObject::SignalAndWait(XObject* signal_object, XObject* wait_object, ui
+                                       TimeoutTicksToMs(*opt_timeout)))
+                                 : std::chrono::milliseconds::max();
+ 
+-  auto result =
+-      rex::thread::SignalAndWait(signal_object->GetWaitHandle(), wait_object->GetWaitHandle(),
+-                                 alertable ? true : false, timeout_ms);
++  auto result = ProfileObjectWait("signal-and-wait", [&] {
++    return rex::thread::SignalAndWait(signal_object->GetWaitHandle(), wait_object->GetWaitHandle(),
++                                      alertable ? true : false, timeout_ms);
++  });
+   switch (result) {
+     case rex::thread::WaitResult::kSuccess:
+       wait_object->WaitCallback();
+@@ -274,8 +307,9 @@ X_STATUS XObject::WaitMultiple(uint32_t count, XObject** objects, uint32_t wait_
+ 
+   XThread::CheckTitleTermination();
+   if (wait_type) {
+-    auto result =
+-        rex::thread::WaitAny(std::move(wait_handles), alertable ? true : false, timeout_ms);
++    auto result = ProfileObjectWait("any", [&] {
++      return rex::thread::WaitAny(std::move(wait_handles), alertable ? true : false, timeout_ms);
++    });
+     XThread::CheckTitleTermination();
+     switch (result.first) {
+       case rex::thread::WaitResult::kSuccess:
+@@ -295,8 +329,9 @@ X_STATUS XObject::WaitMultiple(uint32_t count, XObject** objects, uint32_t wait_
+         return X_STATUS_UNSUCCESSFUL;
+     }
+   } else {
+-    auto result =
+-        rex::thread::WaitAll(std::move(wait_handles), alertable ? true : false, timeout_ms);
++    auto result = ProfileObjectWait("all", [&] {
++      return rex::thread::WaitAll(std::move(wait_handles), alertable ? true : false, timeout_ms);
++    });
+     XThread::CheckTitleTermination();
+     switch (result) {
+       case rex::thread::WaitResult::kSuccess:

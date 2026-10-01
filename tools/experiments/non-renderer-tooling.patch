@@ -1,0 +1,151 @@
+--- a/tools/launch-preview.ps1
++++ b/tools/launch-preview.ps1
+@@ -4,6 +4,7 @@
+     [string]$Configuration = 'Release',
+     [string]$GameRoot,
+     [string]$StateRoot,
++    [string]$BuildDirectory,
+     [string]$ShaderCaptureDir,
+     [string]$DiscShaderCorpusDir,
+     [string]$RenderTestScript,
+@@ -24,7 +25,12 @@
+ . (Join-Path $PSScriptRoot 'release-common.ps1')
+ 
+ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+-$executable = Join-Path $repoRoot 'out/build/win-amd64-release/pinyon_shift.exe'
++$resolvedBuildDirectory = if ($BuildDirectory) {
++    (Resolve-Path -LiteralPath $BuildDirectory).Path
++} else {
++    Join-Path $repoRoot 'out/build/win-amd64-release'
++}
++$executable = Join-Path $resolvedBuildDirectory 'pinyon_shift.exe'
+ $resolvedGameRoot = if ($GameRoot) {
+     (Resolve-Path -LiteralPath $GameRoot).Path
+ } else {
+@@ -59,8 +65,8 @@
+ $stagedNativePipelineCache = $null
+ $stagedShaderProducer = $null
+ if ($DiscShaderCorpusDir) {
+-    $producerSource = Join-Path $repoRoot `
+-        'out/build/win-amd64-release/rexglue-artifacts/rexgpu-fh1-producer.dll'
++    $producerSource = Join-Path $resolvedBuildDirectory `
++        'rexglue-artifacts/rexgpu-fh1-producer.dll'
+     if (-not (Test-Path -LiteralPath $producerSource -PathType Leaf)) {
+         throw 'Build the rexgpu-fh1-producer target before producing FH1 shaders.'
+     }
+--- a/tools/start-fh1-discovery.ps1
++++ b/tools/start-fh1-discovery.ps1
+@@ -4,6 +4,9 @@
+     [string]$Output,
+     [string]$PythonExe,
+     [string]$RenderTestScript,
++    [string]$BuildDirectory,
++    [switch]$PerformanceOnly,
++    [string]$GameArgumentsJson,
+     [int]$CheckpointSeconds = 300
+ )
+ Set-StrictMode -Version Latest
+@@ -28,19 +31,23 @@
+ $Output = [IO.Path]::GetFullPath($Output)
+ & $PythonExe (Join-Path $PSScriptRoot 'record-fh1-discovery.py') --prepare --state-root $StateRoot --output $Output
+ if ($LASTEXITCODE -ne 0) { throw 'Recorder preparation failed' }
+-$exeRoot = Join-Path $repo 'out/build/win-amd64-release'
++$exeRoot = if ($BuildDirectory) {
++    (Resolve-Path -LiteralPath $BuildDirectory).Path
++} else { Join-Path $repo 'out/build/win-amd64-release' }
+ $manifest = [ordered]@{ started_utc=[DateTime]::UtcNow.ToString('o'); state_root=$StateRoot; files=@{} }
+-foreach ($name in @('pinyon_shift.exe','rexgpu-fh1.dll','rexruntime.dll')) {
++foreach ($name in @('pinyon_shift.exe','rexgpu-fh1.dll','rexruntime.dll',
++                    'pinyon_shift_SpeechFacade_default.dll','pinyon_shift_XMediaFacade_default.dll')) {
+     $manifest.files[$name] = (Get-FileHash -LiteralPath (Join-Path $exeRoot $name)).Hash
+ }
+ $config = Join-Path $StateRoot 'config/pinyon_shift.toml'
+ if (Test-Path -LiteralPath $config) { Copy-Item -LiteralPath $config -Destination (Join-Path $Output 'settings.toml') }
+ $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Output 'build.json')
+-$job = Start-Job -ArgumentList $repo,$StateRoot,$Output,$RenderTestScript,$CheckpointSeconds -ScriptBlock {
+-    param($repo,$stateRoot,$output,$renderTest,$checkpoint)
++$job = Start-Job -ArgumentList $repo,$StateRoot,$Output,$RenderTestScript,$CheckpointSeconds,$exeRoot,$PerformanceOnly.IsPresent,$GameArgumentsJson -ScriptBlock {
++    param($repo,$stateRoot,$output,$renderTest,$checkpoint,$buildDirectory,$performanceOnly,$extraArgumentsJson)
+     Set-Location $repo
+     $options = @{
+         StateRoot=$stateRoot
++        BuildDirectory=$buildDirectory
+         CollectFh1PassInventory=$true
+         GameArguments=@('--pinyon_shift_capture_performance=true', '--perf_log_max_mb=512',
+             '--fh1_discovery_sampling=true',
+@@ -48,10 +55,17 @@
+             '--pinyon_shift_fh1_scene_dump=false', "--pinyon_shift_fh1_corpus_checkpoint_seconds=$checkpoint")
+         Json=$true
+     }
++    if ($performanceOnly) {
++        $options.CollectFh1PassInventory=$false
++        $options.GameArguments=@('--pinyon_shift_capture_performance=true', '--perf_log_max_mb=512')
++    }
+     if ($renderTest) {
+         $options.RenderTestScript=$renderTest
+         $options.RenderTestOutput=Join-Path $output 'smoke'
+         $options.RenderTestTimeoutSeconds=180
++    }
++    if ($extraArgumentsJson) {
++        $options.GameArguments += @(ConvertFrom-Json $extraArgumentsJson)
+     }
+     & ./tools/launch-preview.ps1 @options
+ }
+--- a/tools/record-fh1-discovery.py
++++ b/tools/record-fh1-discovery.py
+@@ -16,6 +16,20 @@
+ 
+ def utc():
+     return dt.datetime.now(dt.timezone.utc).isoformat()
++
++
++class IoCounters(ct.Structure):
++    _fields_ = [(name, ct.c_uint64) for name in (
++        'read_operations', 'write_operations', 'other_operations',
++        'read_bytes', 'write_bytes', 'other_bytes')]
++
++
++def process_io(kernel, process):
++    kernel.GetProcessIoCounters.argtypes = [wt.HANDLE, ct.POINTER(IoCounters)]
++    counters = IoCounters()
++    if not kernel.GetProcessIoCounters(process, ct.byref(counters)):
++        return None
++    return {name: getattr(counters, name) for name, _ in counters._fields_}
+ 
+ 
+ def atomic_json(path, value):
+@@ -270,7 +284,7 @@
+                         active_log_session = f'"pid":"{args.pid}"' in line
+                     if active_log_session and 'CSV recording size limit reached' in line:
+                         warnings.add('CSV cap reached: later markers have no new frame measurements.')
+-                    if active_log_session and ('FH1 ' in line or 'M2_EVENT' in line or 'CSV recording size limit' in line):
++                    if active_log_session and ('FH1 ' in line or 'M2_EVENT' in line or 'IO_PROFILE ' in line or 'WAIT_PROFILE ' in line or 'CSV recording size limit' in line):
+                         payload = (line + '\n').encode('utf-8')
+                         if log_bytes + len(payload) <= 256 * 1024 * 1024:
+                             archive.write(payload)
+@@ -312,7 +326,8 @@
+                 if kernel.GetProcessTimes(process, *(ct.byref(value) for value in times)):
+                     cpu = sum((value.dwHighDateTime << 32) | value.dwLowDateTime for value in times[2:]) / 1e7
+                 files['process'].write(json.dumps(dict(utc=utc(), seconds=time.monotonic()-start,
+-                    cpu_seconds=cpu, working_bytes=memory.working, private_bytes=memory.private)) + '\n')
++                    cpu_seconds=cpu, working_bytes=memory.working, private_bytes=memory.private,
++                    io=process_io(kernel, process))) + '\n')
+             if time.monotonic() - last_report >= 30:
+                 write_report(output, windows, markers, status, warnings, coverage)
+                 atomic_json(output / 'recorder-stats.json', dict(
+@@ -388,6 +403,15 @@
+         assert result['over_50ms'] == 1
+         write_report(Path(directory), [result], [], 'test', set(), {})
+         assert json.loads((Path(directory)/'report.json').read_text())['windows'] == 1
++        if os.name == 'nt':
++            kernel = ct.WinDLL('kernel32', use_last_error=True)
++            kernel.GetCurrentProcess.restype = wt.HANDLE
++            process = kernel.GetCurrentProcess()
++            before = process_io(kernel, process)
++            (Path(directory) / 'io-test.bin').write_bytes(b'x' * 4096)
++            after = process_io(kernel, process)
++            assert before is not None and after is not None
++            assert after['write_bytes'] >= before['write_bytes'] + 4096
+     print('discovery recorder checks passed')
+ 
+ 

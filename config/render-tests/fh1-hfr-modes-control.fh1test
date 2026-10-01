@@ -1,0 +1,37 @@
+pinyon-shift-fh1-render-test-v1
+# Stationary wall-time control for the HFR map/pause gate. Event times match
+# the unlocked script exactly; only the renderer launch settings differ.
+# clock-hz 60
+# expect-performance 50000 20 20 70
+# expect-simulation-time 0.95 1.08 2
+# expect-image free-roam 20 35 1.00
+# expect-image map 4 12 0.15
+# expect-image map-return 30 50 1.00
+# expect-image pause 25 40 1.00
+# expect-image resumed 35 55 1.00
+# expect-capture-mae map free-roam 20
+input 0 0000 0 0 0 0 0 0
+input 720 1000 0 0 0 0 0 0
+input 732 0000 0 0 0 0 0 0
+input 960 1000 0 0 0 0 0 0
+input 972 0000 0 0 0 0 0 0
+input 1200 1000 0 0 0 0 0 0
+input 1212 0000 0 0 0 0 0 0
+input 1440 1000 0 0 0 0 0 0
+input 1452 0000 0 0 0 0 0 0
+input 1560 0000 0 0 0 0 0 0
+capture 1800 free-roam
+input 1860 0000 0 0 0 0 0 0
+input 1920 0020 0 0 0 0 0 0
+input 1932 0000 0 0 0 0 0 0
+capture 2100 map
+input 2280 0020 0 0 0 0 0 0
+input 2292 0000 0 0 0 0 0 0
+capture 2480 map-return
+input 2580 0010 0 0 0 0 0 0
+input 2592 0000 0 0 0 0 0 0
+capture 2760 pause
+input 2880 2000 0 0 0 0 0 0
+input 2892 0000 0 0 0 0 0 0
+capture 3120 resumed
+stop 3180

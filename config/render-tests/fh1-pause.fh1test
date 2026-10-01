@@ -1,0 +1,22 @@
+pinyon-shift-fh1-render-test-v1
+# clock-hz 60
+# Exercise the free-roam pause overlay and return without navigating or saving.
+# expect-performance 50000 55 80 500
+# expect-simulation-time 0.95 1.08 2
+input 0 0000 0 0 0 0 0 0
+input 360 1000 0 0 0 0 0 0
+input 366 0000 0 0 0 0 0 0
+input 480 1000 0 0 0 0 0 0
+input 486 0000 0 0 0 0 0 0
+input 600 1000 0 0 0 0 0 0
+input 606 0000 0 0 0 0 0 0
+input 720 1000 0 0 0 0 0 0
+input 726 0000 0 0 0 0 0 0
+capture 900 free-roam
+input 960 0010 0 0 0 0 0 0
+input 966 0000 0 0 0 0 0 0
+capture 1080 pause
+input 1140 2000 0 0 0 0 0 0
+input 1146 0000 0 0 0 0 0 0
+capture 1260 resumed
+stop 1290

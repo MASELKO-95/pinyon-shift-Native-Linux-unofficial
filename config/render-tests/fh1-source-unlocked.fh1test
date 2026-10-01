@@ -1,0 +1,21 @@
+pinyon-shift-fh1-render-test-v1
+# FH1-only real source rendering at an unlocked host rate.
+# clock-hz 60
+# expect-performance 50000 55 80 500
+# expect-distinct-presentation 55
+input 0 0000 0 0 0 0 0 0
+input 720 1000 0 0 0 0 0 0
+input 732 0000 0 0 0 0 0 0
+input 960 1000 0 0 0 0 0 0
+input 972 0000 0 0 0 0 0 0
+input 1200 1000 0 0 0 0 0 0
+input 1212 0000 0 0 0 0 0 0
+input 1440 1000 0 0 0 0 0 0
+input 1452 0000 0 0 0 0 0 0
+input 1560 0000 0 255 0 0 0 0
+capture 1800 drive-start
+capture 2400 drive-mid
+capture 3000 drive-end
+input 3120 0000 0 0 0 0 0 0
+capture 3480 settled
+stop 3540

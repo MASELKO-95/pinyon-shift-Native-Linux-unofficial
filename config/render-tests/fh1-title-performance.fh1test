@@ -1,0 +1,20 @@
+pinyon-shift-fh1-render-test-v1
+# Wall-time title-screen capture for profiling the animated title without
+# advancing into the profile/menu flow. Run with --include-opening-movies: the
+# movie-complete transition creates the real animated background, while the
+# skip hook leaves a cheap flat-green screen and is not a valid performance
+# reproduction.
+# clock-hz 60
+input 0 0000 0 0 0 0 0 0
+input 120 2000 0 0 0 0 0 0
+input 132 0000 0 0 0 0 0 0
+input 300 2000 0 0 0 0 0 0
+input 312 0000 0 0 0 0 0 0
+input 480 2000 0 0 0 0 0 0
+input 492 0000 0 0 0 0 0 0
+input 660 2000 0 0 0 0 0 0
+input 672 0000 0 0 0 0 0 0
+capture 900 opening-15s
+capture 1800 opening-30s
+capture 3600 title-60s
+stop 3900

@@ -2,13 +2,412 @@
 # Evidence and the rationale for every entry are recorded in the milestone
 # boundary reports under docs/research/.
 
+includes = ["fh1-post-processing.toml"]
+
 # Microsoft CRT non-local jump pair. These must be semantic codegen hooks so a
 # longjmp restores the host-side PPCContext captured at the setjmp call site.
 setjmp_address = 0x82A81E80
 longjmp_address = 0x82A81950
 
-# Complete XMedia movies through the title's normal end-of-stream path when
-# the opt-in test shortcut is enabled.
+# NR-00 graphics-hook owner. This is the sole title call to VdSwap, observed
+# immediately before the import without changing registers or control flow.
+# Future graphics hooks must dispatch through src/native_renderer/ rather than
+# acquiring a second owner in the general runtime-hooks translation unit.
+[[midasm_hook]]
+address = 0x829EFEB8
+name = "PinyonShiftObserveGraphicsFrame"
+
+# PERF-11 read-only critical-path probes around the indexed title draw emitter
+# and its exact PM4 header publication. All return immediately unless the SDK
+# perf_critical_path_trace flag is enabled.
+[[midasm_hook]]
+address = 0x8240F4D8
+name = "PinyonShiftObserveTitleDrawEmitterBegin"
+
+[[midasm_hook]]
+address = 0x82410328
+name = "PinyonShiftObserveTitleDrawPacketPublish"
+registers = ["r3", "r11", "r31"]
+
+[[midasm_hook]]
+address = 0x82410620
+name = "PinyonShiftObserveTitleDrawEmitterEnd"
+
+# NP-3.2: block the title's GPU fence polling predicate until the command
+# processor writes guest memory (src/native_renderer/graphics_hooks.cpp).
+[[midasm_hook]]
+address = 0x829F04A8
+name = "PinyonShiftGpuFenceWait"
+registers = ["r3"]
+
+# Observe the native UI4 scene-registry construction after the title's
+# constructor returns. This is default-off and records registers only.
+[[midasm_hook]]
+address = 0x824850A4
+name = "PinyonShiftTraceUiSceneRegistry"
+registers = ["r3", "r24", "r30"]
+after_instruction = true
+
+# Observe the three UI4 bootstrap dispatches with their resolved virtual
+# targets. These are read-only and default-off; the runtime trace uses them to
+# identify the scene-manager contract before any guest mutation is attempted.
+[[midasm_hook]]
+address = 0x824850CC
+name = "PinyonShiftTraceUiRegistryDispatch"
+registers = ["r3", "r4", "r11"]
+
+[[midasm_hook]]
+address = 0x824850E8
+name = "PinyonShiftTraceUiResourceDispatch"
+registers = ["r3", "r4", "r11"]
+
+[[midasm_hook]]
+address = 0x82485110
+name = "PinyonShiftTraceUiSceneDispatch"
+registers = ["r3", "r4", "r11", "r31", "r30"]
+
+# Observe the bootstrap manager event (302) after the scene/resource setup.
+# This stays read-only and default-off while the event target is identified.
+[[midasm_hook]]
+address = 0x82485128
+name = "PinyonShiftTraceUiManagerEvent"
+registers = ["r3", "r4", "r11"]
+
+# Trace the concrete UI4 method targets used by the bootstrap. Entry traces
+# capture the guest object and argument layout for the first lifecycle calls.
+[[midasm_hook]]
+address = 0x826413C8
+name = "PinyonShiftTraceUiRegistryMethod"
+registers = ["r3", "r4"]
+
+[[midasm_hook]]
+address = 0x82E5E0D0
+name = "PinyonShiftTraceUiResourceMethod"
+registers = ["r3", "r4"]
+
+[[midasm_hook]]
+address = 0x82E729F8
+name = "PinyonShiftTraceUiSceneMethod"
+registers = ["r3", "r4"]
+
+# Trace the CUserInterface4 indexed component table without changing it. The
+# title fills this table during bootstrap; later calls reveal whether a live
+# screen uses spare slots or replaces existing component instances.
+[[midasm_hook]]
+address = 0x82E5E550
+name = "PinyonShiftTraceUiComponentGet"
+registers = ["r3", "r4"]
+
+[[midasm_hook]]
+address = 0x82E5E568
+name = "PinyonShiftTraceUiComponentStore"
+registers = ["r3", "r4", "r5"]
+
+[[midasm_hook]]
+address = 0x82E5E580
+name = "PinyonShiftTraceUiComponentClear"
+registers = ["r3", "r4"]
+
+# Trace the inherited menu/list operations used by ANIMATED_SCROLLING_LIST and
+# CMenuCtrl. These are read-only entry probes for construction/population work.
+[[midasm_hook]]
+address = 0x82E7CD78
+name = "PinyonShiftTraceUiListMethod"
+registers = ["r3", "r4", "r5"]
+
+[[midasm_hook]]
+address = 0x82E77260
+name = "PinyonShiftTraceUiListMethod2"
+registers = ["r3", "r4", "r5"]
+
+[[midasm_hook]]
+# Observe calls whose receiver is the verified CUI4TextElement vtable or the
+# text-resource object owned by a verified CPauseMenuButton. This narrows the
+# generic pair helper without mutating guest state.
+address = 0x82E73BE0
+name = "PinyonShiftTraceUiTextValue"
+registers = ["r3", "r4", "r5"]
+
+# NP-1.5: case 6 (MULTIPLAYER, relabelled SETTINGS) of CPauseMenu's action
+# switch in sub_82739D00. When the hook returns true the stock popup is skipped
+# and the switch's common exit records the selection as usual.
+[[midasm_hook]]
+address = 0x82739DB0
+name = "PinyonShiftPauseSettingsActivate"
+registers = ["r31"]
+jump_address_on_true = 0x8273A10C
+
+[[midasm_hook]]
+# Observe the title's label-resource getter only on verified pause buttons.
+# The receiver and resource fields are read-only; no guest state is changed.
+address = 0x82E74FC8
+name = "PinyonShiftTraceUiPauseButtonTextGet"
+registers = ["r3", "r4"]
+
+# Trace the typed menu wrappers before they route through the list/map methods.
+# The key/value pair and the +312 child pointer are read-only population leads.
+[[midasm_hook]]
+address = 0x82806DD0
+name = "PinyonShiftTraceUiMenuDispatch"
+registers = ["r3", "r4", "r5"]
+
+[[midasm_hook]]
+address = 0x82806E50
+name = "PinyonShiftTraceUiMenuDispatch2"
+registers = ["r3", "r4", "r5"]
+
+[[midasm_hook]]
+# Observe the real list-constructor entry. The static allocation wrapper at
+# 0x82645558 is not reached by the standard pause route; this hook records the
+# object and owner at the shared constructor boundary without mutating them.
+address = 0x828116C8
+name = "PinyonShiftTraceUiListConstructed"
+registers = ["r3", "r4", "r31"]
+
+# Observe the PAUSE_MENU_BUTTON factory entry before it allocates. The contract
+# argument and the return address name the contract-table caller that drives
+# pause-menu item construction. Read-only and default-off.
+[[midasm_hook]]
+address = 0x82651438
+name = "PinyonShiftTraceUiButtonFactory"
+registers = ["r3", "r4", "lr"]
+
+# Observe the per-child UI4 component builder. Its return address names the
+# loop that walks authored scene children, which is the insertion point for an
+# additional item. Read-only and default-off.
+[[midasm_hook]]
+address = 0x82E7A238
+name = "PinyonShiftTraceUiComponentBuilder"
+registers = ["r3", "r4", "lr"]
+
+# Interior entry of the per-child builder. Menu-item batches do not reach the
+# entry hook above, so their calls enter the builder at a dispatch chunk. This
+# hook catches the post-prologue chunk; the probes below cover the remaining
+# registered chunks and record which one the menu-item path enters. Read-only
+# and default-off.
+[[midasm_hook]]
+address = 0x82E7A240
+name = "PinyonShiftTraceUiItemBuilderEntry"
+registers = ["r3", "r4", "lr"]
+
+# Item construction site of the scene deserializer sub_82F26560: 0x82F268D0
+# checks whether the parsed item has a component builder call, and the indirect
+# call at 0x82F268EC is the one that enters sub_82E7A238. At this point r24 is the
+# document the deserializer got from the element (records, arena and pool live
+# there), r25 is the element the builder is called on, r26 the created item
+# record and r31 the section context whose +92 vector is the record pool the
+# stream's parent index resolves through. The insertion experiment reads those
+# pointers here so it can replay the title's own item construction; tracing reads
+# the document and section state. Read-only and default-off, apart from three
+# pointer stores that only happen when PINYON_SHIFT_UI_EXPERIMENT=insert_item.
+[[midasm_hook]]
+address = 0x82F268D0
+name = "PinyonShiftTraceUiItemBuildCall"
+registers = ["r24", "r25", "r26", "r29", "r31"]
+
+# UI-14 stream route reconnaissance. The scene item deserializer sub_82F26560
+# reads every authored item through the 12-byte reader at section+12, whose
+# slot-1 method sub_82F25568 copies out of the MSVC FILE* at reader+4. These
+# three read-only probes record the section/reader/FILE state, the section's
+# declared byte length and the parsed item fields, and (once) whether the whole
+# decompressed member is present in the UI heap regions. Default-off: they run
+# only for PINYON_SHIFT_UI_EXPERIMENT=scene_probe.
+[[midasm_hook]]
+address = 0x82F26560
+name = "PinyonShiftTraceUiSceneDeserializerEntry"
+registers = ["r3", "r4", "lr"]
+
+[[midasm_hook]]
+address = 0x82F265D4
+name = "PinyonShiftTraceUiSceneItemLength"
+registers = ["r1", "r3", "r31"]
+
+[[midasm_hook]]
+address = 0x82F267C0
+name = "PinyonShiftTraceUiSceneItemFields"
+registers = ["r1", "r3", "r31"]
+
+[[midasm_hook]]
+address = 0x82F25568
+name = "PinyonShiftTraceUiSceneStreamRead"
+registers = ["r3", "r4", "r5"]
+
+[[midasm_hook]]
+address = 0x82F255EC
+name = "PinyonShiftTraceUiSceneReadResult"
+registers = ["r3", "r28", "r29", "r30"]
+after_instruction = true
+
+# Byte-at-a-time continuation of the same reader method (0x82F255C0): the call
+# above returned one byte into r28 + r31 for the reader at r30. The same
+# load-time scene insertion also rewrites this path, so the pause member's
+# re-encoded bytes are delivered whichever branch the reader takes.
+[[midasm_hook]]
+address = 0x82F255C0
+name = "PinyonShiftTraceUiSceneReadStep"
+registers = ["r3", "r28", "r30", "r31"]
+
+[[midasm_hook]]
+address = 0x82E7A260
+name = "PinyonShiftUiBuilderChunk260"
+registers = ["r1", "r3", "r4", "r28", "r31", "lr"]
+
+[[midasm_hook]]
+address = 0x82E7A27C
+name = "PinyonShiftUiBuilderChunk27C"
+registers = ["r1", "r3", "r4", "r28", "r31", "lr"]
+
+[[midasm_hook]]
+address = 0x82E7A290
+name = "PinyonShiftUiBuilderChunk290"
+registers = ["r1", "r3", "r4", "r28", "r31", "lr"]
+
+[[midasm_hook]]
+address = 0x82E7A2A0
+name = "PinyonShiftUiBuilderChunk2A0"
+registers = ["r1", "r3", "r4", "r28", "r31", "lr"]
+
+[[midasm_hook]]
+address = 0x82E7A304
+name = "PinyonShiftUiBuilderChunk304"
+registers = ["r1", "r3", "r4", "r28", "r31", "lr"]
+
+[[midasm_hook]]
+address = 0x82E7A310
+name = "PinyonShiftUiBuilderChunk310"
+registers = ["r1", "r3", "r4", "r28", "r31", "lr"]
+
+[[midasm_hook]]
+address = 0x82E7A31C
+name = "PinyonShiftUiBuilderChunk31C"
+registers = ["r1", "r3", "r4", "r28", "r31", "lr"]
+
+[[midasm_hook]]
+address = 0x82E7A324
+name = "PinyonShiftUiBuilderChunk324"
+registers = ["r1", "r3", "r4", "r28", "r31", "lr"]
+
+[[midasm_hook]]
+address = 0x82E7A32C
+name = "PinyonShiftUiBuilderChunk32C"
+registers = ["r1", "r3", "r4", "r28", "r31", "lr"]
+
+# Pause-item insertion experiment (UI-04 insertion half). The title's
+# create-by-name entry sub_82E78078 has exactly one call site: 0x82E7A38C in
+# the per-child builder sub_82E7A238, after the builder has resolved the
+# element record's contract name into the stack object at r1+96. A hook on the
+# following instruction observes the created component (r3), its parent
+# container (r31), the 28-byte CUI4CustomObject descriptor (r30) and the
+# authored element record (r28). Menu-item batches do not reach the entry hook
+# at 0x82E7A238 (their calls enter the builder through an interior dispatch
+# address), so this call site is the only place that sees every item
+# construction. `context = true` hands the live guest context and memory base
+# to the host function so it can invoke recompiled guest code. Default-off:
+# every host path returns immediately unless
+# PINYON_SHIFT_UI_EXPERIMENT=insert_item.
+[[midasm_hook]]
+address = 0x82E7A394
+name = "PinyonShiftUiPauseItemInsert"
+registers = ["r3", "r28", "r30", "r31"]
+after_instruction = true
+context = true
+
+# Observe embedded CUI4TextElement state after CPauseMenuButton construction.
+[[midasm_hook]]
+address = 0x8264FC08
+name = "PinyonShiftTraceUiPauseButtonConstructed"
+registers = ["r3", "r31"]
+after_instruction = true
+
+# sub_82F288A0 reads identity string bodies through a direct stream helper,
+# bypassing the virtual reader hooks used for their four-byte lengths.
+[[midasm_hook]]
+address = 0x82F28994
+name = "PinyonShiftUiSceneInsertIdentityReadResult"
+registers = ["r1", "r3", "r30", "r31"]
+
+[[midasm_hook]]
+address = 0x82F28544
+name = "PinyonShiftUiSceneInsertItemReadResult"
+registers = ["r1", "r3", "r31"]
+
+# The second pass of sub_82E7A430 resolves each scene-owned component before
+# invoking vtable slot 1. These probes isolate the eighth component's owner and
+# guest stack without changing either object.
+[[midasm_hook]]
+address = 0x823E4818
+name = "PinyonShiftTraceUiInvalidRttiCast"
+registers = ["r3", "r4", "r5", "r6", "r7", "lr"]
+
+[[midasm_hook]]
+address = 0x82E62A10
+name = "PinyonShiftTraceUiSceneTreeWalk"
+registers = ["r3", "r4"]
+
+[[midasm_hook]]
+address = 0x82F2B230
+name = "PinyonShiftTraceUiAnimationAllocate"
+registers = ["r3", "r4", "r6", "r7", "r8", "r31"]
+
+[[midasm_hook]]
+address = 0x82E7A4E0
+name = "PinyonShiftTraceUiSceneVectorCleanup"
+registers = ["r1", "r3", "r27", "r30", "r31"]
+
+[[midasm_hook]]
+address = 0x8281BBA8
+name = "PinyonShiftTraceUiPauseOwnerInit"
+registers = ["r1", "r3", "lr"]
+
+[[midasm_hook]]
+address = 0x8281BF4C
+name = "PinyonShiftTraceUiPauseOwnerBinding"
+registers = ["r1", "r3", "r28", "r29", "r30"]
+
+# LSB2 string-table interception (UI-04 label half). sub_82CAFF28 builds
+# `game:\media\StringTables\<table><language>.str` and hands it to the LSB2
+# reader sub_82CAC5B8. The four hooks below are default-off: every host
+# function returns immediately unless PINYON_SHIFT_UI_EXPERIMENT=label_patch.
+# 0x82CAFFA0 records the final VFS path, 0x82CAC740 records the freshly read
+# payload (r30 = start, r29 = length, r26 = verbatim flag) and rewrites the
+# configured labels in place at the same byte length, and 0x82CB00AC records
+# the handle the localization manager keeps.
+[[midasm_hook]]
+address = 0x82CAFFA0
+name = "PinyonShiftTraceUiStringTableLoad"
+registers = ["r1"]
+
+[[midasm_hook]]
+address = 0x82CAC740
+name = "PinyonShiftTraceUiStringTableChunk"
+registers = ["r3", "r26", "r29", "r30", "r31"]
+after_instruction = true
+
+# 0x82CAC704 calls the allocator for the chunk (r3 = size, r26 = verbatim
+# flag). Tables with string overrides (NP-11.2) get room after the pool so a
+# replacement may be longer than the stock text; the chunk hook above writes
+# the replacements.
+[[midasm_hook]]
+address = 0x82CAC704
+name = "PinyonShiftSizeUiStringChunk"
+registers = ["r3", "r26"]
+
+[[midasm_hook]]
+address = 0x82CB00AC
+name = "PinyonShiftTraceUiStringTableParsed"
+registers = ["r3"]
+
+# 0x82CB2018 continues the localization wrapper sub_82CB1FB0 with r3 = resolved
+# text and r29 = the key. Only keys or results that mention a watched label are
+# recorded, so this stays a bounded read-only probe on the real lookup path.
+[[midasm_hook]]
+address = 0x82CB2018
+name = "PinyonShiftTraceUiStringLookup"
+registers = ["r3", "r29"]
+after_instruction = true
+
+# Complete opening splash movies through the title's normal end-of-stream
+# path when the opt-in test shortcut is enabled.
 [[midasm_hook]]
 address = 0x82E5D8AC
 name = "PinyonShiftCompleteOpeningMovie"
@@ -95,6 +494,15 @@ address = 0x823EDA10
 name = "PinyonShiftTraceFrameTelemetry"
 registers = ["r28", "r31"]
 
+# FH1 has finalized the variable gameplay delta in f31 immediately before
+# storing it at +448 on the main-loop owner and dispatching update systems.
+# Accumulate that title-authored delta for wall-time validation without
+# changing the register, store, or update cadence.
+[[midasm_hook]]
+address = 0x823EDB84
+name = "PinyonShiftObserveSimulationDelta"
+registers = ["f31"]
+
 # Player-vehicle presentation stabilization and authoritative M4 pose telemetry.
 # Runtime write-watch evidence maps
 # this address to the instruction immediately after the active transform slot's
@@ -141,8 +549,8 @@ registers = ["r3", "r29", "r31"]
 
 # Capture the title's plaintext profile/database body immediately before the
 # secure stream wrapper encrypts and writes it. The runtime hook is gated by
-# PINYON_SHIFT_M5_SAVE_TRACE=1 and accepts only the two established save-body
-# sizes, so normal preview runs remain unchanged.
+# PINYON_SHIFT_M5_SAVE_TRACE=1 (the encrypted and stream writers keep only the
+# two established save-body sizes), so normal preview runs remain unchanged.
 [[midasm_hook]]
 address = 0x82C79D2C
 name = "PinyonShiftTraceSavePayload"
@@ -163,6 +571,58 @@ after_instruction = true
 address = 0x82C666D0
 name = "PinyonShiftTraceSavePreEncryption"
 registers = ["r4", "r5"]
+
+# sub_82C66308 has decrypted a secure file in place with
+# XeKeysAesCbcUsingKey (r8 = 0) and cleared its padding: the plaintext is
+# [r30+0] for r24 bytes, and the title has not parsed it yet. The save
+# editor (NP-8.3) and the save.after_decrypt mod hook run here.
+[[midasm_hook]]
+address = 0x82C66594
+name = "PinyonShiftObserveSaveDecrypted"
+registers = ["r24", "r30"]
+
+# sub_82C05530 reads game-file blocks and checks each with sub_82BFFDA0
+# against a per-file SHA-256 table ([r24+28], 32 bytes a block; the path is
+# [r24+32]); a mismatch ends in the dirty-disc error. These run on the
+# check's result for whole blocks and for the last partial block, and
+# accept it only for files an enabled mod replaces (NP-10.2).
+[[midasm_hook]]
+address = 0x82C057D0
+name = "PinyonShiftAcceptModdedBlock"
+registers = ["r3", "r24"]
+
+[[midasm_hook]]
+address = 0x82C0580C
+name = "PinyonShiftAcceptModdedLastBlock"
+registers = ["r3", "r24"]
+
+# sub_82C03E90 opens such a file and compares its real size (r6, from
+# sub_82A7CDB8) with the size in the title's table (r31); a mismatch ends in
+# the same error. For a file a loaded mod replaces the real size is accepted
+# (NP-10.1: a rebuilt archive is larger than the original). The path is at
+# [r1+92]; r31 becomes the stream's size.
+[[midasm_hook]]
+address = 0x82C041A4
+name = "PinyonShiftAcceptModdedFileSize"
+registers = ["r1", "r6", "r31"]
+
+# NP-4.4 Hor+: sub_823E22C8 returns a viewport's width / height (f1; the
+# viewport is r3, width and height at +8 and +12) to the camera, its culling
+# frustum and projection. For the 1280x720 main view a wider window's aspect
+# is returned instead, so the title renders (and culls) a wider horizontal
+# field of view into the same 16:9 buffer, which the presenter stretches.
+[[midasm_hook]]
+address = 0x823E22F4
+name = "PinyonShiftViewportAspect"
+registers = ["r3", "f1"]
+
+# sub_8284EF90 returns a camera's vertical field of view in radians (f1, from
+# [r3+304]) to the frustum and projection code; the field-of-view setting
+# scales it.
+[[midasm_hook]]
+address = 0x8284EF94
+name = "PinyonShiftCameraFieldOfView"
+registers = ["f1"]
 
 # sub_828E2898 is about to read the non-durable per-profile career eligibility
 # byte through sub_8252AA48. Repair the actual byte for a valid durable
@@ -582,3 +1042,11 @@ size = 0x38
 # 0x8314120C, and ends immediately before PDATA function 0x83141210.
 [functions."831411E8"]
 size = 0x28
+
+# The title's CRT memory routines, served by the SDK's host natives
+# (kernel/crt/memory.cpp). memmove's forward path branches into memcpy's
+# entry, which is a whole-function call in the generated code.
+[rexcrt]
+memcpy = 0x82A7D730
+memmove = 0x82A7DCA0
+memset = 0x82A7F140

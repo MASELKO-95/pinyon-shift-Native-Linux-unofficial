@@ -1,6 +1,8 @@
 # Contributing
 
-Thanks for helping improve Pinyon Shift.
+Start with the [development findings and documentation map](docs/DEVELOPMENT.md).
+Update current decisions in place; keep raw experiment logs and temporary
+handoffs under `.local`. Git history preserves superseded research.
 
 ## Before opening a change
 

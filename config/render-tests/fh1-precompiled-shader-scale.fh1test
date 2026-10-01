@@ -1,0 +1,17 @@
+pinyon-shift-fh1-render-test-v1
+# Capture-light route for strict shader-pack scale qualification. A single
+# synchronous 4K readback avoids contaminating the gameplay timing sample.
+# clock-hz 60
+# expect-simulation-time 0.95 1.08 3
+input 0 0000 0 0 0 0 0 0
+input 720 1000 0 0 0 0 0 0
+input 732 0000 0 0 0 0 0 0
+input 960 1000 0 0 0 0 0 0
+input 972 0000 0 0 0 0 0 0
+input 1200 1000 0 0 0 0 0 0
+input 1212 0000 0 0 0 0 0 0
+input 1440 1000 0 0 0 0 0 0
+input 1452 0000 0 0 0 0 0 0
+input 1560 0000 0 255 0 0 0 0
+capture 1980 world
+stop 2040

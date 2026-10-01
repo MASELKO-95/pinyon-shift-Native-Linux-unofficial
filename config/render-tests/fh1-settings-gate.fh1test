@@ -1,0 +1,243 @@
+pinyon-shift-fh1-render-test-v1
+# clock-hz 60
+# NP-1 gate: open and close SETTINGS (F6) 100 times, navigate it with only
+# the keyboard, only the pad and only the mouse, then resume free roam and
+# drive, so the guest is shown to get its input back. Check the run with
+# tools/check-fh1-settings-gate.py.
+input 0 0000 0 0 0 0 0 0
+input 360 1000 0 0 0 0 0 0
+input 366 0000 0 0 0 0 0 0
+input 480 1000 0 0 0 0 0 0
+input 486 0000 0 0 0 0 0 0
+input 600 1000 0 0 0 0 0 0
+input 606 0000 0 0 0 0 0 0
+input 720 1000 0 0 0 0 0 0
+input 726 0000 0 0 0 0 0 0
+capture 900 free-roam
+hostkey 1000 f6
+hostkey 1020 escape
+hostkey 1040 f6
+hostkey 1060 escape
+hostkey 1080 f6
+hostkey 1100 escape
+hostkey 1120 f6
+hostkey 1140 escape
+hostkey 1160 f6
+hostkey 1180 escape
+hostkey 1200 f6
+hostkey 1220 escape
+hostkey 1240 f6
+hostkey 1260 escape
+hostkey 1280 f6
+hostkey 1300 escape
+hostkey 1320 f6
+hostkey 1340 escape
+hostkey 1360 f6
+hostkey 1380 escape
+hostkey 1400 f6
+hostkey 1420 escape
+hostkey 1440 f6
+hostkey 1460 escape
+hostkey 1480 f6
+hostkey 1500 escape
+hostkey 1520 f6
+hostkey 1540 escape
+hostkey 1560 f6
+hostkey 1580 escape
+hostkey 1600 f6
+hostkey 1620 escape
+hostkey 1640 f6
+hostkey 1660 escape
+hostkey 1680 f6
+hostkey 1700 escape
+hostkey 1720 f6
+hostkey 1740 escape
+hostkey 1760 f6
+hostkey 1780 escape
+hostkey 1800 f6
+hostkey 1820 escape
+hostkey 1840 f6
+hostkey 1860 escape
+hostkey 1880 f6
+hostkey 1900 escape
+hostkey 1920 f6
+hostkey 1940 escape
+hostkey 1960 f6
+hostkey 1980 escape
+hostkey 2000 f6
+hostkey 2020 escape
+hostkey 2040 f6
+hostkey 2060 escape
+hostkey 2080 f6
+hostkey 2100 escape
+hostkey 2120 f6
+hostkey 2140 escape
+hostkey 2160 f6
+hostkey 2180 escape
+hostkey 2200 f6
+hostkey 2220 escape
+hostkey 2240 f6
+hostkey 2260 escape
+hostkey 2280 f6
+hostkey 2300 escape
+hostkey 2320 f6
+hostkey 2340 escape
+hostkey 2360 f6
+hostkey 2380 escape
+hostkey 2400 f6
+hostkey 2420 escape
+hostkey 2440 f6
+hostkey 2460 escape
+hostkey 2480 f6
+hostkey 2500 escape
+hostkey 2520 f6
+hostkey 2540 escape
+hostkey 2560 f6
+hostkey 2580 escape
+hostkey 2600 f6
+hostkey 2620 escape
+hostkey 2640 f6
+hostkey 2660 escape
+hostkey 2680 f6
+hostkey 2700 escape
+hostkey 2720 f6
+hostkey 2740 escape
+hostkey 2760 f6
+hostkey 2780 escape
+hostkey 2800 f6
+hostkey 2820 escape
+hostkey 2840 f6
+hostkey 2860 escape
+hostkey 2880 f6
+hostkey 2900 escape
+hostkey 2920 f6
+hostkey 2940 escape
+hostkey 2960 f6
+hostkey 2980 escape
+hostkey 3000 f6
+hostkey 3020 escape
+hostkey 3040 f6
+hostkey 3060 escape
+hostkey 3080 f6
+hostkey 3100 escape
+hostkey 3120 f6
+hostkey 3140 escape
+hostkey 3160 f6
+hostkey 3180 escape
+hostkey 3200 f6
+hostkey 3220 escape
+hostkey 3240 f6
+hostkey 3260 escape
+hostkey 3280 f6
+hostkey 3300 escape
+hostkey 3320 f6
+hostkey 3340 escape
+hostkey 3360 f6
+hostkey 3380 escape
+hostkey 3400 f6
+hostkey 3420 escape
+hostkey 3440 f6
+hostkey 3460 escape
+hostkey 3480 f6
+hostkey 3500 escape
+hostkey 3520 f6
+hostkey 3540 escape
+hostkey 3560 f6
+hostkey 3580 escape
+hostkey 3600 f6
+hostkey 3620 escape
+hostkey 3640 f6
+hostkey 3660 escape
+hostkey 3680 f6
+hostkey 3700 escape
+hostkey 3720 f6
+hostkey 3740 escape
+hostkey 3760 f6
+hostkey 3780 escape
+hostkey 3800 f6
+hostkey 3820 escape
+hostkey 3840 f6
+hostkey 3860 escape
+hostkey 3880 f6
+hostkey 3900 escape
+hostkey 3920 f6
+hostkey 3940 escape
+hostkey 3960 f6
+hostkey 3980 escape
+hostkey 4000 f6
+hostkey 4020 escape
+hostkey 4040 f6
+hostkey 4060 escape
+hostkey 4080 f6
+hostkey 4100 escape
+hostkey 4120 f6
+hostkey 4140 escape
+hostkey 4160 f6
+hostkey 4180 escape
+hostkey 4200 f6
+hostkey 4220 escape
+hostkey 4240 f6
+hostkey 4260 escape
+hostkey 4280 f6
+hostkey 4300 escape
+hostkey 4320 f6
+hostkey 4340 escape
+hostkey 4360 f6
+hostkey 4380 escape
+hostkey 4400 f6
+hostkey 4420 escape
+hostkey 4440 f6
+hostkey 4460 escape
+hostkey 4480 f6
+hostkey 4500 escape
+hostkey 4520 f6
+hostkey 4540 escape
+hostkey 4560 f6
+hostkey 4580 escape
+hostkey 4600 f6
+hostkey 4620 escape
+hostkey 4640 f6
+hostkey 4660 escape
+hostkey 4680 f6
+hostkey 4700 escape
+hostkey 4720 f6
+hostkey 4740 escape
+hostkey 4760 f6
+hostkey 4780 escape
+hostkey 4800 f6
+hostkey 4820 escape
+hostkey 4840 f6
+hostkey 4860 escape
+hostkey 4880 f6
+hostkey 4900 escape
+hostkey 4920 f6
+hostkey 4940 escape
+hostkey 4960 f6
+hostkey 4980 escape
+hostkey 5100 f6
+hostkey 5130 down
+hostkey 5160 enter
+hostkey 5190 down
+hostkey 5220 up
+hostkey 5250 escape
+hostkey 5280 escape
+hostkey 5400 f6
+input 5430 0002 0 0 0 0 0 0
+input 5436 0000 0 0 0 0 0 0
+input 5460 1000 0 0 0 0 0 0
+input 5466 0000 0 0 0 0 0 0
+input 5520 2000 0 0 0 0 0 0
+input 5526 0000 0 0 0 0 0 0
+input 5580 2000 0 0 0 0 0 0
+input 5586 0000 0 0 0 0 0 0
+hostkey 5640 f6
+hostclick 5680 left 300 277
+hostclick 5720 right 300 277
+hostclick 5760 left 300 223
+capture 5820 paused
+input 5880 2000 0 0 0 0 0 0
+input 5886 0000 0 0 0 0 0 0
+input 5980 0000 0 255 0 0 0 0
+capture 6580 driving
+input 6590 0000 0 0 0 0 0 0
+stop 6680

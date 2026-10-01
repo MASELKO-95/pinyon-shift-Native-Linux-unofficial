@@ -1,0 +1,17 @@
+pinyon-shift-fh1-render-test-v1
+# clock-hz 60
+# NP-7 gate: sample mods loaded; hello_telemetry shows its dialog after 600 frames.
+input 0 0000 0 0 0 0 0 0
+input 360 1000 0 0 0 0 0 0
+input 366 0000 0 0 0 0 0 0
+input 480 1000 0 0 0 0 0 0
+input 486 0000 0 0 0 0 0 0
+input 600 1000 0 0 0 0 0 0
+input 606 0000 0 0 0 0 0 0
+input 720 1000 0 0 0 0 0 0
+input 726 0000 0 0 0 0 0 0
+capture 1200 free-roam
+hostkey 1500 escape
+hostkey 1560 escape
+capture 1700 after
+stop 1760

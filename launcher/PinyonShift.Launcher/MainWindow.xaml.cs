@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -16,50 +17,154 @@ public partial class MainWindow : Window
 {
     private readonly ObservableCollection<RouteStep> _steps =
     [
-        new("VERIFY", "Disc image", "Exact size and SHA-256", "1"),
-        new("TOOLS", "Windows toolchain", "Provisioned when missing", "2"),
-        new("EXTRACT", "Local game files", "Never uploaded or modified", "3"),
-        new("BUILD", "Native translation", "Generated and compiled here", "4"),
-        new("PLAY", "Ready to drive", "Launch from this screen", "5")
+        new("VERIFY", "Verify disc", "", "1"),
+        new("TOOLS", "Get build tools", "", "2"),
+        new("EXTRACT", "Extract game", "", "3"),
+        new("BUILD", "Build", "", "4"),
+        new("PLAY", "Play", "", "5")
     ];
+
+    // The content area shows one of these at a time.
+    private enum View { Setup, Ready, Log, Crash, Graphics }
 
     private CancellationTokenSource? _cancellation;
     private string? _repositoryRoot;
+    private string? _stateRoot;
     private string? _gameExecutable;
+    private StreamWriter? _sessionLog;
     private CrashReport? _pendingReport;
     private bool _busy;
+    private bool _canChooseInstallRoot;
+    // Set when this launcher keeps everything beside itself (PortableMode); the data folder.
+    private string? _portableRoot;
+    private readonly bool _portableRequested = PortableMode.IsRequested(
+        AppContext.BaseDirectory, Environment.GetCommandLineArgs().Skip(1));
+    private readonly List<string> _portableNotes = [];
+    private View _panel = View.Setup;
+    private View _panelBeforeGraphics = View.Setup;
 
-    private static readonly Brush WaitingBrush = new SolidColorBrush(Color.FromRgb(57, 64, 57));
+    private static readonly string InstallRootPreference = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "PinyonShift", "install-root.txt");
+
+    private static readonly Brush WaitingBrush = new SolidColorBrush(Color.FromRgb(52, 73, 59));
     private static readonly Brush ActiveBrush = new SolidColorBrush(Color.FromRgb(241, 174, 54));
-    private static readonly Brush CompleteBrush = new SolidColorBrush(Color.FromRgb(115, 185, 137));
+    private static readonly Brush CompleteBrush = new SolidColorBrush(Color.FromRgb(92, 208, 138));
     private static readonly Brush FailedBrush = new SolidColorBrush(Color.FromRgb(225, 110, 95));
 
     public MainWindow()
     {
         InitializeComponent();
         RouteList.ItemsSource = _steps;
-        BuildLocationText.Text = Path.Combine(
+        BuildLocationRun.Text = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PinyonShift");
+        if (_portableRequested)
+        {
+            BuildLocationPrefixRun.Text = "Portable: ";
+            BuildLocationRun.Text = PortableMode.DataRoot(AppContext.BaseDirectory);
+            ChooseInstallRootButton.Visibility = Visibility.Collapsed;
+        }
+        VersionRun.Text = $"Pinyon Shift {typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "dev"}";
         Loaded += MainWindow_Loaded;
-        Closing += (_, _) => _cancellation?.Cancel();
+        StateChanged += (_, _) =>
+        {
+            // A maximized borderless window reaches past the screen edge by the
+            // resize border; pad it back in.
+            RootBorder.Margin = WindowState == WindowState.Maximized ? new Thickness(7) : new Thickness(0);
+            // Two overlapping squares while maximized, one otherwise.
+            MaximizeGlyph.Data = Geometry.Parse(WindowState == WindowState.Maximized
+                ? "M2.5,0.5 H9.5 V7.5 M0.5,2.5 H7.5 V9.5 H0.5 Z"
+                : "M0.5,0.5 H9.5 V9.5 H0.5 Z");
+        };
+        Closing += (_, _) =>
+        {
+            _cancellation?.Cancel();
+            _sessionLog?.Dispose();
+        };
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
+        => await InitializeSourceAsync();
+
+    private async Task InitializeSourceAsync(string? installRoot = null)
     {
+        _busy = true;
+        IsEnabled = false;
         try
         {
-            _repositoryRoot = await ResolveRepositoryRootAsync();
+            var repositoryRoot = await ResolveRepositoryRootAsync(installRoot);
+            var stateRoot = ResolveStateRoot(repositoryRoot);
+            if (installRoot is not null)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(InstallRootPreference)!);
+                await File.WriteAllTextAsync(InstallRootPreference, installRoot);
+            }
+            _sessionLog?.Dispose();
+            _sessionLog = null;
+            ResetRoute();
+            SetReadyState();
+            _repositoryRoot = repositoryRoot;
+            _stateRoot = stateRoot;
+            StartSessionLog(_repositoryRoot);
+            ShowReleaseVersion();
             GraphicsSettingsButton.Visibility = Visibility.Visible;
-            BuildLocationText.Text = Path.Combine(_repositoryRoot, ".local");
+            ShowBuildLocation();
+            foreach (var note in _portableNotes) AppendLog(note);
+            _portableNotes.Clear();
             AppendLog($"Release source: {_repositoryRoot}");
+            AppendLog($"Preview state: {_stateRoot}");
             StageControllerMappings();
             DetectExistingBuild();
             DetectPendingReport();
+            UpdatePrimaryButton();
+        }
+        catch (PortableFolderException ex)
+        {
+            SetFailure("Portable folder is not writable", ex.Message);
         }
         catch (Exception ex)
         {
-            SetFailure("SOURCE UNAVAILABLE", ex.Message);
+            SetFailure("Release files missing", ex.Message);
         }
+        finally
+        {
+            _busy = false;
+            IsEnabled = true;
+            UpdatePrimaryButton();
+        }
+    }
+
+    // "Portable: <data folder>" for a portable install, otherwise where the saves are.
+    private void ShowBuildLocation()
+    {
+        BuildLocationPrefixRun.Text = _portableRoot is null ? "Installs to " : "Portable: ";
+        BuildLocationRun.Text = _portableRoot ?? _stateRoot ?? BuildLocationRun.Text;
+        ChooseInstallRootButton.Visibility = _portableRoot is null ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ShowReleaseVersion()
+    {
+        if (_repositoryRoot is null) return;
+        try
+        {
+            using var release = JsonDocument.Parse(File.ReadAllText(Path.Combine(_repositoryRoot, "config", "release.json")));
+            var version = release.RootElement.GetProperty("version").GetString();
+            if (!string.IsNullOrWhiteSpace(version))
+                VersionRun.Text = $"Pinyon Shift {version}";
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or KeyNotFoundException or InvalidOperationException) { }
+    }
+
+    private async void ChooseInstallRootButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy || !_canChooseInstallRoot) return;
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Choose installation folder (existing installations and saves stay in place)",
+            Multiselect = false
+        };
+        if (dialog.ShowDialog(this) == true)
+            await InitializeSourceAsync(dialog.FolderName);
     }
 
     private void BrowseButton_Click(object sender, RoutedEventArgs e)
@@ -69,15 +174,56 @@ public partial class MainWindow : Window
             Title = "Choose your Forza Horizon disc image",
             Filter = "Xbox 360 disc image (*.iso)|*.iso|All files (*.*)|*.*",
             CheckFileExists = true,
-            Multiselect = false
+            Multiselect = false,
+            // A portable install leaves no trace in the user's recent files.
+            AddToRecent = _portableRoot is null
         };
         if (dialog.ShowDialog(this) == true)
-        {
-            IsoPathTextBox.Text = dialog.FileName;
-            ResetRoute();
-            SetReadyState();
-        }
+            SelectDiscImage(dialog.FileName);
         UpdatePrimaryButton();
+    }
+
+    private void SelectDiscImage(string path)
+    {
+        IsoPathTextBox.Text = path;
+        DropHintText.Text = Path.GetFileName(path);
+        ResetRoute();
+        SetReadyState();
+        ShowPanel(View.Setup);
+        UpdatePrimaryButton();
+    }
+
+    // Dragging a disc image anywhere onto the window selects it.
+    private bool CanAcceptDrop(DragEventArgs e, out string? path)
+    {
+        path = null;
+        if (_busy || _gameExecutable is not null || _pendingReport is not null ||
+            !e.Data.GetDataPresent(DataFormats.FileDrop)) return false;
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: 1 } files) return false;
+        path = files[0];
+        return File.Exists(path);
+    }
+
+    private void Window_DragOver(object sender, DragEventArgs e)
+    {
+        var accepted = CanAcceptDrop(e, out _);
+        e.Effects = accepted ? DragDropEffects.Copy : DragDropEffects.None;
+        DropOverlay.Visibility = accepted ? Visibility.Visible : Visibility.Collapsed;
+        e.Handled = true;
+    }
+
+    protected override void OnDragLeave(DragEventArgs e)
+    {
+        base.OnDragLeave(e);
+        DropOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private void Window_Drop(object sender, DragEventArgs e)
+    {
+        DropOverlay.Visibility = Visibility.Collapsed;
+        if (CanAcceptDrop(e, out var path) && path is not null)
+            SelectDiscImage(path);
+        e.Handled = true;
     }
 
     private void InputChanged(object sender, RoutedEventArgs e) => UpdatePrimaryButton();
@@ -97,21 +243,28 @@ public partial class MainWindow : Window
 
         if (_busy || _repositoryRoot is null)
             return;
+        if (_portableRoot is not null && PortableMode.PathLengthProblem(_portableRoot) is { } pathTooLong)
+        {
+            SetFailure("Portable folder path is too long", pathTooLong);
+            return;
+        }
 
         _busy = true;
+        ChooseInstallRootButton.IsEnabled = false;
         GraphicsSettingsButton.IsEnabled = false;
         _cancellation = new CancellationTokenSource();
         BrowseButton.IsEnabled = false;
         OwnershipCheckBox.IsEnabled = false;
         PrimaryButton.IsEnabled = false;
-        PrimaryButton.Content = "BUILDING…";
-        LogPanel.Visibility = Visibility.Visible;
-        HeadlineText.Text = "Preparing the road.";
-        EyebrowText.Text = "LOCAL BUILD IN PROGRESS";
-        StatusText.Text = "WORKING";
-        StatusDot.Fill = ActiveBrush;
+        SetPrimaryText("Building…");
+        ShowPanel(View.Log);
+        SetProgress(0, "Starting local setup.");
+        HeadlineText.Text = "Building";
+        SetSubhead("The first build takes 20 to 60 minutes. You can leave it running.");
         AppendLog("Starting local setup. The first build can take a while.");
 
+        var setupStartedUtc = DateTime.UtcNow;
+        _setupFailurePrinted = false;
         try
         {
             var script = Path.Combine(_repositoryRoot, "tools", "setup-preview.ps1");
@@ -120,7 +273,7 @@ public partial class MainWindow : Window
 
             var startInfo = new ProcessStartInfo
             {
-                FileName = "powershell.exe",
+                FileName = PowerShellExecutable(),
                 WorkingDirectory = _repositoryRoot,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
@@ -154,7 +307,7 @@ public partial class MainWindow : Window
             });
             await process.WaitForExitAsync(_cancellation.Token);
             if (process.ExitCode != 0)
-                throw new InvalidOperationException("Setup stopped before completing. The build log above contains the cause.");
+                throw new InvalidOperationException(DescribeSetupFailure(process.ExitCode, setupStartedUtc));
 
             DetectExistingBuild();
             if (_gameExecutable is null)
@@ -163,11 +316,11 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
-            SetFailure("BUILD CANCELLED", "No game or source files were uploaded. Run the launcher again to resume.");
+            SetFailure("Build cancelled", "Nothing was uploaded. Start the build again to resume where it stopped.");
         }
         catch (Exception ex)
         {
-            SetFailure("SETUP NEEDS ATTENTION", ex.Message);
+            SetFailure("Setup stopped", ex.Message);
         }
         finally
         {
@@ -185,6 +338,7 @@ public partial class MainWindow : Window
         const string prefix = "::pinyon::";
         if (!line.StartsWith(prefix, StringComparison.Ordinal))
         {
+            if (line.StartsWith(SetupFailureBanner, StringComparison.Ordinal)) _setupFailurePrinted = true;
             AppendLog(line);
             return;
         }
@@ -196,8 +350,21 @@ public partial class MainWindow : Window
                 PropertyNameCaseInsensitive = true
             });
             if (message is null) return;
+            var stage = string.Equals(message.Stage, "shaders", StringComparison.OrdinalIgnoreCase)
+                ? "build" : message.Stage;
             var index = Array.FindIndex(RouteStep.StageOrder, x =>
-                string.Equals(x, message.Stage, StringComparison.OrdinalIgnoreCase));
+                string.Equals(x, stage, StringComparison.OrdinalIgnoreCase));
+            if (message.Stage == "shaders")
+            {
+                HeadlineText.Text = "Preparing graphics";
+                SetPrimaryText("Preparing…");
+            }
+            else if (message.Stage == "play" && _gameExecutable is not null)
+            {
+                HeadlineText.Text = "Game running";
+                SetSubhead("Controller A, Space, or left click. Enter is Start, F6 opens settings.");
+                SetPrimaryText("Game running");
+            }
             if (index >= 0)
             {
                 for (var i = 0; i < _steps.Count; i++)
@@ -205,7 +372,9 @@ public partial class MainWindow : Window
                         WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
             }
             if (message.Percent is >= 0 and <= 100)
-                ProgressText.Text = $"{message.Percent}%";
+                SetProgress(message.Percent, message.Message);
+            else if (!string.IsNullOrWhiteSpace(message.Message))
+                ProgressMessageText.Text = message.Message;
             if (!string.IsNullOrWhiteSpace(message.Message))
                 AppendLog(message.Message);
         }
@@ -215,40 +384,184 @@ public partial class MainWindow : Window
         }
     }
 
+    // tools/release-common.ps1 (Format-PinyonFailureRecord) starts its failure report with this line.
+    private const string SetupFailureBanner = "==================== SETUP FAILED";
+    private bool _setupFailurePrinted;
+
+    // The failed step, exit code, log and first error from .local/logs/setup-error.json. The report
+    // is repeated in the log only when the setup output did not already show it, so a lost or
+    // interleaved stream still leaves the cause on screen.
+    private string DescribeSetupFailure(int exitCode, DateTime startedUtc)
+    {
+        var fallback = $"Setup stopped before completing (exit code {exitCode}). The details above contain the cause.";
+        if (_repositoryRoot is null) return fallback;
+        var path = Path.Combine(_repositoryRoot, ".local", "logs", "setup-error.json");
+        SetupFailure? failure;
+        try
+        {
+            if (!File.Exists(path) || File.GetLastWriteTimeUtc(path) < startedUtc.AddSeconds(-2)) return fallback;
+            failure = JsonSerializer.Deserialize<SetupFailure>(File.ReadAllText(path));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return fallback;
+        }
+        if (failure is null) return fallback;
+
+        var excerpt = new List<string>();
+        if (failure.ErrorExcerpt is { ValueKind: JsonValueKind.Array } lines)
+            excerpt.AddRange(lines.EnumerateArray().Select(x => x.ValueKind == JsonValueKind.String ? x.GetString() ?? "" : x.ToString()));
+        else if (failure.ErrorExcerpt is { ValueKind: JsonValueKind.String } single)
+            excerpt.Add(single.GetString() ?? "");
+        var code = failure.ExitCode is { ValueKind: JsonValueKind.Number } number ? number.ToString() : null;
+
+        if (!_setupFailurePrinted)
+        {
+            AppendLog($"Setup failure report ({path}):");
+            if (!string.IsNullOrWhiteSpace(failure.Message)) AppendLog($"Error: {failure.Message}");
+            if (!string.IsNullOrWhiteSpace(failure.Step)) AppendLog($"Failed step: {failure.Step}");
+            if (code is not null) AppendLog($"Exit code: {code}");
+            if (!string.IsNullOrWhiteSpace(failure.BuildLog)) AppendLog($"Full log: {failure.BuildLog}");
+            if (excerpt.Count > 0)
+            {
+                AppendLog("First error from the log:");
+                foreach (var line in excerpt) AppendLog("    " + line);
+            }
+            if (!string.IsNullOrWhiteSpace(failure.Hint)) AppendLog($"What to try: {failure.Hint}");
+        }
+
+        var summary = string.IsNullOrWhiteSpace(failure.Step) ? "Setup stopped" : $"{failure.Step} failed";
+        if (code is not null) summary += $" (exit code {code})";
+        summary += ". ";
+        summary += string.IsNullOrWhiteSpace(failure.Hint)
+            ? (excerpt.Count > 0 ? "The first error is shown in the log above." : failure.Message ?? "The details above contain the cause.")
+            : failure.Hint;
+        return summary;
+    }
+
+    private void SetProgress(int percent, string? message)
+    {
+        BuildProgress.Value = percent;
+        ProgressText.Text = $"{percent}%";
+        if (!string.IsNullOrWhiteSpace(message))
+            ProgressMessageText.Text = message;
+    }
+
+    // What the next start uses, read straight from the settings file.
+    private string ConfiguredGraphicsApi()
+    {
+        if (_stateRoot is null) return "vulkan";
+        var config = Path.Combine(_stateRoot, "config", "pinyon_shift.toml");
+        if (!File.Exists(config)) return "vulkan";
+        try
+        {
+            var text = File.ReadAllText(config);
+            var schema = Regex.Match(text, @"(?m)^\s*pinyon_shift_config_schema\s*=\s*([0-9]+)");
+            var backend = Regex.Match(text, @"(?m)^\s*gpu_backend\s*=\s*""([^""]*)""");
+            // Config schema 27 moves earlier files to Vulkan when the game starts;
+            // "any" is the first backend, Direct3D 12.
+            if (!schema.Success || int.Parse(schema.Groups[1].Value) < 27 || !backend.Success) return "vulkan";
+            return string.Equals(backend.Groups[1].Value, "vulkan", StringComparison.OrdinalIgnoreCase) ? "vulkan" : "d3d12";
+        }
+        catch (IOException) { return "vulkan"; }
+    }
+
+    private int ConfiguredResolutionScale()
+    {
+        if (_stateRoot is null) return 1;
+        var config = Path.Combine(_stateRoot, "config", "pinyon_shift.toml");
+        try
+        {
+            var match = File.Exists(config)
+                ? Regex.Match(File.ReadAllText(config), @"(?m)^\s*draw_resolution_scale_x\s*=\s*([0-9]+)")
+                : Match.Empty;
+            return match.Success ? Math.Clamp(int.Parse(match.Groups[1].Value), 1, 4) : 1;
+        }
+        catch (IOException) { return 1; }
+    }
+
+    // What the next start uses, in one line under the headline.
+    private void UpdateSummary()
+    {
+        var scale = ConfiguredResolutionScale();
+        SetSubhead($"{(ConfiguredGraphicsApi() == "vulkan" ? "Vulkan" : "Direct3D 12")} · " +
+                   $"{scale}× ({1280 * scale} × {720 * scale}) · F6 opens settings in game");
+    }
+
     private void DetectExistingBuild()
     {
+        _gameExecutable = null;
         if (_repositoryRoot is null) return;
         var candidate = Path.Combine(_repositoryRoot, "out", "build", "win-amd64-release", "pinyon_shift.exe");
         if (File.Exists(candidate))
         {
+            if (!File.Exists(Path.Combine(_repositoryRoot, ".local", "game", "base", "default.xex")))
+            {
+                HeadlineText.Text = "Restore your game files";
+                SetSubhead("Choose your disc image to run setup again. Your save stays in place.");
+                AppendLog("Select your disc image and run setup to restore the missing game files. Your save stays in place.");
+                return;
+            }
+            var payloadMarker = Path.Combine(_repositoryRoot, ".pinyon-source-sha256");
+            if (File.Exists(payloadMarker))
+            {
+                var matchesRelease = false;
+                try
+                {
+                    using var build = JsonDocument.Parse(File.ReadAllText(Path.Combine(_repositoryRoot, ".local", "build.json")));
+                    matchesRelease = build.RootElement.TryGetProperty("pinyon_shift_source_payload_sha256", out var hash)
+                        && string.Equals(hash.GetString(), File.ReadAllText(payloadMarker).Trim(), StringComparison.OrdinalIgnoreCase);
+                }
+                catch (Exception ex) when (ex is IOException or JsonException or InvalidOperationException) { }
+                if (!matchesRelease)
+                {
+                    HeadlineText.Text = "Update your build";
+                    SetSubhead("This release changed the game code. Choose your disc image to rebuild; your save stays in place.");
+                    AppendLog("Select your disc image and run setup to build this release. Existing game files and your save are preserved.");
+                    return;
+                }
+            }
             _gameExecutable = candidate;
             SetComplete();
+            // Only Direct3D 12 loads prepared shader packs.
+            if (_stateRoot is not null && ConfiguredGraphicsApi() == "d3d12" &&
+                !File.Exists(Path.Combine(_stateRoot, "cache", "fh1-artifacts.json")))
+            {
+                _steps[3].SetState(StepState.Waiting, WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
+                _steps[4].SetState(StepState.Waiting, WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
+                HeadlineText.Text = "Prepare graphics";
+                SetSubhead("Direct3D 12 prepares its shaders once for this PC before the first start.");
+                SetPrimaryText("Prepare and play");
+            }
         }
     }
 
     private async Task LaunchGameAsync()
     {
-        if (_repositoryRoot is null || _gameExecutable is null) return;
+        if (_repositoryRoot is null || _stateRoot is null || _gameExecutable is null) return;
         if (_busy) return;
 
         _busy = true;
+        ChooseInstallRootButton.IsEnabled = false;
         GraphicsSettingsButton.IsEnabled = false;
         PrimaryButton.IsEnabled = false;
-        PrimaryButton.Content = "GAME RUNNING";
-        EyebrowText.Text = "PREVIEW RUNNING";
-        HeadlineText.Text = "Controller A, Space, or left click.";
-        StatusText.Text = "WATCHING FOR CRASHES";
-        StatusDot.Fill = ActiveBrush;
+        SetPrimaryText("Starting…");
+        HeadlineText.Text = "Starting";
+        SetSubhead("The game opens in its own window.");
+        ShowPanel(View.Log);
+        SetProgress(0, "Checking graphics for this computer.");
         ReportProblemButton.IsEnabled = false;
-        AppendLog("Game started. The launcher is watching for an unexpected exit.");
+        AppendLog("Checking graphics for this computer. Missing or outdated shaders are prepared automatically.");
         AppendLog("Controls: use controller A, Space, or left click for the selected Xbox menu item; press Enter for Start.");
 
         try
         {
+            _cancellation?.Dispose();
+            _cancellation = new CancellationTokenSource();
             var launcher = Path.Combine(_repositoryRoot, "tools", "launch-preview.ps1");
             var startInfo = new ProcessStartInfo
             {
-                FileName = "powershell.exe",
+                FileName = PowerShellExecutable(),
                 WorkingDirectory = _repositoryRoot,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
@@ -258,18 +571,35 @@ public partial class MainWindow : Window
             foreach (var argument in new[]
             {
                 "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", launcher,
-                "-Configuration", "Release", "-Json"
+                "-Configuration", "Release", "-StateRoot", _stateRoot, "-Json", "-JsonEvents"
             }) startInfo.ArgumentList.Add(argument);
 
-            using var watcher = Process.Start(startInfo) ??
-                throw new InvalidOperationException("Windows could not start the preview watcher.");
-            var outputTask = watcher.StandardOutput.ReadToEndAsync();
-            var errorTask = watcher.StandardError.ReadToEndAsync();
-            await watcher.WaitForExitAsync();
-            var output = await outputTask;
-            var error = await errorTask;
+            using var watcher = new Process { StartInfo = startInfo };
+            var output = new System.Text.StringBuilder();
+            var errors = new System.Text.StringBuilder();
+            watcher.OutputDataReceived += (_, args) => Dispatcher.Invoke(() =>
+            {
+                if (args.Data is null) return;
+                if (args.Data.StartsWith('{')) output.AppendLine(args.Data);
+                else HandleOutput(args.Data);
+            });
+            watcher.ErrorDataReceived += (_, args) => Dispatcher.Invoke(() =>
+            {
+                if (args.Data is null) return;
+                errors.AppendLine(args.Data);
+                AppendLog(args.Data);
+            });
+            if (!watcher.Start()) throw new InvalidOperationException("Windows could not start the preview watcher.");
+            watcher.BeginOutputReadLine();
+            watcher.BeginErrorReadLine();
+            using var registration = _cancellation.Token.Register(() =>
+            {
+                try { if (!watcher.HasExited) watcher.Kill(entireProcessTree: true); } catch { }
+            });
+            await watcher.WaitForExitAsync(_cancellation.Token);
+            var error = errors.ToString();
 
-            var result = ParseLaunchResult(output);
+            var result = ParseLaunchResult(output.ToString());
             if (watcher.ExitCode == 0 && string.Equals(result?.Result, "normal-exit", StringComparison.OrdinalIgnoreCase))
             {
                 AppendLog("The game closed normally.");
@@ -291,9 +621,13 @@ public partial class MainWindow : Window
                     ? "The game exited unexpectedly, but its diagnostic report could not be prepared."
                     : error.Trim());
         }
+        catch (OperationCanceledException)
+        {
+            SetFailure("Preparation cancelled", "Play again to finish preparing graphics.");
+        }
         catch (Exception ex)
         {
-            SetFailure("PREVIEW STOPPED", ex.Message);
+            SetFailure("The game stopped", ex.Message);
         }
         finally
         {
@@ -302,6 +636,20 @@ public partial class MainWindow : Window
             ReportProblemButton.IsEnabled = true;
             UpdatePrimaryButton();
         }
+    }
+
+    // Windows PowerShell by its full path. A bare "powershell.exe" is found only through PATH,
+    // so a PATH that lost the WindowsPowerShell folder made every setup step fail with
+    // "The specified file cannot be found". PowerShell 7 serves when Windows PowerShell is gone.
+    private static string PowerShellExecutable()
+    {
+        string[] candidates =
+        [
+            Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PowerShell", "7",
+                "pwsh.exe")
+        ];
+        return candidates.FirstOrDefault(File.Exists) ?? "powershell.exe";
     }
 
     private static LaunchResult? ParseLaunchResult(string output)
@@ -323,8 +671,8 @@ public partial class MainWindow : Window
 
     private void DetectPendingReport()
     {
-        if (_repositoryRoot is null) return;
-        var reportsRoot = Path.GetFullPath(Path.Combine(_repositoryRoot, ".local", "preview", "reports"));
+        if (_stateRoot is null) return;
+        var reportsRoot = Path.GetFullPath(Path.Combine(_stateRoot, "reports"));
         var marker = Path.Combine(reportsRoot, "pending-report.json");
         if (!File.Exists(marker)) return;
         try
@@ -337,6 +685,10 @@ public partial class MainWindow : Window
                 string.IsNullOrWhiteSpace(report.Bundle) || string.IsNullOrWhiteSpace(report.IssueUrl)) return;
             var bundle = Path.GetFullPath(report.Bundle);
             var reportsPrefix = reportsRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            // A folder moved since the crash (a portable install) still holds the bundle in its
+            // own reports folder.
+            if (!bundle.StartsWith(reportsPrefix, StringComparison.OrdinalIgnoreCase))
+                bundle = Path.Combine(reportsRoot, Path.GetFileName(bundle));
             if (!bundle.StartsWith(reportsPrefix, StringComparison.OrdinalIgnoreCase) || !File.Exists(bundle)) return;
             if (!Uri.TryCreate(report.IssueUrl, UriKind.Absolute, out var issueUri) ||
                 issueUri.Scheme != Uri.UriSchemeHttps || issueUri.Host != "github.com" ||
@@ -353,25 +705,20 @@ public partial class MainWindow : Window
         for (var i = 0; i < _steps.Count; i++)
             _steps[i].SetState(i == _steps.Count - 1 ? StepState.Failed : StepState.Complete,
                 WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
-        EyebrowText.Text = "CRASH REPORT READY";
-        HeadlineText.Text = "We caught the crash.";
-        StatusText.Text = "REPORT READY";
-        StatusDot.Fill = FailedBrush;
-        CrashIdText.Text = report.CrashId;
-        CrashPanel.Visibility = Visibility.Visible;
-        GraphicsPanel.Visibility = Visibility.Collapsed;
-        LogPanel.Visibility = Visibility.Collapsed;
-        OwnershipCheckBox.Visibility = Visibility.Collapsed;
+        HeadlineText.Text = "The game crashed";
+        SetSubhead("");
+        CrashIdRun.Text = report.CrashId;
+        ShowPanel(View.Crash);
         ReportProblemButton.Visibility = Visibility.Collapsed;
-        OpenLogsButton.Content = "OPEN REPORT FOLDER";
+        OpenLogsButton.Content = "Report folder";
         OpenLogsButton.Visibility = Visibility.Visible;
-        PrimaryButton.Content = "REPORT CRASH";
+        SetPrimaryText("Report crash");
         PrimaryButton.IsEnabled = true;
     }
 
     private void ReportCrash()
     {
-        if (_pendingReport is null || _repositoryRoot is null) return;
+        if (_pendingReport is null || _stateRoot is null) return;
         Process.Start(new ProcessStartInfo
         {
             FileName = "explorer.exe",
@@ -379,13 +726,12 @@ public partial class MainWindow : Window
             Arguments = $"/select,\"{_pendingReport.Bundle}\""
         });
         Process.Start(new ProcessStartInfo(_pendingReport.IssueUrl) { UseShellExecute = true });
-        var marker = Path.Combine(_repositoryRoot, ".local", "preview", "reports", "pending-report.json");
+        var marker = Path.Combine(_stateRoot, "reports", "pending-report.json");
         try { if (File.Exists(marker)) File.Delete(marker); } catch (IOException) { }
-        StatusText.Text = "GITHUB OPENED";
-        PrimaryButton.Content = "OPEN GITHUB AGAIN";
+        SetPrimaryText("Open GitHub again");
     }
 
-    private async Task<string> ResolveRepositoryRootAsync()
+    private async Task<string> ResolveRepositoryRootAsync(string? selectedInstallRoot = null)
     {
         static bool IsRoot(string path) => File.Exists(Path.Combine(path, "config", "supported-dumps.json"))
             && File.Exists(Path.Combine(path, "tools", "setup-preview.ps1"));
@@ -393,7 +739,14 @@ public partial class MainWindow : Window
         var directory = AppContext.BaseDirectory;
         for (var i = 0; i < 8; i++)
         {
-            if (IsRoot(directory)) return directory;
+            if (IsRoot(directory))
+            {
+                _canChooseInstallRoot = false;
+                _portableRoot = null;
+                if (_portableRequested)
+                    _portableNotes.Add("Portable mode does not apply to a repository checkout; using the checkout.");
+                return directory;
+            }
             var parent = Directory.GetParent(directory);
             if (parent is null) break;
             directory = parent.FullName;
@@ -404,8 +757,31 @@ public partial class MainWindow : Window
             throw new FileNotFoundException("Keep pinyon-shift-source.zip beside the launcher, or run the launcher from a repository checkout.");
 
         var version = typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "dev";
-        var destination = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "PinyonShift", "source", version);
+        string? installRoot;
+        if (_portableRequested)
+        {
+            // Everything beside the launcher, derived again at every start so the folder can move;
+            // no preference file and no environment override.
+            installRoot = PortableMode.DataRoot(AppContext.BaseDirectory);
+            _canChooseInstallRoot = false;
+            PortableMode.EnsureWritable(installRoot);
+            foreach (var ignored in PortableMode.ApplyToEnvironment(installRoot))
+                _portableNotes.Add($"Portable mode ignores {ignored}.");
+            if (PortableMode.PathLengthProblem(installRoot) is { } pathTooLong)
+                _portableNotes.Add(pathTooLong);
+            _portableRoot = installRoot;
+        }
+        else
+        {
+            installRoot = Environment.GetEnvironmentVariable("PINYON_SHIFT_INSTALL_ROOT");
+            _canChooseInstallRoot = string.IsNullOrWhiteSpace(installRoot);
+            if (_canChooseInstallRoot)
+                installRoot = selectedInstallRoot ?? (File.Exists(InstallRootPreference)
+                    ? (await File.ReadAllTextAsync(InstallRootPreference)).Trim() : null);
+            if (string.IsNullOrWhiteSpace(installRoot))
+                installRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PinyonShift");
+        }
+        var destination = Path.Combine(Path.GetFullPath(installRoot), "source", version);
         var payloadHash = await Task.Run(async () =>
         {
             await using var stream = File.OpenRead(payload);
@@ -427,6 +803,14 @@ public partial class MainWindow : Window
         return destination;
     }
 
+    private static string ResolveStateRoot(string repositoryRoot)
+    {
+        var configured = Environment.GetEnvironmentVariable("PINYON_SHIFT_STATE_ROOT");
+        return Path.GetFullPath(string.IsNullOrWhiteSpace(configured)
+            ? Path.Combine(repositoryRoot, ".local", "preview")
+            : configured);
+    }
+
     private void StageControllerMappings()
     {
         if (_repositoryRoot is null) return;
@@ -439,12 +823,35 @@ public partial class MainWindow : Window
         AppendLog("Controller compatibility mappings are current.");
     }
 
+    private void ShowPanel(View panel)
+    {
+        _panel = panel;
+        SetupPanel.Visibility = panel == View.Setup ? Visibility.Visible : Visibility.Collapsed;
+        LogPanel.Visibility = panel == View.Log ? Visibility.Visible : Visibility.Collapsed;
+        CrashPanel.Visibility = panel == View.Crash ? Visibility.Visible : Visibility.Collapsed;
+        GraphicsPanel.Visibility = panel == View.Graphics ? Visibility.Visible : Visibility.Collapsed;
+        // The route only tells something while there is setup left to do.
+        RouteList.Visibility = panel is View.Setup or View.Log ? Visibility.Visible : Visibility.Collapsed;
+        if (panel == View.Ready) UpdateSummary();
+    }
+
+    private void SetPrimaryText(string text)
+    {
+        PrimaryButtonText.Text = text;
+        PrimaryIcon.Visibility = text is "Play" or "Prepare and play"
+            ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void SetSubhead(string text)
+    {
+        SubheadText.Text = text;
+        SubheadText.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
+    }
+
     private void SetReadyState()
     {
-        EyebrowText.Text = "READY FOR YOUR DISC";
-        HeadlineText.Text = "Build your preview.";
-        StatusText.Text = "SYSTEM READY";
-        StatusDot.Fill = CompleteBrush;
+        HeadlineText.Text = "Build your preview";
+        SetSubhead("Verified, extracted and compiled on this PC. Nothing is uploaded.");
     }
 
     private void SetComplete()
@@ -452,31 +859,26 @@ public partial class MainWindow : Window
         _pendingReport = null;
         foreach (var step in _steps)
             step.SetState(StepState.Complete, WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
-        ProgressText.Text = "100%";
-        EyebrowText.Text = "LOCAL BUILD COMPLETE";
-        HeadlineText.Text = "The road is open.";
-        StatusText.Text = "READY TO PLAY";
-        StatusDot.Fill = CompleteBrush;
-        PrimaryButton.Content = "PLAY PINYON SHIFT";
-        CrashPanel.Visibility = Visibility.Collapsed;
-        GraphicsPanel.Visibility = Visibility.Collapsed;
+        SetProgress(100, "Ready.");
+        HeadlineText.Text = "Ready to drive";
+        SetPrimaryText("Play");
+        ShowPanel(View.Ready);
         ReportProblemButton.Visibility = Visibility.Visible;
+        OpenLogsButton.Content = "Logs";
         OpenLogsButton.Visibility = Visibility.Visible;
-        OwnershipCheckBox.Visibility = Visibility.Collapsed;
+        OpenStateFolderButton.Visibility = Visibility.Visible;
         AppendLog("Build complete. Generated files remain on this computer.");
     }
 
-    private void SetFailure(string eyebrow, string message)
+    private void SetFailure(string headline, string message)
     {
         var active = _steps.FirstOrDefault(x => x.State == StepState.Active);
         active?.SetState(StepState.Failed, WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
-        EyebrowText.Text = eyebrow;
-        HeadlineText.Text = "We stopped safely.";
-        StatusText.Text = "ACTION NEEDED";
-        StatusDot.Fill = FailedBrush;
-        PrimaryButton.Content = "TRY AGAIN";
-        LogPanel.Visibility = Visibility.Visible;
-        GraphicsPanel.Visibility = Visibility.Collapsed;
+        HeadlineText.Text = headline;
+        SetSubhead(message);
+        SetPrimaryText("Try again");
+        ShowPanel(View.Log);
+        ProgressMessageText.Text = message;
         OpenLogsButton.Visibility = Visibility.Visible;
         AppendLog($"ERROR: {message}");
     }
@@ -487,31 +889,49 @@ public partial class MainWindow : Window
         _pendingReport = null;
         foreach (var step in _steps)
             step.SetState(StepState.Waiting, WaitingBrush, ActiveBrush, CompleteBrush, FailedBrush);
-        PrimaryButton.Content = "VERIFY & BUILD";
-        CrashPanel.Visibility = Visibility.Collapsed;
-        GraphicsPanel.Visibility = Visibility.Collapsed;
+        SetPrimaryText("Verify and build");
+        ShowPanel(View.Setup);
         ReportProblemButton.Visibility = Visibility.Visible;
         OwnershipCheckBox.Visibility = Visibility.Visible;
     }
 
     private void UpdatePrimaryButton()
     {
+        ChooseInstallRootButton.IsEnabled = !_busy && _canChooseInstallRoot &&
+            GraphicsPanel.Visibility != Visibility.Visible;
         PrimaryButton.IsEnabled = !_busy && (_pendingReport is not null || _gameExecutable is not null ||
             (_repositoryRoot is not null && File.Exists(IsoPathTextBox.Text) && OwnershipCheckBox.IsChecked == true));
     }
 
     private void AppendLog(string line)
     {
-        LogTextBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {line}{Environment.NewLine}");
+        var entry = $"[{DateTime.Now:HH:mm:ss}] {line}";
+        LogTextBox.AppendText(entry + Environment.NewLine);
+        try
+        {
+            _sessionLog?.WriteLine(entry);
+        }
+        catch (IOException)
+        {
+            _sessionLog?.Dispose();
+            _sessionLog = null;
+        }
         const int maximumLogCharacters = 120_000;
         if (LogTextBox.Text.Length > maximumLogCharacters)
             LogTextBox.Text = LogTextBox.Text[^maximumLogCharacters..];
         LogTextBox.ScrollToEnd();
     }
 
+    private void LogToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        var show = LogBox.Visibility != Visibility.Visible;
+        LogBox.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        LogToggleButton.Content = show ? "Hide details" : "Show details";
+    }
+
     private void OpenLogsButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_repositoryRoot is null) return;
+        if (_repositoryRoot is null || _stateRoot is null) return;
         if (_pendingReport is not null)
         {
             Process.Start(new ProcessStartInfo
@@ -527,22 +947,59 @@ public partial class MainWindow : Window
         Process.Start(new ProcessStartInfo("explorer.exe", logs) { UseShellExecute = true });
     }
 
+    private void StartSessionLog(string repositoryRoot)
+    {
+        try
+        {
+            var logs = Path.Combine(repositoryRoot, ".local", "logs");
+            Directory.CreateDirectory(logs);
+            _sessionLog = new StreamWriter(Path.Combine(logs, "launcher.log"), append: false)
+            {
+                AutoFlush = true
+            };
+        }
+        catch (IOException)
+        {
+            _sessionLog = null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            _sessionLog = null;
+        }
+    }
+
     private void ReportProblemButton_Click(object sender, RoutedEventArgs e) =>
         Process.Start(new ProcessStartInfo(
             "https://github.com/arcanite24/pinyon-shift/issues/new?template=bug.yml")
         { UseShellExecute = true });
 
+    private void ProjectButton_Click(object sender, RoutedEventArgs e) =>
+        Process.Start(new ProcessStartInfo("https://github.com/arcanite24/pinyon-shift") { UseShellExecute = true });
+
+    private void OpenStateFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_stateRoot is null) return;
+        Directory.CreateDirectory(_stateRoot);
+        Process.Start(new ProcessStartInfo("explorer.exe", _stateRoot) { UseShellExecute = true });
+    }
+
+    private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void MaximizeButton_Click(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
+
     private async void GraphicsSettingsButton_Click(object sender, RoutedEventArgs e)
     {
         if (_repositoryRoot is null || _busy || _pendingReport is not null) return;
-        LogPanel.Visibility = Visibility.Collapsed;
-        CrashPanel.Visibility = Visibility.Collapsed;
-        GraphicsPanel.Visibility = Visibility.Visible;
-        GraphicsStatusText.Text = "Loading current settings…";
+        if (_panel != View.Graphics) _panelBeforeGraphics = _panel;
+        ShowPanel(View.Graphics);
+        ChooseInstallRootButton.IsEnabled = false;
+        GraphicsStatusText.Text = InGameHint;
         try
         {
             ApplyGraphicsResult(await RunGraphicsSettingsToolAsync("Get"));
-            GraphicsStatusText.Text = "Current settings loaded. Saving a change requires a preview restart.";
         }
         catch (Exception ex)
         {
@@ -552,12 +1009,19 @@ public partial class MainWindow : Window
 
     private void CloseGraphicsButton_Click(object sender, RoutedEventArgs e)
     {
-        GraphicsPanel.Visibility = Visibility.Collapsed;
-        LogPanel.Visibility = Visibility.Visible;
+        ShowPanel(_panelBeforeGraphics == View.Graphics ? View.Setup : _panelBeforeGraphics);
+        UpdatePrimaryButton();
     }
 
-    private async void SaveGraphicsButton_Click(object sender, RoutedEventArgs e) =>
-        await ChangeGraphicsSettingsAsync("Apply", "Settings saved. Restart the preview to apply them.");
+    private const string InGameHint = "Everything else is in the game: press F6 while playing.";
+
+    private async void SaveGraphicsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!await ChangeGraphicsSettingsAsync("Apply", "Saved. Applies at the next start.")) return;
+        // Direct3D 12 may now need its shader packs.
+        if (_gameExecutable is not null && !_busy) DetectExistingBuild();
+        CloseGraphicsButton_Click(sender, e);
+    }
 
     private async void ResetGraphicsButton_Click(object sender, RoutedEventArgs e)
     {
@@ -565,17 +1029,17 @@ public partial class MainWindow : Window
                 "Reset only the Pinyon Shift runtime settings? Your current pinyon_shift.toml will be backed up first.",
                 "Reset runtime settings", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
             return;
-        await ChangeGraphicsSettingsAsync("Reset", "Runtime settings reset. Restart the preview to apply them.",
+        await ChangeGraphicsSettingsAsync("Reset", "Reset to defaults. Applies at the next start.",
             revealBackup: true);
     }
 
     private async void RestoreGraphicsButton_Click(object sender, RoutedEventArgs e) =>
-        await ChangeGraphicsSettingsAsync("Restore", "Latest settings backup restored. Restart the preview to apply it.");
+        await ChangeGraphicsSettingsAsync("Restore", "Backup restored. Applies at the next start.");
 
-    private async Task ChangeGraphicsSettingsAsync(string action, string success, bool revealBackup = false)
+    private async Task<bool> ChangeGraphicsSettingsAsync(string action, string success, bool revealBackup = false)
     {
         SetGraphicsControlsEnabled(false);
-        GraphicsStatusText.Text = action == "Apply" ? "Saving validated settings…" : "Updating runtime settings…";
+        GraphicsStatusText.Text = action == "Apply" ? "Saving…" : "Updating…";
         try
         {
             var result = await RunGraphicsSettingsToolAsync(action);
@@ -590,10 +1054,12 @@ public partial class MainWindow : Window
                     Arguments = $"/select,\"{result.BackupPath}\""
                 });
             }
+            return true;
         }
         catch (Exception ex)
         {
             GraphicsStatusText.Text = $"No settings were changed: {ex.Message}";
+            return false;
         }
         finally
         {
@@ -603,12 +1069,13 @@ public partial class MainWindow : Window
 
     private async Task<GraphicsResult> RunGraphicsSettingsToolAsync(string action)
     {
-        if (_repositoryRoot is null) throw new InvalidOperationException("Release source is not ready.");
+        if (_repositoryRoot is null || _stateRoot is null)
+            throw new InvalidOperationException("Release source is not ready.");
         var script = Path.Combine(_repositoryRoot, "tools", "set-graphics-experiment.ps1");
         if (!File.Exists(script)) throw new FileNotFoundException("The graphics settings tool is missing.", script);
         var startInfo = new ProcessStartInfo
         {
-            FileName = "powershell.exe",
+            FileName = PowerShellExecutable(),
             WorkingDirectory = _repositoryRoot,
             UseShellExecute = false,
             RedirectStandardOutput = true,
@@ -618,9 +1085,14 @@ public partial class MainWindow : Window
         foreach (var argument in new[]
         {
             "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
-            "-Action", action, "-StateRoot", Path.Combine(_repositoryRoot, ".local", "preview"),
-            "-Anisotropy", SelectedTag(AnisotropyComboBox), "-PostEffect", SelectedTag(PostEffectComboBox),
-            "-ResolutionScale", SelectedTag(ResolutionComboBox), "-Json"
+            "-Action", action, "-StateRoot", _stateRoot,
+            // Only the choices in this panel: the rest is set in game and must
+            // not be overwritten.
+            "-ResolutionScale", SelectedTag(ResolutionComboBox),
+            "-GraphicsApi", SelectedTag(GraphicsApiComboBox),
+            "-OutputScaling", SelectedTag(OutputScalingComboBox),
+            "-TreasureMap", TreasureMapCheckBox.IsChecked == true ? "true" : "false",
+            "-Json"
         }) startInfo.ArgumentList.Add(argument);
         using var process = Process.Start(startInfo) ??
             throw new InvalidOperationException("Windows could not start the graphics settings tool.");
@@ -643,9 +1115,144 @@ public partial class MainWindow : Window
 
     private void ApplyGraphicsResult(GraphicsResult result)
     {
-        SelectTag(AnisotropyComboBox, result.Settings.Anisotropy.ToString());
-        SelectTag(PostEffectComboBox, result.Settings.PostEffect);
+        _graphicsSettings = result.Settings;
         SelectTag(ResolutionComboBox, result.Settings.ResolutionScale.ToString());
+        SelectTag(GraphicsApiComboBox, string.IsNullOrWhiteSpace(result.Settings.GraphicsApi)
+            ? "vulkan" : result.Settings.GraphicsApi);
+        SelectTag(OutputScalingComboBox, string.IsNullOrWhiteSpace(result.Settings.OutputScaling)
+            ? "bilinear" : result.Settings.OutputScaling);
+        TreasureMapCheckBox.IsChecked = result.Settings.TreasureMap;
+        UpdateResolutionLine();
+    }
+
+    private GraphicsSettings? _graphicsSettings;
+
+    private void GraphicsChoice_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        UpdateResolutionLine();
+
+    // What the game renders and what reaches the screen, as the in-game
+    // display settings say it: the scaled 1280 x 720 image, fitted to the
+    // display (or the window) with the chosen output scaling.
+    private void UpdateResolutionLine()
+    {
+        if (ResolutionLineText is null) return;
+        var scale = int.TryParse((ResolutionComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out var value)
+            ? value : 1;
+        var (renderWidth, renderHeight) = (1280 * scale, 720 * scale);
+        var line = $"Renders {renderWidth} × {renderHeight}";
+        var output = OutputSize(_graphicsSettings);
+        if (output is not var (outputWidth, outputHeight))
+        {
+            ResolutionLineText.Text = line + ".";
+            return;
+        }
+        var fsr = (OutputScalingComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() == "fsr";
+        ResolutionLineText.Text = (long)outputWidth * outputHeight == (long)renderWidth * renderHeight
+            ? $"{line}, the size of your screen."
+            : (long)outputWidth * outputHeight > (long)renderWidth * renderHeight
+                ? $"{line}, {(fsr ? "FSR 1 upscales" : "stretched")} to {outputWidth} × {outputHeight}."
+                : $"{line}, downscaled to {outputWidth} × {outputHeight}.";
+    }
+
+    private (int Width, int Height)? OutputSize(GraphicsSettings? settings)
+    {
+        (int Width, int Height)? area;
+        if (settings is null || settings.Fullscreen)
+        {
+            area = DisplaySize(settings?.Monitor ?? 0);
+        }
+        else
+        {
+            // The game sizes its window in logical pixels, 1280 x 720 unless set.
+            var dpi = VisualTreeHelper.GetDpi(this);
+            area = ((int)Math.Round((settings.WindowWidth > 0 ? settings.WindowWidth : 1280) * dpi.DpiScaleX),
+                    (int)Math.Round((settings.WindowHeight > 0 ? settings.WindowHeight : 720) * dpi.DpiScaleY));
+        }
+        if (area is not var (width, height) || width <= 0 || height <= 0) return null;
+        if (settings is not null && !settings.Letterbox) return (width, height);
+        // Letterboxed to the game's 16:9.
+        return (long)width * 9 > (long)height * 16 ? (height * 16 / 9, height) : (width, width * 9 / 16);
+    }
+
+    // The display mode of the game's monitor: 0 and 1 are the primary, 2 on
+    // the other displays in Windows' order.
+    private static (int Width, int Height)? DisplaySize(int monitor)
+    {
+        string? deviceName = null;
+        if (monitor > 1)
+        {
+            var others = new List<string>();
+            var device = new DisplayDevice { cb = System.Runtime.InteropServices.Marshal.SizeOf<DisplayDevice>() };
+            for (uint index = 0; EnumDisplayDevices(null, index, ref device, 0); index++)
+            {
+                if ((device.StateFlags & 0x1) != 0 && (device.StateFlags & 0x4) == 0) others.Add(device.DeviceName);
+                device.cb = System.Runtime.InteropServices.Marshal.SizeOf<DisplayDevice>();
+            }
+            if (monitor - 2 < others.Count) deviceName = others[monitor - 2];
+        }
+        var mode = new DevMode { dmSize = (short)System.Runtime.InteropServices.Marshal.SizeOf<DevMode>() };
+        return EnumDisplaySettings(deviceName, -1, ref mode) ? (mode.dmPelsWidth, mode.dmPelsHeight) : null;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern bool EnumDisplaySettings(string? deviceName, int modeNum, ref DevMode devMode);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern bool EnumDisplayDevices(string? device, uint deviceIndex, ref DisplayDevice displayDevice,
+        uint flags);
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential,
+        CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private struct DisplayDevice
+    {
+        public int cb;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string DeviceName;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceString;
+        public int StateFlags;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceID;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceKey;
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential,
+        CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private struct DevMode
+    {
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string dmDeviceName;
+        public short dmSpecVersion;
+        public short dmDriverVersion;
+        public short dmSize;
+        public short dmDriverExtra;
+        public int dmFields;
+        public int dmPositionX;
+        public int dmPositionY;
+        public int dmDisplayOrientation;
+        public int dmDisplayFixedOutput;
+        public short dmColor;
+        public short dmDuplex;
+        public short dmYResolution;
+        public short dmTTOption;
+        public short dmCollate;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string dmFormName;
+        public short dmLogPixels;
+        public int dmBitsPerPel;
+        public int dmPelsWidth;
+        public int dmPelsHeight;
+        public int dmDisplayFlags;
+        public int dmDisplayFrequency;
+        public int dmICMMethod;
+        public int dmICMIntent;
+        public int dmMediaType;
+        public int dmDitherType;
+        public int dmReserved1;
+        public int dmReserved2;
+        public int dmPanningWidth;
+        public int dmPanningHeight;
     }
 
     private static void SelectTag(ComboBox comboBox, string value)
@@ -656,15 +1263,23 @@ public partial class MainWindow : Window
 
     private void SetGraphicsControlsEnabled(bool enabled)
     {
-        AnisotropyComboBox.IsEnabled = enabled;
-        PostEffectComboBox.IsEnabled = enabled;
         ResolutionComboBox.IsEnabled = enabled;
+        GraphicsApiComboBox.IsEnabled = enabled;
+        OutputScalingComboBox.IsEnabled = enabled;
+        TreasureMapCheckBox.IsEnabled = enabled;
         SaveGraphicsButton.IsEnabled = enabled;
         ResetGraphicsButton.IsEnabled = enabled;
         RestoreGraphicsButton.IsEnabled = enabled;
     }
 
     private sealed record ProgressMessage(string? Stage, int Percent, string? Message);
+    private sealed record SetupFailure(
+        [property: JsonPropertyName("message")] string? Message,
+        [property: JsonPropertyName("step")] string? Step,
+        [property: JsonPropertyName("exit_code")] JsonElement? ExitCode,
+        [property: JsonPropertyName("build_log")] string? BuildLog,
+        [property: JsonPropertyName("error_excerpt")] JsonElement? ErrorExcerpt,
+        [property: JsonPropertyName("hint")] string? Hint);
     private sealed record LaunchResult(
         [property: JsonPropertyName("result")] string? Result,
         [property: JsonPropertyName("crash_id")] string? CrashId,
@@ -683,5 +1298,18 @@ public partial class MainWindow : Window
     private sealed record GraphicsSettings(
         [property: JsonPropertyName("anisotropy")] int Anisotropy,
         [property: JsonPropertyName("post_effect")] string PostEffect,
-        [property: JsonPropertyName("resolution_scale")] int ResolutionScale);
+        [property: JsonPropertyName("disable_motion_blur")] bool DisableMotionBlur,
+        [property: JsonPropertyName("disable_depth_of_field")] bool DisableDepthOfField,
+        [property: JsonPropertyName("preset")] string Preset,
+        [property: JsonPropertyName("resolution_scale")] int ResolutionScale,
+        [property: JsonPropertyName("graphics_api")] string? GraphicsApi,
+        [property: JsonPropertyName("output_scaling")] string? OutputScaling,
+        [property: JsonPropertyName("fullscreen")] bool Fullscreen,
+        [property: JsonPropertyName("monitor")] int Monitor,
+        [property: JsonPropertyName("window_width")] int WindowWidth,
+        [property: JsonPropertyName("window_height")] int WindowHeight,
+        [property: JsonPropertyName("letterbox")] bool Letterbox,
+        [property: JsonPropertyName("treasure_map")] bool TreasureMap,
+        [property: JsonPropertyName("clear_memory_page_state")] bool ClearMemoryPageState,
+        [property: JsonPropertyName("vsync")] bool Vsync);
 }

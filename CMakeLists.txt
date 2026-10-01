@@ -16,35 +16,219 @@ endif()
 
 include(cmake/PinyonShiftRexGlue.cmake)
 
-if(WIN32)
+if(PINYON_SHIFT_HOST_TESTS_ONLY)
+    # No game target; the tests and tools below still build.
+elseif(WIN32)
     add_executable(pinyon_shift WIN32
         src/main.cpp
+        src/cpu_baseline_guard.cpp
+        src/fh1_render_test.cpp
         src/pinyon_shift_app.cpp
         src/pinyon_shift_diagnostics.cpp
+        src/crash_reporter_win.cpp
         src/pinyon_shift_runtime_hooks.cpp
+        src/save_backups.cpp
+        src/cheats.cpp
+        src/cheats_map.cpp
+        src/dlc_treasure_map.cpp
+        src/save/car_cards.cpp
+        src/save/live_profile.cpp
+        src/save/profile_body.cpp
+        src/mod/mod_host.cpp
+        src/mod/overlay_device.cpp
+        src/ui/fh1_ui_api.cpp
+        src/ui/ui_strings.cpp
+        src/ui/host_style.cpp
+        src/ui/hostui/fh1_archive.cpp
+        src/ui/hostui/glyph_atlas.cpp
+        src/ui/hostui/host_ui.cpp
+        src/ui/hostui/menu.cpp
+        src/ui/hostui/vector_font.cpp
+        src/ui/hostui/xds_texture.cpp
+        src/ui/settings_menu.cpp
+        src/ui/photo_export.cpp
+        src/ui/png_writer.cpp
+        src/ui/xam_dialogs.cpp
+        src/ui/achievements_menu.cpp
+        src/config/host_config.cpp
+        src/platform/host_platform.cpp
+        src/platform/sha256.cpp
+        ${REXSDK_DIR}/thirdparty/crypto/sha256.cpp
+        src/native_renderer/graphics_hooks.cpp
+        src/native_renderer/guest_output_renderer.cpp
+        src/native_renderer/shader_capture.cpp
     )
 else()
     add_executable(pinyon_shift
         src/main.cpp
+        src/cpu_baseline_guard.cpp
+        src/fh1_render_test.cpp
         src/pinyon_shift_app.cpp
         src/pinyon_shift_diagnostics.cpp
+        src/crash_reporter_posix.cpp
         src/pinyon_shift_runtime_hooks.cpp
+        src/save_backups.cpp
+        src/cheats.cpp
+        src/cheats_map.cpp
+        src/dlc_treasure_map.cpp
+        src/save/car_cards.cpp
+        src/save/live_profile.cpp
+        src/save/profile_body.cpp
+        src/mod/mod_host.cpp
+        src/mod/overlay_device.cpp
+        src/ui/fh1_ui_api.cpp
+        src/ui/ui_strings.cpp
+        src/ui/host_style.cpp
+        src/ui/hostui/fh1_archive.cpp
+        src/ui/hostui/glyph_atlas.cpp
+        src/ui/hostui/host_ui.cpp
+        src/ui/hostui/menu.cpp
+        src/ui/hostui/vector_font.cpp
+        src/ui/hostui/xds_texture.cpp
+        src/ui/settings_menu.cpp
+        src/ui/photo_export.cpp
+        src/ui/png_writer.cpp
+        src/ui/xam_dialogs.cpp
+        src/ui/achievements_menu.cpp
+        src/config/host_config.cpp
+        src/platform/host_platform.cpp
+        src/platform/sha256.cpp
+        ${REXSDK_DIR}/thirdparty/crypto/sha256.cpp
+        src/native_renderer/graphics_hooks.cpp
+        src/native_renderer/guest_output_renderer.cpp
+        src/native_renderer/shader_capture.cpp
     )
 endif()
 
+add_executable(pinyon_shift_fh1_ui_api_tests EXCLUDE_FROM_ALL
+    tests/ui/fh1_ui_api_test.cpp
+    src/ui/fh1_ui_api.cpp
+)
+target_include_directories(pinyon_shift_fh1_ui_api_tests PRIVATE src)
+
+add_executable(pinyon_shift_fh1_shader_pack_tests EXCLUDE_FROM_ALL
+    tests/native_renderer/fh1_shader_pack_test.cpp
+    ${REXSDK_DIR}/src/graphics/fh1_shader_pack.cpp
+)
+target_include_directories(pinyon_shift_fh1_shader_pack_tests PRIVATE
+    ${REXSDK_DIR}/include)
+target_link_libraries(pinyon_shift_fh1_shader_pack_tests PRIVATE rex::runtime)
+if(WIN32)
+    target_link_libraries(pinyon_shift_fh1_shader_pack_tests PRIVATE bcrypt)
+endif()
+
+add_executable(pinyon_shift_hostui_tests EXCLUDE_FROM_ALL
+    tests/ui/hostui_test.cpp
+    src/ui/hostui/fh1_archive.cpp
+    src/ui/hostui/glyph_atlas.cpp
+    src/ui/hostui/menu.cpp
+    src/ui/hostui/vector_font.cpp
+    src/ui/hostui/xds_texture.cpp
+)
+target_include_directories(pinyon_shift_hostui_tests PRIVATE src ${REXSDK_DIR}/include)
+target_link_libraries(pinyon_shift_hostui_tests PRIVATE rex::runtime)
+
+add_executable(pinyon_shift_host_config_tests EXCLUDE_FROM_ALL
+    tests/config/host_config_test.cpp
+    src/config/host_config.cpp
+    src/platform/host_platform.cpp
+)
+target_include_directories(pinyon_shift_host_config_tests PRIVATE src)
+
+add_executable(pinyon_shift_profile_body_tests EXCLUDE_FROM_ALL
+    tests/save/profile_body_test.cpp
+    src/save/profile_body.cpp
+)
+target_include_directories(pinyon_shift_profile_body_tests PRIVATE src)
+
+add_executable(pinyon_shift_car_cards_tests EXCLUDE_FROM_ALL
+    tests/save/car_cards_test.cpp
+    src/save/car_cards.cpp
+)
+target_include_directories(pinyon_shift_car_cards_tests PRIVATE src)
+target_link_libraries(pinyon_shift_car_cards_tests PRIVATE rex::runtime)
+
+add_executable(pinyon_shift_fh1_edram_tiles_tests EXCLUDE_FROM_ALL
+    tests/native_renderer/fh1_edram_tiles_test.cpp
+)
+target_include_directories(pinyon_shift_fh1_edram_tiles_tests PRIVATE ${REXSDK_DIR}/include)
+target_link_libraries(pinyon_shift_fh1_edram_tiles_tests PRIVATE rex::runtime)
+
+# Every host-side test, for CI (PINYON_SHIFT_HOST_TESTS_ONLY) and local runs.
+add_custom_target(pinyon_shift_host_tests)
+add_dependencies(pinyon_shift_host_tests
+    pinyon_shift_fh1_ui_api_tests
+    pinyon_shift_fh1_shader_pack_tests
+    pinyon_shift_hostui_tests
+    pinyon_shift_host_config_tests
+    pinyon_shift_profile_body_tests
+    pinyon_shift_car_cards_tests
+    pinyon_shift_fh1_edram_tiles_tests
+    pinyon_shift_mod_hello_telemetry)
+
+add_executable(pinyon_shift_fh1_archive_extract EXCLUDE_FROM_ALL
+    tools/fh1_archive_extract.cpp
+    src/ui/hostui/fh1_archive.cpp
+)
+
+add_executable(pinyon_shift_fh1_texture_import EXCLUDE_FROM_ALL
+    tools/fh1_texture_import.cpp
+    ${REXSDK_DIR}/src/graphics/pipeline/texture/util.cpp
+    ${REXSDK_DIR}/src/graphics/pipeline/texture/info_formats.cpp)
+target_include_directories(pinyon_shift_fh1_texture_import PRIVATE
+    ${REXSDK_DIR}/include)
+if(WIN32)
+    target_sources(pinyon_shift_fh1_texture_import PRIVATE
+        ${REXSDK_DIR}/src/core/math_msvc.cpp)
+else()
+    target_sources(pinyon_shift_fh1_texture_import PRIVATE
+        ${REXSDK_DIR}/src/core/math_gcc.cpp)
+endif()
+target_include_directories(pinyon_shift_fh1_archive_extract PRIVATE
+    src ${REXSDK_DIR}/include)
+target_link_libraries(pinyon_shift_fh1_archive_extract PRIVATE rex::runtime)
+if(WIN32)
+    # Non-elevated sampling profiler for named threads (CPU_HOTSPOT_PROFILING.md).
+    add_executable(pinyon_shift_thread_sampler EXCLUDE_FROM_ALL tools/thread_sampler.cpp)
+    target_link_libraries(pinyon_shift_thread_sampler PRIVATE dbghelp)
+endif()
+
+if(NOT PINYON_SHIFT_HOST_TESTS_ONLY)
 pinyon_shift_attach_rexglue(pinyon_shift)
 
 # ReXGlue's SDL backend loads project overrides from the executable directory.
 # Keep this as an always-built staging target so mapping-only updates do not
 # require relinking the game host.
 add_custom_target(pinyon_shift_stage_controller_mappings ALL
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/config/gamecontrollerdb.txt"
-        "$<TARGET_FILE_DIR:pinyon_shift>/gamecontrollerdb.txt"
+    COMMAND ${CMAKE_COMMAND}
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/config/gamecontrollerdb.txt"
+        "-DDESTINATION=$<TARGET_FILE_DIR:pinyon_shift>/gamecontrollerdb.txt"
+        -P "${PINYON_SHIFT_STAGE_FILE_SCRIPT}"
     DEPENDS pinyon_shift "${CMAKE_CURRENT_SOURCE_DIR}/config/gamecontrollerdb.txt"
     COMMENT "Staging project gamepad mappings beside pinyon_shift"
     VERBATIM)
 
 if(WIN32)
-    target_link_libraries(pinyon_shift PRIVATE dbghelp)
+    target_link_libraries(pinyon_shift PRIVATE bcrypt d3d12 dbghelp dxgi rex::gpu-fh1)
+else()
+    find_package(Threads REQUIRED)
+    target_link_libraries(pinyon_shift PRIVATE Threads::Threads ${CMAKE_DL_LIBS} rex::gpu-fh1)
 endif()
+
+# The mod ABI header (NP-7) and the TOML parser mod.toml is read with.
+target_include_directories(pinyon_shift PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${REXSDK_DIR}/thirdparty/tomlplusplus/include
+    ${REXSDK_DIR})
+endif()  # NOT PINYON_SHIFT_HOST_TESTS_ONLY
+
+# Sample mods (NP-7.6): plain C libraries against include/pinyon_mod.h. Not
+# part of the default build; tools/install-sample-mod.py copies one into a
+# state directory's mods/.
+add_library(pinyon_shift_mod_hello_telemetry MODULE EXCLUDE_FROM_ALL
+    mods_src/samples/hello_telemetry/hello_telemetry.c)
+target_include_directories(pinyon_shift_mod_hello_telemetry PRIVATE include)
+set_target_properties(pinyon_shift_mod_hello_telemetry PROPERTIES
+    OUTPUT_NAME hello_telemetry
+    PREFIX ""
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/mods/hello_telemetry/code")

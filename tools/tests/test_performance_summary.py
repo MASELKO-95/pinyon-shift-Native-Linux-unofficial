@@ -24,6 +24,135 @@ FIELDS = [
 
 
 class PerformanceSummaryTests(unittest.TestCase):
+    def test_emits_native_renderer_gpu_timing_buckets(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            capture = pathlib.Path(temporary) / "capture.csv"
+            timing_columns = list(MODULE.NATIVE_GPU_TIMING_COLUMNS)
+            fields = FIELDS + timing_columns
+            with capture.open("w", encoding="utf-8", newline="") as stream:
+                writer = csv.DictWriter(stream, fieldnames=fields)
+                writer.writeheader()
+                base = dict.fromkeys(fields, 0)
+                writer.writerow(base | {
+                    "frame_time_us": 20_000,
+                    "guest_frame_gpu_time_ns": 10_000_000,
+                    "native_composition_gpu_time_ns": 200_000,
+                    "native_selection_gpu_time_ns": 40_000,
+                    "guest_frame_gpu_timing_samples": 1,
+                    "native_composition_gpu_timing_samples": 1,
+                    "native_selection_gpu_timing_samples": 1,
+                })
+                writer.writerow(base | {
+                    "frame_time_us": 20_000,
+                    "guest_frame_gpu_time_ns": 12_000_000,
+                    "native_composition_gpu_time_ns": 300_000,
+                    "native_selection_gpu_time_ns": 60_000,
+                    "guest_frame_gpu_timing_samples": 1,
+                    "native_composition_gpu_timing_samples": 1,
+                    "native_selection_gpu_timing_samples": 1,
+                    "native_gpu_timing_drops": 1,
+                })
+            timing = MODULE.summarize(capture)[
+                "native_renderer_gpu_timing"
+            ]
+            self.assertEqual(timing["mean_microseconds"]["guest_frame"], 11_000)
+            self.assertEqual(
+                timing["mean_microseconds"]["native_composition"], 250
+            )
+            self.assertEqual(
+                timing["mean_microseconds"]["native_selection"], 50
+            )
+            self.assertEqual(timing["counters"]["native_gpu_timing_drops"], 1)
+
+    def test_emits_presentation_cadence_and_totals(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            capture = pathlib.Path(temporary) / "capture.csv"
+            presentation_columns = list(MODULE.PRESENTATION_COLUMNS)
+            fields = FIELDS + presentation_columns
+            with capture.open("w", encoding="utf-8", newline="") as stream:
+                writer = csv.DictWriter(stream, fieldnames=fields)
+                writer.writeheader()
+                base = dict.fromkeys(fields, 0)
+                writer.writerow(base | {
+                    "frame_time_us": 20_000, "guest_vblank_count": 1,
+                    "guest_vblank_delta_ns": 16_666_666,
+                    "simulation_tick_count": 1, "source_frame_count": 1,
+                    "present_count": 1,
+                    "present_delta_ns": 33_333_333,
+                })
+                writer.writerow(base | {
+                    "frame_time_us": 20_000, "guest_vblank_count": 1,
+                    "guest_vblank_delta_ns": 16_666_666,
+                    "simulation_tick_count": 1, "source_frame_count": 1,
+                    "present_count": 1,
+                    "present_delta_ns": 33_333_333,
+                    "present_deadline_misses": 1,
+                })
+            pacing = MODULE.summarize(capture)["presentation"]
+            self.assertEqual(pacing["cadence_hz"]["guest_vblank"], 50.0)
+            self.assertEqual(pacing["cadence_hz"]["simulation_tick"], 50.0)
+            self.assertEqual(pacing["cadence_hz"]["source_frame"], 50.0)
+            self.assertEqual(pacing["cadence_hz"]["present"], 50.0)
+            self.assertEqual(pacing["mean_delta_ms"]["present"], 33.333)
+            self.assertEqual(pacing["counters"]["present_deadline_misses"], 1)
+
+    def test_emits_title_simulation_time_ratio(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            capture = pathlib.Path(temporary) / "capture.csv"
+            fields = (
+                FIELDS
+                + list(MODULE.PRESENTATION_COLUMNS)
+                + list(MODULE.SIMULATION_TIME_COLUMNS)
+            )
+            with capture.open("w", encoding="utf-8", newline="") as stream:
+                writer = csv.DictWriter(stream, fieldnames=fields)
+                writer.writeheader()
+                base = dict.fromkeys(fields, 0)
+                writer.writerow(base | {"frame_time_us": 100_000})
+                for _ in range(2):
+                    writer.writerow(base | {
+                        "frame_time_us": 20_000,
+                        "simulation_tick_count": 2,
+                        "simulation_time_ns": 20_000_000,
+                    })
+            timing = MODULE.summarize(capture)["presentation"]["simulation_time"]
+            self.assertEqual(timing["seconds"], 0.04)
+            self.assertEqual(timing["active_wall_seconds"], 0.04)
+            self.assertEqual(timing["wall_time_ratio"], 1.0)
+            self.assertEqual(timing["mean_update_ms"], 10.0)
+            self.assertEqual(timing["invalid_deltas"], 0)
+
+    def test_emits_complete_optional_resolve_readback_totals(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            capture = pathlib.Path(temporary) / "capture.csv"
+            resolve_columns = list(MODULE.RESOLVE_READBACK_COLUMNS)
+            fields = FIELDS + resolve_columns
+            with capture.open("w", encoding="utf-8", newline="") as stream:
+                writer = csv.DictWriter(stream, fieldnames=fields)
+                writer.writeheader()
+                writer.writerow(dict.fromkeys(fields, 1) | {"frame_time_us": 10_000})
+                writer.writerow(dict.fromkeys(fields, 2) | {"frame_time_us": 11_000})
+            result = MODULE.summarize(capture)
+            counters = result["resolve_readback_counters"]
+            self.assertEqual(3, counters["resolve_readback_requests"])
+            self.assertEqual(3, counters["resolve_readback_wait_time_ns"])
+
+    def test_emits_complete_optional_xma_stall_totals(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            capture = pathlib.Path(temporary) / "capture.csv"
+            capture.write_text(
+                "frame_time_us,fps,draw_calls,command_buffer_stalls,texture_cache_hits,texture_cache_misses,"
+                "pipeline_cache_hits,pipeline_cache_misses,xma_no_space_stalls,"
+                "xma_no_progress_stalls,xma_stall_recoveries\n"
+                "10000,100,1,0,1,0,1,0,2,1,0\n"
+                "11000,90,1,0,1,0,1,0,3,0,1\n",
+                encoding="utf-8",
+            )
+            result = MODULE.summarize(capture)
+            self.assertEqual(5, result["xma_stall_counters"]["xma_no_space_stalls"])
+            self.assertEqual(1, result["xma_stall_counters"]["xma_no_progress_stalls"])
+            self.assertEqual(1, result["xma_stall_counters"]["xma_stall_recoveries"])
+
     def test_emits_complete_optional_memexport_totals(self):
         with tempfile.TemporaryDirectory() as temporary:
             capture = pathlib.Path(temporary) / "capture.csv"

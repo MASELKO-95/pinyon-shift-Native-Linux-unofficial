@@ -1,0 +1,86 @@
+# Semantic symbol table for mods (NP-7.2), for the supported executable in
+# config/supported-dumps.json. Mods find guest addresses and struct offsets by
+# these names (PinyonModApi::find_symbol, find_offset), never by literal
+# addresses. tools/generate-fh1-symbols.py turns this file, plus every
+# [[midasm_hook]] site in config/rexglue/analysis/main-xex.toml (as
+# "hook.<name>"), into src/mod/fh1_symbols.inc; tools/tests/test_fh1_symbols.py
+# fails when the two disagree.
+
+executable = "default.xex"
+sha256 = "DB40DF605ADE49A6"  # prefix of the supported default.xex SHA-256
+
+# Hook sites behind the PinyonHook ids, and functions a mod may call through a
+# guest task. Every address here must also be a hook site or a function start
+# in the generated code.
+[symbols]
+"frame.tick" = 0x823EDA10                # main loop, once per title frame
+"simulation.delta_store" = 0x823EDB84    # the variable gameplay delta (f31) is stored
+"vehicle.pose_written" = 0x82BC5A3C      # the active vehicle slot's pose is final
+"save.before_encrypt" = 0x82C666D0       # plaintext save body (r4) and size (r5)
+"ui.pause_button_constructed" = 0x8264FC08
+"ui.pause_menu_action" = 0x82739D00      # CPauseMenu action switch (sub_82739D00)
+"gpu.fence_wait_predicate" = 0x829F04A8  # D3D fence-wait predicate (sub_829F04A8)
+"graphics.frame" = 0x829EFEB8            # graphics frame boundary
+"kernel.get_av_pack" = 0x831EDA6C        # XGetAVPack import thunk: returns the AV pack, no side effects
+"camera.count" = 0x82486C40              # r3 world -> r3 number of camera controllers
+"camera.controller" = 0x82486C70         # r3 world, r4 index -> r3 camera controller
+"camera.set_mode" = 0x82858638           # r3 camera controller, r4 mode (6 is the free camera)
+"camera.player_controller" = 0x82486B40  # r3 world, r4 index -> r3 player camera
+"camera.reset_to_player" = 0x825A86F8    # r3 player camera from camera.player_controller
+"time_of_day.from_world" = 0x82486CF0    # r3 world -> r3 its time-of-day object ([world + 232])
+"time_of_day.request" = 0x825C7DD0       # r3 time-of-day object, f1 target seconds (add 86400 to pass midnight), f2 game seconds per second
+"time_of_day.update" = 0x825CB718        # per-frame clock and lighting update, r3 time-of-day object
+"world.game_mode" = 0x824878D0           # r3 world -> r3 game mode ([[world + 124] + 56]): 17 free roam, 3 inside an event (entry, race, results)
+"activities.reveal_all" = 0x828AF6F8     # r3 activity manager: the Treasure Map's reveal (each discount sign, barn find, speed camera, average speed zone and gas station's vtable +72); permanent, it sets activity.revealed and the saved record's collectible_state.revealed
+"activities.live" = 0x828BC9D8           # -> r3 nonzero while free-roam collectibles are live (free roam, and not during the first-time career); r3 is ignored
+"map_marker.create" = 0x828E9EC0         # r3 marker handle, r4 activity, r5 activity_type tag (C string: "flyer", "barnfind", ...), r6 description, v1 world position
+"map_marker.show" = 0x828E3580           # r3 marker handle: puts its entity on the map and minimap when it is not there
+"map_marker.show_with" = 0x828E4ED8      # r3 marker handle, r4 nonzero to mark the activity changed for the map UI, r5 nonzero to add even when it is on the map
+"map_marker.remove" = 0x828E4F58         # r3 marker handle: takes its entity off the map and minimap
+"flyer.smash" = 0x828C0C80               # r3 discount sign (CActivityFlyers), r4 nonzero to notify: marks it smashed and swaps its marker for the collected one
+"barn_find.show_location" = 0x828A5BF8   # r3 barn find (CActivityBarnFind), r4 show: its exact-location marker on or off, and the collected marker once found
+"profile.from_user" = 0x824F04B0         # r3 user ([[0x832DF024] + 108]) -> r3 its career profile, 0 when none
+"profile.credits" = 0x824E4F78           # r3 profile -> r3 credits (Main/Credits)
+"profile.set_credits" = 0x824F2FA0       # r3 profile, r4 credits (clamped to 999,999,999); tells the balance's listeners (the HUD), saved with the profile
+"profile.add_value" = 0x824F2850         # r3 profile, r4 field path (C string, e.g. "Main/TotalWinnings"), r5 amount added to that u32 field
+"activities.all_revealed" = 0x828AF780   # r3 activity manager -> r3 1 when every revealable activity with a saved record is revealed (the Treasure Map is owned); the pause map offers BUY TREASURE MAP while it is 0
+"activity.reveal" = 0x828A52F0           # r3 activity: sets activity.revealed and its saved record's collectible_state.revealed once (the shared start of each activity's vtable +72 reveal)
+"treasure_map.consumed" = 0x82560B80     # r3 CTreasureMapConsumeAssetTransaction (vtable 0x8201D920, slot +28), r4 result: 0 (Tokens consumed by the Forza token service) shows the TREASURE MAP notification and runs activities.reveal_all
+"content.mount_marketplace" = 0x82516630 # r3 content manager, r4 user index, r5 enumerate flags: enumerates marketplace content (type 2), mounts each package as DLCRoot<n>, takes the offer ID from its media\<hex>.puboffer and ORs the package licence mask into that offer; r3 1 when the enumeration started
+
+# Byte offsets inside title objects, as the hooks above read them.
+[offsets]
+"main_loop.delta" = 448                  # float seconds at owner+448
+"vehicle.active_slot" = 1500             # u32 index into the slot array
+"vehicle.slot_stride" = 1056
+"vehicle.slot.position" = 15120          # float4 x, y, z, w within a slot
+"vehicle.slot.forward" = 15184           # float4 forward vector within a slot
+"world.time_of_day" = 232                # time-of-day object pointer in the world
+"time_of_day.seconds" = 10488            # float seconds since midnight, advanced by time_of_day.update
+"time_of_day.script_hold" = 10505        # u8, set while a script holds the time (setters then skip it)
+"world.session" = 124                    # pointer to the object holding the game mode
+"session.game_mode" = 56                 # u32 game mode, as world.game_mode returns it
+"game.components" = 76                   # [[0x832DF024] + 4] + 76: the component list (array at +0 indexed by a component's type index; the activity manager's is at 0x832FEE8C)
+"activity_manager.begin" = 4             # the activities, a vector of pointers from begin to end
+"activity_manager.end" = 8
+"activity.revealed" = 8                  # u8, set by an activity's reveal (vtable +72)
+"activity.name" = 16                     # MSVC std::string (flyer_001, barnfind_01, ...): inline below 16 bytes, length at +32, capacity at +36
+"map_marker.entity" = 4                  # the map entity inside a marker handle
+"map_entity.on_map" = 52                 # u8, set while the entity is on the map
+"flyer.marker" = 56                      # marker handle, tag "flyer" (discount sign vtable 0x82078DE4)
+"flyer.collected_marker" = 96            # marker handle, tag "flyer_collected"
+"flyer.object" = 136                     # the sign's gameplay object; float4 world position at +112
+"flyer.smashed" = 140                    # u8, set by flyer.smash
+"flyer.state" = 148                      # its saved record (CFlyerState)
+"collectible_state.revealed" = 40        # u8 in a CFlyerState or CBarnFindState record: revealed by the Treasure Map
+"collectible_state.found" = 44           # u8: the sign smashed, the barn find discovered
+"barn_find.position" = 112               # float4 world position (barn find vtable 0x82078B5C)
+"barn_find.marker" = 320                 # marker handle, tag "barnfind"
+"barn_find.collected_marker" = 360       # marker handle, tag "barnfind_collected"
+"barn_find.state" = 424                  # its saved record (CBarnFindState)
+"barn_find.discovered" = 44              # u8, set when it is discovered
+"barn_find.collected" = 513              # u8, the record's +45
+"barn_find_state.status" = 56            # u32: 3 before it spawns, 4 spawn pending, 5 spawned with its rumour running (only then can it be discovered), 1 discovered, 0 collected
+"game.user" = 108                        # the user in the game object at [0x832DF024], as profile.from_user takes it
+"profile.values" = 32                    # the profile's value tree (Main/Credits and the other fields)
+"profile.loaded" = 40                    # u8, set once the values are loaded; the generic accessors skip a profile without it

@@ -22,5 +22,12 @@
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DebugType>embedded</DebugType>
+    <ApplicationIcon>Branding\pinyon-shift.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Derived from .github/pinyon-shift-logo.png. -->
+    <Resource Include="Branding\pinyon-shift.ico" />
+    <Resource Include="Branding\logo-light.png" />
+    <Resource Include="Branding\mark-light.png" />
+  </ItemGroup>
 </Project>

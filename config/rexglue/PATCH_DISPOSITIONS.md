@@ -1,4 +1,10 @@
-# ReXGlue 0.10.0 project patch dispositions
+# Historical ReXGlue 0.10.0 patch dispositions
+
+The resulting source is now materialized in ShiftGlue migration commit
+`079c10ef1fbe3ef418a1c535ac025ab39dda7a2d`; these numbers are retained only as
+historical migration evidence and are no longer replayed during setup.
+Later renderer patches 0103–0122 were migrated as normal fork commits through
+`01534689ad33442423dc089dd27d08eb984e12eb`.
 
 This record covers every patch in the ReXGlue 0.9.0 series that was present at
 project revision `b00fcfe40b544d09cec034fc432fa05cf418d286`. The replacement
@@ -83,11 +89,69 @@ diagnostics, and synthetic coverage exercises one through four packets across
 guest-buffer boundaries. Removing `0037` restores the prior two-payload
 decoder without removing `0036`.
 
+`0038-m4-xma-stall-diagnostics` adapts the low-noise diagnostic design from
+Xenia Canary PR `#974`, without enabling its uncertain padding change by
+default. A no-space event is counted only after the same buffer, input, output,
+and admission state persists for eight consecutive work attempts; a changed
+observation is normal backpressure and progress. Per-context no-space and
+no-progress lifetime
+totals log at counts 1, 8, 64, and every 256, with recovery logs only for
+episodes that emitted a stall summary. Session performance counters preserve
+exact aggregate stall and recovery totals for sanitized support reports. The
+optional relaxed-padding admission path is controlled by
+`xma_relaxed_padding_admission = false`; removing `0038` restores strict
+padding admission and removes only EPIC-03 telemetry and tests.
+
+`0039-gpu-zpd-report-lifecycle-d3d12` adapts the D3D12 portion of Xenia Canary
+PR `#1016` at `d35e0b5`. Fixed guest record/slot helpers feed a logical report
+map whose lifetimes may span multiple host query segments and submissions.
+Per-slot sequence IDs reject stale guest writes, per-index generations protect
+the reusable D3D12 heap, fast mode retires asynchronously, and strict mode has
+a 2 ms backstop. Sample counts are normalized for internal-resolution scaling,
+all EPIC-04 counters are exported, and `occlusion_query = "legacy"` remains the
+shipping default and immediate rollback path. Removing `0039` restores the
+previous synchronous D3D12 query implementation. Retired in NP-0.3 (SDK
+`bdc2e94`): `legacy` was the only mode ever shipped, so the lifecycle, the
+`fast`, `strict` and `fake` modes and `occlusion_query` itself were removed;
+the EPIC-04 notes are in git history at `5c1fb88`.
+
+`0040-fh1-zpd-end-policy-and-telemetry` isolates the END-classification signal
+reported in Xenia Canary issue `#1099` and commit `8a49c03`. It adds
+report-layout, pairwise-sentinel, and relaxed-sentinel policies; an optional
+fallback; bounded pre-clear observations; and a final unchanged-sentinel
+watchdog. Title-scoped `auto` selects report layout plus pairwise fallback only
+for FH1 title ID `4D5309C9`; the project separately gates the supported retail
+executable hash. The legacy query path is unchanged and remains the shipping
+default until the six-run matrix and ten-cold-boot admission gate pass.
+Retired with `0039` in NP-0.3 (SDK `bdc2e94`): without host queries the
+fallback now reports the fixed sample count when the report holds the END
+sentinel, which is what the host-query path already does, and
+`zpd_end_policy`, `zpd_end_fallback` and `tools/qualify-zpd.ps1` are gone; the
+EPIC-05 notes are in git history at `5c1fb88`.
+Removing `0040` restores EPIC-04 classification behavior without removing its
+logical/physical report lifecycle.
+
+`0041-fh1-resolve-readback-counters` instruments the existing D3D12 resolve
+readback path without changing its policy. It counts requests, guest-copy
+bytes, fast copies, delayed-slot cache misses, synchronous waits, and measured
+wait time. Schema 19 and the launcher use those counters to qualify conservative
+Shipping 1×, native-resolve Experimental 2×, delayed Experimental 3×, and
+opt-in Accurate showroom presets.
+Removing `0041` removes telemetry only; selecting Shipping 1× remains the
+immediate runtime rollback to `readback_resolve = "none"`.
+
+`0042-ppc-partial-vector-store-regression-tests` imports only the semantic
+test intent from Xenia Canary commit `30ac9d7`, not its x64 JIT implementation.
+Generated native code is checked at offsets 0, 1, 4, 8, 12, and 15 for guest
+byte order and preserved destination bytes, with address aliases, unaligned
+memcpy head/tail sequences, and 512 seeded randomized differential cases.
+The patch changes no runtime lowering; removing it removes test coverage only.
+
 Validation performed on the rebased SDK:
 
 - `unit_tests` and `ppc_tests` build with the pinned Clang 20.1.8 toolchain.
-- 1,460/1,460 PPC instruction tests passed.
-- The 234-test unit suite passed: 230 tests passed and four pre-existing
+- 1,480/1,480 PPC instruction tests passed with 6,549 assertions.
+- The 246-test unit suite passed: 242 tests passed and four pre-existing
   BitStream write cases remain explicitly skipped by upstream.
 - No conflict markers, reject files, or binary patch payloads are present.
 

@@ -1,0 +1,8 @@
+pinyon-shift-fh1-render-test-v1
+# Run with --include-opening-movies to cover FH1 startup/FMV composition.
+# clock-hz 60
+input 0 0000 0 0 0 0 0 0
+capture 60 opening-60
+capture 180 opening-180
+capture 300 opening-300
+stop 330

@@ -1,0 +1,20 @@
+pinyon-shift-fh1-render-test-v1
+# Stock 30 Hz source control for the matched unlocked timing route.
+# clock-hz 30
+# expect-performance 50000 20 27 31
+input 0 0000 0 0 0 0 0 0
+input 360 1000 0 0 0 0 0 0
+input 366 0000 0 0 0 0 0 0
+input 480 1000 0 0 0 0 0 0
+input 486 0000 0 0 0 0 0 0
+input 600 1000 0 0 0 0 0 0
+input 606 0000 0 0 0 0 0 0
+input 720 1000 0 0 0 0 0 0
+input 726 0000 0 0 0 0 0 0
+input 780 0000 0 255 0 0 0 0
+capture 900 drive-start
+capture 1200 drive-mid
+capture 1500 drive-end
+input 1560 0000 0 0 0 0 0 0
+capture 1740 settled
+stop 1770

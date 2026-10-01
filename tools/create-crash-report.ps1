@@ -143,14 +143,81 @@ try {
         [void](Write-SanitizedTail $eventLog.FullName (Join-Path $stagingRoot 'session-events.jsonl') 1000 $replacements)
     }
 
+    $xmaStallColumns = @(
+        'xma_no_space_stalls', 'xma_no_progress_stalls', 'xma_stall_recoveries'
+    )
+    $xmaStalls = [ordered]@{
+        available = $false
+        no_space = [uint64]0
+        no_progress = [uint64]0
+        recoveries = [uint64]0
+    }
+    $presentationColumns = @(
+        'guest_vblank_count', 'guest_vblank_delta_ns',
+        'simulation_tick_count', 'present_count', 'present_delta_ns',
+        'present_queue_depth', 'present_deadline_misses',
+        'duplicate_present_count', 'dropped_present_count'
+    )
+    $presentationCounters = [ordered]@{ available = $false }
+    foreach ($column in $presentationColumns) {
+        $presentationCounters[$column] = [uint64]0
+    }
+    $perfLog = Get-ChildItem -LiteralPath (Join-Path $resolvedStateRoot 'logs') -Filter '*.perf.csv' -File `
+        -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTimeUtc -ge $StartedUtc.ToUniversalTime().AddSeconds(-2) } |
+        Sort-Object LastWriteTimeUtc | Select-Object -Last 1
+    if ($null -ne $perfLog) {
+        $header = @(Get-Content -LiteralPath $perfLog.FullName -TotalCount 1 -ErrorAction SilentlyContinue)
+        $columns = if ($header.Count -eq 1) { @($header[0].Split(',')) } else { @() }
+        if (@($xmaStallColumns | Where-Object { $_ -notin $columns }).Count -eq 0) {
+            foreach ($row in Import-Csv -LiteralPath $perfLog.FullName) {
+                $xmaStalls.no_space += [uint64]$row.xma_no_space_stalls
+                $xmaStalls.no_progress += [uint64]$row.xma_no_progress_stalls
+                $xmaStalls.recoveries += [uint64]$row.xma_stall_recoveries
+            }
+            $xmaStalls.available = $true
+        }
+        if (@($presentationColumns | Where-Object { $_ -notin $columns }).Count -eq 0) {
+            foreach ($row in Import-Csv -LiteralPath $perfLog.FullName) {
+                foreach ($column in $presentationColumns) {
+                    $presentationCounters[$column] += [uint64]$row.$column
+                }
+            }
+            $presentationCounters.available = $true
+        }
+    }
+    $resolveColumns = @(
+        'resolve_readback_requests', 'resolve_readback_bytes',
+        'resolve_readback_fast_copies', 'resolve_readback_cache_misses',
+        'resolve_readback_full_waits', 'resolve_readback_wait_time_ns'
+    )
+    $resolveCounters = [ordered]@{ available = $false }
+    foreach ($column in $resolveColumns) { $resolveCounters[$column] = [uint64]0 }
+    if ($perfLog) {
+        $columns = @((Get-Content -LiteralPath $perfLog.FullName -TotalCount 1) -split ',')
+        if (@($resolveColumns | Where-Object { $_ -notin $columns }).Count -eq 0) {
+            foreach ($row in Import-Csv -LiteralPath $perfLog.FullName) {
+                foreach ($column in $resolveColumns) {
+                    $resolveCounters[$column] += [uint64]$row.$column
+                }
+            }
+            $resolveCounters.available = $true
+        }
+    }
+
     $allowedSettings = @(
         'pinyon_shift_config_schema', 'input_backend', 'hid_mappings_file',
         'mnk_mode', 'keybind_start',
         'd3d12_allow_variable_refresh_rate_and_tearing',
+        'xma_relaxed_padding_admission',
         'pinyon_shift_capture_performance',
         'pinyon_shift_stabilize_vehicle_presentation', 'pinyon_shift_skip_opening_movies',
-        'resolution', 'vsync', 'anisotropic_override', 'swap_post_effect',
-        'draw_resolution_scale_x', 'draw_resolution_scale_y'
+        'pinyon_shift_fh1_render_fps_limit',
+        'pinyon_shift_fh1_source_presentation',
+        'resolution', 'vsync', 'host_present_fps_limit',
+        'host_present_sleep_spin',
+        'anisotropic_override', 'swap_post_effect',
+        'disable_motion_blur', 'disable_depth_of_field',
+        'draw_resolution_scale_x', 'draw_resolution_scale_y', 'clear_memory_page_state'
     )
     $configPath = Join-Path $resolvedStateRoot 'config/pinyon_shift.toml'
     $settings = [ordered]@{}
@@ -175,7 +242,7 @@ try {
         Get-Content -LiteralPath (Join-Path $repoRoot '.local/setup-state.json') -Raw | ConvertFrom-Json
     } else { $null }
     $binaryHashes = [ordered]@{}
-    foreach ($name in @('pinyon_shift.exe', 'rexruntime.dll', 'rexgpu-xenos.dll',
+    foreach ($name in @('pinyon_shift.exe', 'rexruntime.dll', 'rexgpu-fh1.dll',
         'pinyon_shift_SpeechFacade_default.dll', 'pinyon_shift_XMediaFacade_default.dll')) {
         $path = Join-Path $runtimeDirectory $name
         if (Test-Path -LiteralPath $path -PathType Leaf) {
@@ -224,6 +291,15 @@ try {
             gpu = $gpus
         }
         settings = $settings
+        audio = [ordered]@{
+            xma_stalls = $xmaStalls
+        }
+        graphics = [ordered]@{
+            # The native renderer is the only renderer; there is no choice to report.
+            renderer = 'native'
+            resolve_readback = $resolveCounters
+            presentation = $presentationCounters
+        }
         local_dumps = $dumpRecords
         privacy = [ordered]@{
             paths_redacted = $true
@@ -232,6 +308,7 @@ try {
             generated_code_included = $false
             memory_dump_included = $false
             input_capture_included = $false
+            audio_payload_included = $false
         }
     }
     [IO.File]::WriteAllText((Join-Path $stagingRoot 'report.json'),
@@ -269,7 +346,9 @@ try {
         [Text.UTF8Encoding]::new($false))
 
     foreach ($file in Get-ChildItem -LiteralPath $stagingRoot -Recurse -File) {
-        if ($file.Extension.ToLowerInvariant() -in @('.dmp', '.exe', '.dll', '.iso', '.xex', '.obj', '.lib', '.pdb')) {
+        if ($file.Extension.ToLowerInvariant() -in @(
+                '.dmp', '.exe', '.dll', '.iso', '.xex', '.obj', '.lib', '.pdb',
+                '.dxil', '.pnsp')) {
             throw "Forbidden diagnostic attachment: $($file.Name)"
         }
         $content = Get-Content -LiteralPath $file.FullName -Raw -ErrorAction SilentlyContinue

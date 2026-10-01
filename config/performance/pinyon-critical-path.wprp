@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WindowsPerformanceRecorder Version="1.0">
+  <Profiles>
+    <SystemCollector Id="PinyonCpuCollector"
+                     Name="Pinyon Shift CPU collector">
+      <BufferSize Value="1024" />
+      <Buffers Value="512" />
+    </SystemCollector>
+    <EventCollector Id="PinyonCriticalPathCollector"
+                    Name="Pinyon Shift critical path">
+      <BufferSize Value="64" />
+      <Buffers Value="16" />
+    </EventCollector>
+    <SystemProvider Id="PinyonCpuProvider">
+      <Keywords>
+        <Keyword Value="Loader" />
+        <Keyword Value="ProcessThread" />
+        <Keyword Value="SampledProfile" />
+        <Keyword Value="CSwitch" />
+        <Keyword Value="ReadyThread" />
+      </Keywords>
+      <Stacks>
+        <Stack Value="SampledProfile" />
+        <Stack Value="CSwitch" />
+        <Stack Value="ReadyThread" />
+      </Stacks>
+    </SystemProvider>
+    <EventProvider Id="PinyonCriticalPathProvider"
+                   Name="f36ab1a6-80bb-4482-b1b9-92a6ec870258"
+                   Level="5" />
+    <Profile Id="PinyonCriticalPath.Verbose.File"
+             Name="PinyonCriticalPath"
+             Description="Pinyon Shift source-frame correlation markers"
+             LoggingMode="File"
+             DetailLevel="Verbose">
+      <Collectors>
+        <EventCollectorId Value="PinyonCriticalPathCollector">
+          <EventProviders>
+            <EventProviderId Value="PinyonCriticalPathProvider" />
+          </EventProviders>
+        </EventCollectorId>
+      </Collectors>
+    </Profile>
+    <Profile Id="PinyonCpuHotspots.Verbose.File"
+             Name="PinyonCpuHotspots"
+             Description="Pinyon Shift sampled CPU, waits, and source frames"
+             LoggingMode="File"
+             DetailLevel="Verbose">
+      <Collectors>
+        <SystemCollectorId Value="PinyonCpuCollector">
+          <SystemProviderId Value="PinyonCpuProvider" />
+        </SystemCollectorId>
+        <EventCollectorId Value="PinyonCriticalPathCollector">
+          <EventProviders>
+            <EventProviderId Value="PinyonCriticalPathProvider" />
+          </EventProviders>
+        </EventCollectorId>
+      </Collectors>
+    </Profile>
+  </Profiles>
+</WindowsPerformanceRecorder>

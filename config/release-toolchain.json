@@ -8,6 +8,13 @@
     "workload": "Microsoft.VisualStudio.Workload.VCTools",
     "required_component": "Microsoft.VisualStudio.Component.VC.Tools.x86.x64"
   },
+  "cmake": {
+    "version": "3.31.10",
+    "url": "https://github.com/Kitware/CMake/releases/download/v3.31.10/cmake-3.31.10-windows-x86_64.zip",
+    "sha256": "13D1A463D7130DF5339BAEDD63D8AE990AAF385062B2F42F372796143AE94086",
+    "install_path": ".local/toolchain/cmake-3.31.10-windows-x86_64",
+    "executable": "bin/cmake.exe"
+  },
   "git": {
     "version": "2.55.0.5",
     "url": "https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/MinGit-2.55.0.5-64-bit.zip",
@@ -36,11 +43,17 @@
     "install_path": ".local/toolchain/extract-xiso-2.7.1",
     "executable": "artifacts/extract-xiso.exe"
   },
+  "python": {
+    "version": "3.13.15",
+    "url": "https://www.python.org/ftp/python/3.13.15/python-3.13.15-embed-amd64.zip",
+    "sha256": "D1F04D990AEE1253D8569E8E5104E30FA9F5FA830899F14843448872D936A2CF",
+    "install_path": ".local/toolchain/python-3.13.15",
+    "executable": "python.exe"
+  },
   "rexglue": {
-    "repository": "https://github.com/rexglue/rexglue-sdk.git",
-    "tag": "v0.10.0",
-    "base_commit": "f5337cdc947ff6d4c4196737e2c807a48f2a1fc2",
-    "path": ".local/rexglue",
-    "patch_directory": "patches/rexglue"
+    "repository": "https://github.com/arcanite24/shiftglue-sdk",
+    "revision": "4de586bf9c626f4184c4f6cbe767283be523bab3",
+    "submodule_path": "thirdparty/shiftglue-sdk",
+    "fallback_path": ".local/rexglue"
   }
 }

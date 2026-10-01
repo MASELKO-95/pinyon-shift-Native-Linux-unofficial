@@ -25,6 +25,12 @@ body:
       required: true
   - type: textarea
     attributes:
+      label: Version
+      description: Exact launcher release (including preview suffix), or commit if built from source.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
       label: System
       description: Windows version, CPU, GPU, GPU driver, and available disk space.
     validations:
@@ -32,4 +38,4 @@ body:
   - type: textarea
     attributes:
       label: Relevant log lines
-      description: Paste only the smallest relevant text section. Remove personal paths.
+      description: For setup failures, attach .local/logs/setup-error.json and paste the first CMake/compiler error with surrounding lines from the build log it names. The final "build failed" line or warnings alone do not identify the cause. Remove personal paths; do not attach generated source or game files.

@@ -1,0 +1,6 @@
+pinyon-shift-fh1-render-test-v1
+# The idle smoke test proves deterministic input, exact-frame readback, clean
+# self-termination, and machine-readable renderer/performance evidence.
+input 0 0000 0 0 0 0 0 0
+capture 300 boot
+stop 330

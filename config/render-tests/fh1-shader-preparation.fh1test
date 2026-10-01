@@ -1,0 +1,65 @@
+pinyon-shift-fh1-render-test-v1
+# clock-hz 60
+# Launcher-only preparation uses isolated fresh state, hidden and muted.
+# Exercise opening video, menus and the first-player opening sequence.
+input 0 0000 0 0 0 0 0 0
+input 120 1000 0 0 0 0 0 0
+input 126 0000 0 0 0 0 0 0
+input 240 1000 0 0 0 0 0 0
+input 246 0000 0 0 0 0 0 0
+input 360 1000 0 0 0 0 0 0
+input 366 0000 0 0 0 0 0 0
+input 480 1000 0 0 0 0 0 0
+input 486 0000 0 0 0 0 0 0
+input 600 1000 0 0 0 0 0 0
+input 606 0000 0 0 0 0 0 0
+input 720 1000 0 0 0 0 0 0
+input 726 0000 0 0 0 0 0 0
+input 1020 1000 0 0 0 0 0 0
+input 1026 0000 0 0 0 0 0 0
+capture 1200 preparation-20s
+input 1320 1000 0 0 0 0 0 0
+input 1326 0000 0 0 0 0 0 0
+input 1620 1000 0 0 0 0 0 0
+input 1626 0000 0 0 0 0 0 0
+input 1920 1000 0 0 0 0 0 0
+input 1926 0000 0 0 0 0 0 0
+input 2220 1000 0 0 0 0 0 0
+input 2226 0000 0 0 0 0 0 0
+capture 2400 preparation-40s
+input 2520 1000 0 0 0 0 0 0
+input 2526 0000 0 0 0 0 0 0
+input 2820 1000 0 0 0 0 0 0
+input 2826 0000 0 0 0 0 0 0
+input 3120 1000 0 0 0 0 0 0
+input 3126 0000 0 0 0 0 0 0
+input 3420 1000 0 0 0 0 0 0
+input 3426 0000 0 0 0 0 0 0
+capture 3600 preparation-60s
+input 3720 1000 0 0 0 0 0 0
+input 3726 0000 0 0 0 0 0 0
+input 4020 1000 0 0 0 0 0 0
+input 4026 0000 0 0 0 0 0 0
+input 4320 1000 0 0 0 0 0 0
+input 4326 0000 0 0 0 0 0 0
+input 4620 1000 0 0 0 0 0 0
+input 4626 0000 0 0 0 0 0 0
+input 4920 1000 0 0 0 0 0 0
+input 4926 0000 0 0 0 0 0 0
+input 5220 1000 0 0 0 0 0 0
+input 5226 0000 0 0 0 0 0 0
+capture 5400 preparation-90s
+input 5520 1000 0 0 0 0 0 0
+input 5526 0000 0 0 0 0 0 0
+input 5820 1000 0 0 0 0 0 0
+input 5826 0000 0 0 0 0 0 0
+input 6120 1000 0 0 0 0 0 0
+input 6126 0000 0 0 0 0 0 0
+input 6420 1000 0 0 0 0 0 0
+input 6426 0000 0 0 0 0 0 0
+input 6720 1000 0 0 0 0 0 0
+input 6726 0000 0 0 0 0 0 0
+input 7020 1000 0 0 0 0 0 0
+input 7026 0000 0 0 0 0 0 0
+capture 7200 preparation-120s
+stop 7260

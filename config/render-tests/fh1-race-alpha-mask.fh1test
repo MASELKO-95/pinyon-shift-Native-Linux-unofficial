@@ -1,0 +1,22 @@
+pinyon-shift-fh1-render-test-v1
+# Focused Recaro Rush gate for the two byte-identical binary-alpha vertex variants.
+# clock-hz 60
+input 0 0000 0 0 0 0 0 0
+input 360 1000 0 0 0 0 0 0
+input 366 0000 0 0 0 0 0 0
+input 480 1000 0 0 0 0 0 0
+input 486 0000 0 0 0 0 0 0
+input 600 1000 0 0 0 0 0 0
+input 606 0000 0 0 0 0 0 0
+input 720 1000 0 0 0 0 0 0
+input 726 0000 0 0 0 0 0 0
+input 1320 4000 0 0 0 0 0 0
+input 1326 0000 0 0 0 0 0 0
+input 1680 1000 0 0 0 0 0 0
+input 1686 0000 0 0 0 0 0 0
+input 2040 1000 0 0 0 0 0 0
+input 2046 0000 0 0 0 0 0 0
+input 2400 1000 0 0 0 0 0 0
+input 2406 0000 0 0 0 0 0 0
+capture 2700 alpha-mask
+stop 2760

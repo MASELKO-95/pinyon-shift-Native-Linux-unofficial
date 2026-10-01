@@ -18,7 +18,8 @@ def tracked_markdown(root: pathlib.Path) -> list[pathlib.Path]:
     completed = subprocess.run(
         ["git", "ls-files", "-z", "--", "*.md"], cwd=root, check=True, capture_output=True
     )
-    return [root / path.decode("utf-8") for path in completed.stdout.split(b"\0") if path]
+    paths = [root / path.decode("utf-8") for path in completed.stdout.split(b"\0") if path]
+    return [path for path in paths if path.is_file()]
 
 
 def failures(root: pathlib.Path, files: list[pathlib.Path]) -> list[str]:

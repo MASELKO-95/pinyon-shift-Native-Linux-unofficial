@@ -1,0 +1,12 @@
+--- a/cmake/PinyonShiftRexGlue.cmake
++++ b/cmake/PinyonShiftRexGlue.cmake
+@@ -135,6 +135,9 @@
+ endif()
+ include("${PINYON_SHIFT_GENERATED_DIR}/sources.cmake")
+ set(PINYON_SHIFT_GENERATED_SOURCES ${GENERATED_SOURCES})
++# Runtime::Setup registers the entrypoint image through PPCFuncMappings.
++# Only facade DLLs need the separate generated registration entry point.
++list(FILTER PINYON_SHIFT_GENERATED_SOURCES EXCLUDE REGEX "/pinyon_shift_register\\.cpp$")
+ 
+ foreach(_module IN ITEMS speech xmedia)
+     set(_module_dir "${PINYON_SHIFT_GENERATED_ROOT}/${_module}")

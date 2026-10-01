@@ -1,0 +1,27 @@
+pinyon-shift-fh1-render-test-v1
+# Requires a save that has reached free roam. Hold acceleration through the captures.
+# clock-hz 60
+input 0 0000 0 0 0 0 0 0
+input 360 1000 0 0 0 0 0 0
+input 366 0000 0 0 0 0 0 0
+input 480 1000 0 0 0 0 0 0
+input 486 0000 0 0 0 0 0 0
+input 600 1000 0 0 0 0 0 0
+input 606 0000 0 0 0 0 0 0
+input 720 1000 0 0 0 0 0 0
+input 726 0000 0 0 0 0 0 0
+input 780 0000 0 255 0 0 0 0
+capture 1200 moving-20s
+capture 1320 moving-22s
+capture 1440 moving-24s
+capture 1560 moving-26s
+capture 1680 moving-28s
+capture 1800 moving-30s
+capture 1920 moving-32s
+capture 2040 moving-34s
+capture 2160 moving-36s
+input 2226 0000 0 0 0 0 0 0
+input 2280 0020 0 0 0 0 0 0
+input 2286 0000 0 0 0 0 0 0
+capture 2400 map
+stop 2460

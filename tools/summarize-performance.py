@@ -38,8 +38,44 @@ MEMEXPORT_COLUMNS = (
     "memexport_queue_waits",
     "memexport_fence_waits",
 )
-
-
+RESOLVE_READBACK_COLUMNS = (
+    "resolve_readback_requests",
+    "resolve_readback_bytes",
+    "resolve_readback_fast_copies",
+    "resolve_readback_cache_misses",
+    "resolve_readback_full_waits",
+    "resolve_readback_wait_time_ns",
+)
+XMA_STALL_COLUMNS = (
+    "xma_no_space_stalls",
+    "xma_no_progress_stalls",
+    "xma_stall_recoveries",
+)
+PRESENTATION_COLUMNS = (
+    "guest_vblank_count",
+    "guest_vblank_delta_ns",
+    "simulation_tick_count",
+    "source_frame_count",
+    "present_count",
+    "present_delta_ns",
+    "present_queue_depth",
+    "present_deadline_misses",
+    "duplicate_present_count",
+    "dropped_present_count",
+)
+SIMULATION_TIME_COLUMNS = (
+    "simulation_time_ns",
+    "simulation_delta_invalid",
+)
+NATIVE_GPU_TIMING_COLUMNS = (
+    "guest_frame_gpu_time_ns",
+    "native_composition_gpu_time_ns",
+    "native_selection_gpu_time_ns",
+    "guest_frame_gpu_timing_samples",
+    "native_composition_gpu_timing_samples",
+    "native_selection_gpu_timing_samples",
+    "native_gpu_timing_drops",
+)
 class CaptureError(ValueError):
     """Raised when a capture cannot produce a trustworthy summary."""
 
@@ -85,10 +121,72 @@ def summarize(path: pathlib.Path) -> dict[str, Any]:
         if available_memexport and available_memexport != set(MEMEXPORT_COLUMNS):
             missing_memexport = sorted(set(MEMEXPORT_COLUMNS) - available_memexport)
             raise CaptureError("capture has an incomplete memexport counter set: " + ", ".join(missing_memexport))
-
+        available_resolve = columns.intersection(RESOLVE_READBACK_COLUMNS)
+        if available_resolve and available_resolve != set(RESOLVE_READBACK_COLUMNS):
+            missing_resolve = sorted(set(RESOLVE_READBACK_COLUMNS) - available_resolve)
+            raise CaptureError("capture has an incomplete resolve-readback counter set: " + ", ".join(missing_resolve))
+        available_xma_stalls = columns.intersection(XMA_STALL_COLUMNS)
+        if available_xma_stalls and available_xma_stalls != set(XMA_STALL_COLUMNS):
+            missing_xma_stalls = sorted(set(XMA_STALL_COLUMNS) - available_xma_stalls)
+            raise CaptureError("capture has an incomplete XMA stall counter set: " + ", ".join(missing_xma_stalls))
+        available_presentation = columns.intersection(PRESENTATION_COLUMNS)
+        if available_presentation and available_presentation != set(PRESENTATION_COLUMNS):
+            missing_presentation = sorted(set(PRESENTATION_COLUMNS) - available_presentation)
+            raise CaptureError(
+                "capture has an incomplete presentation counter set: "
+                + ", ".join(missing_presentation)
+            )
+        available_simulation_time = columns.intersection(SIMULATION_TIME_COLUMNS)
+        if (
+            available_simulation_time
+            and available_simulation_time != set(SIMULATION_TIME_COLUMNS)
+        ):
+            missing_simulation_time = sorted(
+                set(SIMULATION_TIME_COLUMNS) - available_simulation_time
+            )
+            raise CaptureError(
+                "capture has an incomplete simulation-time counter set: "
+                + ", ".join(missing_simulation_time)
+            )
+        available_native_gpu_timing = columns.intersection(
+            NATIVE_GPU_TIMING_COLUMNS
+        )
+        if (
+            available_native_gpu_timing
+            and available_native_gpu_timing != set(NATIVE_GPU_TIMING_COLUMNS)
+        ):
+            missing_native_gpu_timing = sorted(
+                set(NATIVE_GPU_TIMING_COLUMNS) - available_native_gpu_timing
+            )
+            raise CaptureError(
+                "capture has an incomplete native GPU timing counter set: "
+                + ", ".join(missing_native_gpu_timing)
+            )
         frame_times: list[float] = []
         totals = {name: 0.0 for name in TOTAL_COLUMNS}
         memexport_totals = {name: 0.0 for name in MEMEXPORT_COLUMNS} if available_memexport else None
+        resolve_totals = ({name: 0.0 for name in RESOLVE_READBACK_COLUMNS}
+                          if available_resolve else None)
+        xma_stall_totals = {name: 0.0 for name in XMA_STALL_COLUMNS} if available_xma_stalls else None
+        presentation_totals = (
+            {name: 0.0 for name in PRESENTATION_COLUMNS}
+            if available_presentation else None
+        )
+        simulation_time_totals = (
+            {name: 0.0 for name in SIMULATION_TIME_COLUMNS}
+            if available_simulation_time
+            else None
+        )
+        simulation_active_frame_time_us = 0.0
+        native_gpu_timing_totals = (
+            {name: 0.0 for name in NATIVE_GPU_TIMING_COLUMNS}
+            if available_native_gpu_timing
+            else None
+        )
+        presentation_delta_samples = {
+            "guest_vblank_delta_ns": 0,
+            "present_delta_ns": 0,
+        }
         rows_seen = 0
         for row_number, row in enumerate(reader, start=2):
             rows_seen += 1
@@ -99,6 +197,22 @@ def summarize(path: pathlib.Path) -> dict[str, Any]:
             }
             row_memexport = ({name: finite_number(row[name], column=name, row_number=row_number)
                               for name in MEMEXPORT_COLUMNS} if memexport_totals is not None else {})
+            row_resolve = ({name: finite_number(row[name], column=name, row_number=row_number)
+                            for name in RESOLVE_READBACK_COLUMNS} if resolve_totals is not None else {})
+            row_xma_stalls = ({name: finite_number(row[name], column=name, row_number=row_number)
+                               for name in XMA_STALL_COLUMNS} if xma_stall_totals is not None else {})
+            row_presentation = ({
+                name: finite_number(row[name], column=name, row_number=row_number)
+                for name in PRESENTATION_COLUMNS
+            } if presentation_totals is not None else {})
+            row_simulation_time = ({
+                name: finite_number(row[name], column=name, row_number=row_number)
+                for name in SIMULATION_TIME_COLUMNS
+            } if simulation_time_totals is not None else {})
+            row_native_gpu_timing = ({
+                name: finite_number(row[name], column=name, row_number=row_number)
+                for name in NATIVE_GPU_TIMING_COLUMNS
+            } if native_gpu_timing_totals is not None else {})
             # The runtime writes one initialization row with frame_time_us == 0.
             # It is valid CSV, but not a displayed frame and must not skew latency.
             if frame_time == 0:
@@ -108,6 +222,20 @@ def summarize(path: pathlib.Path) -> dict[str, Any]:
                 totals[name] += value
             for name, value in row_memexport.items():
                 memexport_totals[name] += value
+            for name, value in row_resolve.items():
+                resolve_totals[name] += value
+            for name, value in row_xma_stalls.items():
+                xma_stall_totals[name] += value
+            for name, value in row_presentation.items():
+                presentation_totals[name] += value
+                if name in presentation_delta_samples and value > 0:
+                    presentation_delta_samples[name] += 1
+            for name, value in row_simulation_time.items():
+                simulation_time_totals[name] += value
+            if row_simulation_time.get("simulation_time_ns", 0) > 0:
+                simulation_active_frame_time_us += frame_time
+            for name, value in row_native_gpu_timing.items():
+                native_gpu_timing_totals[name] += value
 
     if rows_seen == 0:
         raise CaptureError("capture contains a header but no rows")
@@ -147,6 +275,94 @@ def summarize(path: pathlib.Path) -> dict[str, Any]:
     if memexport_totals is not None:
         result["memexport_counters"] = {
             name: int(value) if value.is_integer() else value for name, value in memexport_totals.items()
+        }
+    if resolve_totals is not None:
+        result["resolve_readback_counters"] = {
+            name: int(value) if value.is_integer() else value for name, value in resolve_totals.items()
+        }
+    if xma_stall_totals is not None:
+        result["xma_stall_counters"] = {
+            name: int(value) if value.is_integer() else value for name, value in xma_stall_totals.items()
+        }
+    if presentation_totals is not None:
+        duration_seconds = sum(frame_times) / 1_000_000.0
+        counters = {
+            name: int(value) if value.is_integer() else value
+            for name, value in presentation_totals.items()
+        }
+        result["presentation"] = {
+            "counters": counters,
+            "cadence_hz": {
+                "guest_vblank": round(counters["guest_vblank_count"] / duration_seconds, 3),
+                "simulation_tick": round(counters["simulation_tick_count"] / duration_seconds, 3),
+                "source_frame": round(counters["source_frame_count"] / duration_seconds, 3),
+                "present": round(counters["present_count"] / duration_seconds, 3),
+            },
+            "mean_delta_ms": {
+                "guest_vblank": round(
+                    counters["guest_vblank_delta_ns"]
+                    / max(1, presentation_delta_samples["guest_vblank_delta_ns"])
+                    / 1_000_000.0,
+                    3,
+                ),
+                "present": round(
+                    counters["present_delta_ns"]
+                    / max(1, presentation_delta_samples["present_delta_ns"])
+                    / 1_000_000.0,
+                    3,
+                ),
+            },
+        }
+        if simulation_time_totals is not None:
+            simulation_time_ns = int(simulation_time_totals["simulation_time_ns"])
+            active_wall_seconds = simulation_active_frame_time_us / 1_000_000.0
+            result["presentation"]["simulation_time"] = {
+                "seconds": round(simulation_time_ns / 1_000_000_000.0, 6),
+                "active_wall_seconds": round(active_wall_seconds, 6),
+                "wall_time_ratio": round(
+                    simulation_time_ns
+                    / 1_000_000_000.0
+                    / max(active_wall_seconds, 1e-9),
+                    6,
+                ),
+                "mean_update_ms": round(
+                    simulation_time_ns
+                    / max(1, counters["simulation_tick_count"])
+                    / 1_000_000.0,
+                    6,
+                ),
+                "invalid_deltas": int(
+                    simulation_time_totals["simulation_delta_invalid"]
+                ),
+            }
+    if native_gpu_timing_totals is not None:
+        counters = {
+            name: int(value) if value.is_integer() else value
+            for name, value in native_gpu_timing_totals.items()
+        }
+
+        def mean_microseconds(time_name: str, sample_name: str) -> float | None:
+            samples = counters[sample_name]
+            if not samples:
+                return None
+            return round(counters[time_name] / samples / 1000.0, 3)
+
+        result["native_renderer_gpu_timing"] = {
+            "counters": counters,
+            "mean_microseconds": {
+                "guest_frame": mean_microseconds(
+                    "guest_frame_gpu_time_ns",
+                    "guest_frame_gpu_timing_samples",
+                ),
+                "native_composition": mean_microseconds(
+                    "native_composition_gpu_time_ns",
+                    "native_composition_gpu_timing_samples",
+                ),
+                "native_selection": mean_microseconds(
+                    "native_selection_gpu_time_ns",
+                    "native_selection_gpu_timing_samples",
+                ),
+            },
         }
     return result
 
@@ -208,6 +424,32 @@ def markdown(summary: dict[str, Any]) -> str:
                 f"| {name.replace('_', ' ')} | {values['baseline']:.3f} | "
                 f"{values['candidate']:.3f} | {values['delta_percent']:+.3f}% |"
             )
+    if "presentation" in summary:
+        pacing = summary["presentation"]
+        lines.extend([
+            "",
+            "## Presentation pacing",
+            "",
+            f"- Guest vblank cadence: {pacing['cadence_hz']['guest_vblank']:.3f} Hz",
+            f"- Simulation cadence: {pacing['cadence_hz']['simulation_tick']:.3f} Hz",
+            f"- FH1 source-frame cadence: {pacing['cadence_hz']['source_frame']:.3f} Hz",
+            f"- Host present cadence: {pacing['cadence_hz']['present']:.3f} Hz",
+            f"- Present deadline misses: {pacing['counters']['present_deadline_misses']}",
+            f"- Duplicate presents: {pacing['counters']['duplicate_present_count']}",
+            f"- Dropped presents: {pacing['counters']['dropped_present_count']}",
+        ])
+    if "native_renderer_gpu_timing" in summary:
+        timing = summary["native_renderer_gpu_timing"]
+        means = timing["mean_microseconds"]
+        lines.extend([
+            "",
+            "## Native renderer GPU timing",
+            "",
+            f"- Guest frame bucket: {means['guest_frame'] if means['guest_frame'] is not None else 'n/a'} us",
+            f"- Native composition: {means['native_composition'] if means['native_composition'] is not None else 'n/a'} us",
+            f"- Native selection: {means['native_selection'] if means['native_selection'] is not None else 'n/a'} us",
+            f"- Dropped samples: {timing['counters']['native_gpu_timing_drops']}",
+        ])
     return "\n".join(lines) + "\n"
 
 

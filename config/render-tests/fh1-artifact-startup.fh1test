@@ -1,0 +1,5 @@
+pinyon-shift-fh1-render-test-v1
+# clock-hz 60
+input 0 0000 0 0 0 0 0 0
+capture 1200 clean-startup
+stop 1260

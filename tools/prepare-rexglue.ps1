@@ -11,20 +11,11 @@ if (Test-Path variable:PSNativeCommandUseErrorActionPreference) {
 $root = Get-PinyonRepoRoot
 $config = Get-PinyonReleaseToolchain
 $git = Get-PinyonGit
-$sdkRoot = Resolve-PinyonLocalPath -RelativePath $config.rexglue.path
-$markerPath = Join-Path $sdkRoot '.pinyon-patches.json'
-$patches = @(Get-ChildItem -LiteralPath (Join-Path $root $config.rexglue.patch_directory) `
-    -Filter '*.patch' -File | Sort-Object Name)
-$patchRecords = @($patches | ForEach-Object {
-    [ordered]@{ name = $_.Name; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }
-})
-$expectedMarker = [ordered]@{
-    schema_version = 1
-    tag = $config.rexglue.tag
-    base_commit = $config.rexglue.base_commit
-    patches = $patchRecords
-}
-$expectedJson = $expectedMarker | ConvertTo-Json -Depth 5
+$sdkRoot = Resolve-PinyonRexGlueRoot
+$isRepositoryCheckout = Test-Path -LiteralPath (Join-Path $root '.git')
+$logs = Resolve-PinyonLocalPath -RelativePath '.local/logs'
+$gitLog = Join-Path $logs 'rexglue-prepare.log'
+if (Test-Path -LiteralPath $gitLog) { Remove-Item -LiteralPath $gitLog -Force }
 
 function Invoke-PinyonGitWithRetry {
     param(
@@ -34,14 +25,14 @@ function Invoke-PinyonGitWithRetry {
     )
 
     $maximumAttempts = 3
+    $code = 0
     for ($attempt = 1; $attempt -le $maximumAttempts; $attempt++) {
-        if ($null -ne $BeforeAttempt) {
-            & $BeforeAttempt $attempt
-        }
-        & $git @Arguments
-        if ($LASTEXITCODE -eq 0) {
-            return
-        }
+        if ($null -ne $BeforeAttempt) { & $BeforeAttempt $attempt }
+        # Keep Git's stderr (where it reports errors) in the output and in
+        # .local/logs/rexglue-prepare.log for the failure report.
+        Invoke-PinyonLoggedCommand -FilePath $git -Arguments $Arguments -LogPath $gitLog -Append
+        $code = $LASTEXITCODE
+        if ($code -eq 0) { return }
         if ($attempt -lt $maximumAttempts) {
             Write-PinyonEvent tools 35 `
                 "$Activity failed (attempt $attempt of $maximumAttempts); retrying." `
@@ -49,7 +40,9 @@ function Invoke-PinyonGitWithRetry {
             Start-Sleep -Seconds (2 * $attempt)
         }
     }
-    throw "$Activity failed after $maximumAttempts attempts. Check the build log for the Git error."
+    throw (New-PinyonCommandFailure -FailureMessage "$Activity failed after $maximumAttempts attempts." `
+        -Step $Activity -LogPath $gitLog -ExitCode $code `
+        -CommandLine (Format-PinyonCommandLine -FilePath $git -Arguments $Arguments))
 }
 
 function Repair-MaterializedLinks {
@@ -82,60 +75,74 @@ function Repair-MaterializedLinks {
     }
 }
 
-if (Test-Path -LiteralPath $markerPath -PathType Leaf) {
-    $actualJson = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json | ConvertTo-Json -Depth 5
-    if ($actualJson -eq $expectedJson) {
-        Repair-MaterializedLinks -RepositoryRoot $sdkRoot
-        Write-PinyonEvent tools 36 'ReXGlue source and project patches are already prepared.' -JsonEvents:$JsonEvents
-        return
+if ($isRepositoryCheckout) {
+    if (-not (Test-Path -LiteralPath (Join-Path $sdkRoot '.git'))) {
+        Write-PinyonEvent tools 34 'Initializing the pinned ShiftGlue submodule.' -JsonEvents:$JsonEvents
+        Invoke-PinyonGitWithRetry -Activity 'Initializing ShiftGlue' -Arguments @(
+            '-c', 'http.version=HTTP/1.1', '-C', $root, 'submodule', 'update',
+            '--init', '--recursive', '--jobs', '8', '--', $config.rexglue.submodule_path
+        )
+    }
+    else {
+        & $git -C $sdkRoot submodule sync --recursive
+        if ($LASTEXITCODE -ne 0) { throw 'Unable to synchronize ShiftGlue dependency URLs.' }
+        Invoke-PinyonGitWithRetry -Activity 'Downloading ShiftGlue dependencies' -Arguments @(
+            '-c', 'http.version=HTTP/1.1', '-C', $sdkRoot,
+            'submodule', 'update', '--init', '--recursive', '--jobs', '8'
+        )
     }
 }
-
-$resolved = [IO.Path]::GetFullPath($sdkRoot)
-$allowed = [IO.Path]::GetFullPath((Join-Path $root '.local'))
-if (-not $resolved.StartsWith($allowed.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar,
-        [StringComparison]::OrdinalIgnoreCase)) {
-    throw "Refusing to replace ReXGlue outside $allowed"
-}
-if (Test-Path -LiteralPath $sdkRoot) {
-    Remove-Item -LiteralPath $resolved -Recurse -Force
-}
-
-Write-PinyonEvent tools 34 'Downloading the pinned ReXGlue source.' -JsonEvents:$JsonEvents
-Invoke-PinyonGitWithRetry -Activity 'Downloading the ReXGlue repository' -Arguments @(
-    '-c', 'core.symlinks=false', '-c', 'http.version=HTTP/1.1',
-    'clone', '--no-checkout', '--no-tags', $config.rexglue.repository, $sdkRoot
-) -BeforeAttempt {
-    param($attempt)
-    if ($attempt -gt 1 -and (Test-Path -LiteralPath $resolved)) {
+else {
+    $replaceCheckout = $false
+    if (Test-Path -LiteralPath $sdkRoot) {
+        $head = @(& $git -C $sdkRoot rev-parse HEAD 2>$null | Select-Object -First 1)
+        $dirty = @(& $git -C $sdkRoot status --porcelain --ignore-submodules=dirty 2>$null).Count -ne 0
+        if ($dirty) {
+            throw "The managed ShiftGlue checkout has local changes: $sdkRoot"
+        }
+        $replaceCheckout = $head.Count -ne 1 -or $head[0] -ne $config.rexglue.revision
+    }
+    if ($replaceCheckout) {
+        $resolved = [IO.Path]::GetFullPath($sdkRoot)
+        $allowed = [IO.Path]::GetFullPath((Join-Path $root '.local'))
+        if (-not $resolved.StartsWith($allowed.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar,
+                [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to replace ShiftGlue outside $allowed"
+        }
         Remove-Item -LiteralPath $resolved -Recurse -Force
     }
+    if (-not (Test-Path -LiteralPath $sdkRoot)) {
+        Write-PinyonEvent tools 34 'Downloading the pinned ShiftGlue source.' -JsonEvents:$JsonEvents
+        Invoke-PinyonGitWithRetry -Activity 'Downloading ShiftGlue' -Arguments @(
+            '-c', 'core.symlinks=false', '-c', 'http.version=HTTP/1.1',
+            'clone', '--no-checkout', '--no-tags', $config.rexglue.repository, $sdkRoot
+        ) -BeforeAttempt {
+            param($attempt)
+            if ($attempt -gt 1 -and (Test-Path -LiteralPath $sdkRoot)) {
+                Remove-Item -LiteralPath $sdkRoot -Recurse -Force
+            }
+        }
+        Invoke-PinyonGitWithRetry -Activity 'Fetching the pinned ShiftGlue revision' -Arguments @(
+            '-c', 'http.version=HTTP/1.1', '-C', $sdkRoot, 'fetch', '--depth', '1',
+            'origin', $config.rexglue.revision
+        )
+        & $git -C $sdkRoot checkout --detach $config.rexglue.revision
+        if ($LASTEXITCODE -ne 0) { throw 'Unable to check out the pinned ShiftGlue revision.' }
+    }
+    & $git -C $sdkRoot submodule sync --recursive
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to synchronize ShiftGlue dependency URLs.' }
+    Invoke-PinyonGitWithRetry -Activity 'Downloading ShiftGlue dependencies' -Arguments @(
+        '-c', 'http.version=HTTP/1.1', '-C', $sdkRoot,
+        'submodule', 'update', '--init', '--recursive', '--jobs', '8'
+    )
 }
-Invoke-PinyonGitWithRetry -Activity 'Fetching the pinned ReXGlue release tag' -Arguments @(
-    '-c', 'http.version=HTTP/1.1', '-C', $sdkRoot, 'fetch', '--no-tags', 'origin',
-    "refs/tags/$($config.rexglue.tag):refs/tags/$($config.rexglue.tag)"
-)
-$tagCommit = (& $git -C $sdkRoot rev-list -n 1 $config.rexglue.tag).Trim()
-if ($LASTEXITCODE -ne 0 -or $tagCommit -ne $config.rexglue.base_commit) {
-    throw "ReXGlue tag $($config.rexglue.tag) does not resolve to the pinned commit."
-}
-& $git -C $sdkRoot checkout --detach $config.rexglue.base_commit
-if ($LASTEXITCODE -ne 0) { throw 'Unable to check out the pinned ReXGlue revision.' }
-& $git -C $sdkRoot submodule sync --recursive
-if ($LASTEXITCODE -ne 0) { throw 'Unable to synchronize ReXGlue dependency URLs.' }
-Invoke-PinyonGitWithRetry -Activity 'Downloading ReXGlue dependencies' -Arguments @(
-    '-c', 'http.version=HTTP/1.1', '-C', $sdkRoot,
-    'submodule', 'update', '--init', '--recursive', '--jobs', '8'
-)
 
-Write-PinyonEvent tools 37 'Applying the Pinyon Shift compatibility patches.' -JsonEvents:$JsonEvents
-foreach ($patch in $patches) {
-    & $git -C $sdkRoot apply --check --whitespace=nowarn $patch.FullName
-    if ($LASTEXITCODE -ne 0) { throw "Compatibility patch cannot be applied: $($patch.Name)" }
-    & $git -C $sdkRoot apply --whitespace=nowarn $patch.FullName
-    if ($LASTEXITCODE -ne 0) { throw "Compatibility patch failed: $($patch.Name)" }
+$head = @(& $git -C $sdkRoot rev-parse HEAD 2>$null | Select-Object -First 1)
+if ($head.Count -ne 1 -or $head[0] -notmatch '^[0-9a-fA-F]{40}$') {
+    throw 'Unable to identify the prepared ShiftGlue revision.'
 }
-[IO.File]::WriteAllText($markerPath, $expectedJson + [Environment]::NewLine,
-    [Text.UTF8Encoding]::new($false))
+if ($head[0] -ne $config.rexglue.revision) {
+    Write-PinyonEvent tools 38 "Using developer ShiftGlue revision $($head[0])." -JsonEvents:$JsonEvents
+}
 Repair-MaterializedLinks -RepositoryRoot $sdkRoot
-Write-PinyonEvent tools 39 'ReXGlue source is ready.' -JsonEvents:$JsonEvents
+Write-PinyonEvent tools 39 'ShiftGlue source is ready.' -JsonEvents:$JsonEvents

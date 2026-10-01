@@ -1,0 +1,17 @@
+pinyon-shift-fh1-render-test-v1
+# Fixed wall-time route for repeatable source-renderer performance captures.
+# Keep menus and loading outside the open-world captures and analyze scene
+# frames separately from the complete run.
+# clock-hz 60
+input 0 0000 0 0 0 0 0 0
+input 720 1000 0 0 0 0 0 0
+input 732 0000 0 0 0 0 0 0
+input 960 1000 0 0 0 0 0 0
+input 972 0000 0 0 0 0 0 0
+input 1200 1000 0 0 0 0 0 0
+input 1212 0000 0 0 0 0 0 0
+input 1440 1000 0 0 0 0 0 0
+input 1452 0000 0 0 0 0 0 0
+capture 1800 open-world-start
+capture 2700 open-world-end
+stop 2800

@@ -1,0 +1,20 @@
+pinyon-shift-fh1-render-test-v1
+# Short wall-time probe before the unattended car reaches the first bend.
+# clock-hz 60
+# expect-simulation-time 0.95 1.08 2
+input 0 0000 0 0 0 0 0 0
+input 720 1000 0 0 0 0 0 0
+input 732 0000 0 0 0 0 0 0
+input 960 1000 0 0 0 0 0 0
+input 972 0000 0 0 0 0 0 0
+input 1200 1000 0 0 0 0 0 0
+input 1212 0000 0 0 0 0 0 0
+input 1440 1000 0 0 0 0 0 0
+input 1452 0000 0 0 0 0 0 0
+input 1560 0000 0 255 0 0 0 0
+capture 1740 t29
+capture 1800 t30
+capture 1860 t31
+capture 1920 t32
+capture 1980 t33
+stop 2040
