@@ -31,23 +31,46 @@ tunnel. Rows that need the reference device stay open.
 | AP-0.2 memory ordering | **Done** | `sync`/`eieio` lower to a full fence, `lwsync` to acquire-release, `isync` to acquire, through `REX_PPC_*` macros that are empty on x86-64 (70 + 230 + 20 sites in FH1) |
 | AP-0.3 ARM64 build | **Done (Android)** | `android-arm64-*` presets; every target links with NDK r29; Linux ARM64 presets not added |
 | AP-0.4 boot and opening route | **Done (Android)** | `fh1-opening-sync` completes on the emulator with `--null-gpu`, simulation-time ratio 1.037; fixes on the way: memfd shared memory, reserve-then-fix guest arena, module library names, fault-handler chaining, socket permission |
-| AP-0.5 parity gates, AP-0.6 16 KiB pages | Open | Need the remaining routes on the device and a 16 KiB kernel |
+| AP-0.5 parity gates | **Mostly done** | On the emulator with `--gpu_backend=null`: `fh1-opening-sync`, `fh1-buy-car` (three consecutive runs), `fh1-race-sync`, `fh1-free-roam`, `fh1-pause` and `fh1-timing-straight` pass with simulation-time ratios 1.01-1.07; the vehicle state matches Windows to three decimals at `event-ready`. Found and fixed on the way: APCs never delivered (bionic `sigqueue` takes a process id), a second `pthread_join` aborting on bionic. Open: the hour-long soak, and save payload hashes (they differ between any two runs, Windows included, so they need a deterministic route first) |
+| AP-0.6 16 KiB pages | Open | Needs a 16 KiB kernel; every packaged library is checked for 16 KiB-aligned load segments |
 | AP-1.1 to AP-1.4 | **Done** | NDK presets, SDK CMake for Android, `main_android.h` glue, `libmain.so` with `SDL_main`, ANativeWindow surface, activity without Gradle |
 | AP-1.5 title screen | **Done (emulator)** | The FH1 executor draws the title screen through Vulkan on the emulator |
 | AP-2.0 capability report | **Done** | `VULKAN_CAPABILITY_REPORT` log line, on by default on Android; first report from the emulator's M4 |
 | AP-2.1 dynamic rendering bug | **Done** | Requested once; the feature is linked from the device's own flag |
-| AP-2.2 geometry shaders | In progress | Not required by default on Android; the vertex-shader expansion is being qualified on Windows with the force cvars |
+| AP-2.2 geometry shaders | **Done** | Not required by default on Android. With every fallback forced on NVIDIA, `fh1-opening-sync` crashed the driver: the SPIR-V rectangle-list loop produced an invalid OpPhi, now fixed; all 444 translated modules pass `spirv-val`, menu captures within 1.5 MAE |
 | AP-3.1, AP-3.2 lifecycle | In progress | SDL app events reach a lifecycle listener in the UI thread before SDL blocks; the window drops and recreates its surface; GPU and audio pause |
 | AP-3.3 storage | **Done** | `game/base` and `state` in the app's external files folder, set by the activity |
 | AP-3.6 fonts, crash reports, logs | **Done** | Roboto fallback; crash reports with library and offset; logs to logcat and `state/logs`; `pull-logs` |
 | AP-4.4 keyboard-only features | **Done** | SETTINGS (reachable from the pause menu with a pad) gains TRAINER and SAVE PHOTO beside ACHIEVEMENTS |
-| AP-5 audio | Partial | Silent fallback when no output opens; latency unmeasured |
+| AP-5 audio | Partial | Silent fallback when no output opens; the stream is tagged with the game role; latency unmeasured |
 | AP-6.1 tooling | **Done** | `pinyon.py android doctor/build/package/install/push-data/run/stop/pull-logs` |
 | AP-6.2 boundary | **Done** | Policy, launcher payload and `.gitignore` refuse Android binaries; tests |
 | AP-6.4 provenance | **Done** | `pinyon_shift_build.json` as an APK asset, read through `PINYON_SHIFT_BUILD_MANIFEST` |
 | AP-6.5 documentation | **Done** | [ANDROID.md](ANDROID.md) |
 | AP-7.2 thread priorities | Partial | Guest priorities map to nice values on Android (no `SCHED_FIFO` for apps); placement left to the scheduler until AP-7.0 measures |
-| AP-2.3 to AP-2.7, AP-3.4, AP-3.5, AP-4.1 to AP-4.3, AP-4.5, AP-6.3, AP-7, AP-8 | Open | Need the reference device, or follow AP-2.2 |
+| AP-2.5 memory at 1x | **Done (clamp)** | The draw resolution scale is clamped to 1x on Android (`android_allow_resolution_scale` overrides) and SETTINGS offers 1X only; budget logging waits for AP-7.0 |
+| AP-2.6 pipeline cache | **Done** | A `VkPipelineCache` per title, vendor, device and driver, saved 30 s after new pipelines and at shutdown; reloads on the emulator |
+| AP-8.1 routes from the PC | **Done** | `pinyon.py android run --route FILE --seed DIR --wait` isolates the state, pushes the seed, runs and judges the session (captures, failures, simulation time) |
+| AP-2.3, AP-2.4, AP-2.7, AP-3.4 (kill test), AP-3.5, AP-4.1 to AP-4.3, AP-4.5, AP-6.3, AP-7, AP-8.2, AP-8.3 | Open | Need the reference device (formats, BC, memory and thermals, controllers, touch) or a second GPU vendor |
+
+### Findings from the emulator runs
+
+- **An attract-sequence resolve no backend packs.** Left idle on the title
+  screen, the title resolves an RGBA16 float target (`c7`) into
+  `k_16_16_16_16` (`t26`); the FH1 executor's resolve shader packs only
+  8888, 2_10_10_10, 32_FLOAT and 16_16_16_16_FLOAT, so the copy is skipped
+  (`resolve_dest_format`, now logged once per kind). The D3D12 path shares
+  the shader; no Windows route idles long enough to reach it.
+- **Thumbnail waits are timing-sensitive.** The scripted pad shows only the
+  latest due step, so a press whose release falls due in the same output
+  frame is lost; the Windows routes are calibrated with those losses (making
+  every press visible sends `fh1-race-sync` down a menu path where the
+  title reads guest address `0x38` and stops). Routes can therefore fail at
+  their first file wait on a device whose frames arrive in different bursts;
+  re-timing the routes is a separate task.
+- **No socket permission, no single player.** The title opens system-link
+  sockets at the single-player menu and dereferences null when `socket()`
+  fails, so the package asks for `INTERNET`.
 
 ## Goal
 
