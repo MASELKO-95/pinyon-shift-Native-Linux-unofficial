@@ -700,6 +700,17 @@ void PinyonShiftApp::OnPostSetup() {
   UpdateHorPlus();
   rex::ui::RegisterBind("bind_game_menu", "F6", "Open the in-game settings menu",
                         [this] { ToggleGameMenu(); });
+#if defined(__ANDROID__)
+  // Android's Back (the button or gesture; a key to the app) opens SETTINGS
+  // when no host menu is up, so a player with only a touch screen reaches
+  // them; inside the menus the host UI takes it first and steps back.
+  rex::ui::RegisterBind("bind_android_back", "Escape", "Android Back: open the settings menu",
+                        [this] {
+                          if (!host_ui_ || !host_ui_->is_open()) {
+                            OpenSettingsMenu();
+                          }
+                        });
+#endif
   pinyon_shift::cheats::InstallChangeLog();
   // A one-shot save edit or a live credits set applied: clear its setting so
   // the next start (and, for the credits, the next profile load) keeps the

@@ -934,14 +934,22 @@ void HostUi::OnMouseDown(rex::ui::MouseEvent& e) {
   if (e.button() != rex::ui::MouseEvent::Button::kLeft) {
     return;
   }
-  const size_t focus = screens_.back()->focus();
-  if (focus >= row_rects_.size()) {
+  // The row under the pointer, focused first: a mouse has hovered it
+  // already, but a tap on a touch screen arrives with no hover (AP-4.3).
+  size_t focus = row_rects_.size();
+  for (size_t i = 0; i < row_rects_.size(); ++i) {
+    const RowRect& rect = row_rects_[i];
+    if (float(e.x()) >= rect.x0 && float(e.x()) < rect.x1 && float(e.y()) >= rect.y0 &&
+        float(e.y()) < rect.y1) {
+      focus = i;
+      break;
+    }
+  }
+  if (focus >= row_rects_.size() || focus >= screens_.back()->rows().size()) {
     return;
   }
-  const RowRect& rect = row_rects_[focus];
-  if (float(e.x()) < rect.x0 || float(e.x()) >= rect.x1 || float(e.y()) < rect.y0 ||
-      float(e.y()) >= rect.y1) {
-    return;
+  if (focus != screens_.back()->focus() && !screens_.back()->SetFocus(focus)) {
+    return;  // not a row that takes focus
   }
   const MenuRow& row = screens_.back()->rows()[focus];
   if (row.value && row.adjust) {
