@@ -28,6 +28,7 @@ private/
 !/docs/UI_ASSETS.md
 !/docs/NATIVE_PORT_BACKLOG.md
 !/docs/PERFORMANCE_BACKLOG.md
+!/docs/ANDROID_PORT_BACKLOG.md
 !/docs/MODDING.md
 !/docs/releases/
 !/docs/releases/*.md
