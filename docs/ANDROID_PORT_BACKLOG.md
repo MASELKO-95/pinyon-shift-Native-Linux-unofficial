@@ -15,6 +15,40 @@ marked **guess** and have a row that verifies them before anything depends on
 them. Raw notes are kept locally under `.local/backlog-research/` and are not
 distributed.
 
+## Progress (2026-10-01)
+
+Execution started on 2026-10-01 with the target narrowed to high-end Android
+handhelds and phones, **Snapdragon 8 Gen 2 or newer** (Adreno 740+, 12 GB,
+Android 13+), which sets `minSdk` 33. No such device was available, so the
+ARM64 work ran on an **Android 16 arm64 emulator on an Apple M4 Pro** (a real
+weakly ordered AArch64 CPU; Vulkan 1.4 through gfxstream on MoltenVK, no
+geometry shaders, 4 KiB pages), driven from the Windows PC through an adb
+tunnel. Rows that need the reference device stay open.
+
+| Row | State | Evidence |
+| --- | --- | --- |
+| AP-0.1 null GPU plugin | **Done** | `gpu_backend=null` in `rexgpu-fh1`; `run-fh1-render-test.py --null-gpu`; `fh1-opening-sync` and `fh1-buy-car` pass on Windows with the same save write sequence as Vulkan |
+| AP-0.2 memory ordering | **Done** | `sync`/`eieio` lower to a full fence, `lwsync` to acquire-release, `isync` to acquire, through `REX_PPC_*` macros that are empty on x86-64 (70 + 230 + 20 sites in FH1) |
+| AP-0.3 ARM64 build | **Done (Android)** | `android-arm64-*` presets; every target links with NDK r29; Linux ARM64 presets not added |
+| AP-0.4 boot and opening route | **Done (Android)** | `fh1-opening-sync` completes on the emulator with `--null-gpu`, simulation-time ratio 1.037; fixes on the way: memfd shared memory, reserve-then-fix guest arena, module library names, fault-handler chaining, socket permission |
+| AP-0.5 parity gates, AP-0.6 16 KiB pages | Open | Need the remaining routes on the device and a 16 KiB kernel |
+| AP-1.1 to AP-1.4 | **Done** | NDK presets, SDK CMake for Android, `main_android.h` glue, `libmain.so` with `SDL_main`, ANativeWindow surface, activity without Gradle |
+| AP-1.5 title screen | **Done (emulator)** | The FH1 executor draws the title screen through Vulkan on the emulator |
+| AP-2.0 capability report | **Done** | `VULKAN_CAPABILITY_REPORT` log line, on by default on Android; first report from the emulator's M4 |
+| AP-2.1 dynamic rendering bug | **Done** | Requested once; the feature is linked from the device's own flag |
+| AP-2.2 geometry shaders | In progress | Not required by default on Android; the vertex-shader expansion is being qualified on Windows with the force cvars |
+| AP-3.1, AP-3.2 lifecycle | In progress | SDL app events reach a lifecycle listener in the UI thread before SDL blocks; the window drops and recreates its surface; GPU and audio pause |
+| AP-3.3 storage | **Done** | `game/base` and `state` in the app's external files folder, set by the activity |
+| AP-3.6 fonts, crash reports, logs | **Done** | Roboto fallback; crash reports with library and offset; logs to logcat and `state/logs`; `pull-logs` |
+| AP-4.4 keyboard-only features | **Done** | SETTINGS (reachable from the pause menu with a pad) gains TRAINER and SAVE PHOTO beside ACHIEVEMENTS |
+| AP-5 audio | Partial | Silent fallback when no output opens; latency unmeasured |
+| AP-6.1 tooling | **Done** | `pinyon.py android doctor/build/package/install/push-data/run/stop/pull-logs` |
+| AP-6.2 boundary | **Done** | Policy, launcher payload and `.gitignore` refuse Android binaries; tests |
+| AP-6.4 provenance | **Done** | `pinyon_shift_build.json` as an APK asset, read through `PINYON_SHIFT_BUILD_MANIFEST` |
+| AP-6.5 documentation | **Done** | [ANDROID.md](ANDROID.md) |
+| AP-7.2 thread priorities | Partial | Guest priorities map to nice values on Android (no `SCHED_FIFO` for apps); placement left to the scheduler until AP-7.0 measures |
+| AP-2.3 to AP-2.7, AP-3.4, AP-3.5, AP-4.1 to AP-4.3, AP-4.5, AP-6.3, AP-7, AP-8 | Open | Need the reference device, or follow AP-2.2 |
+
 ## Goal
 
 A player who owns the supported disc builds Pinyon Shift on their PC, as
