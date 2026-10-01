@@ -232,6 +232,13 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         self.assertNotIn("'powershell.exe'", provision)
         self.assertIn("(Get-Process -Id $PID).Path", provision)
 
+    def test_llvm_is_extracted_with_windows_tar(self):
+        # GNU tar from Git's Unix tools reads "E:\..." as a remote host.
+        common = (ROOT / "tools/release-common.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("Join-Path ([Environment]::SystemDirectory) 'tar.exe'", common)
+        self.assertNotIn("& tar.exe", common)
+
     def test_declined_build_tools_permission_is_explained(self):
         # A declined UAC prompt surfaced only as a localized "the operation was
         # canceled by the user" (#318).

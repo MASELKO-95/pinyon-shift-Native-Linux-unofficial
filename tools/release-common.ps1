@@ -117,7 +117,11 @@ function Expand-PinyonTarXz {
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $tarArchive -PathType Leaf)) {
             throw 'Unable to decompress the LLVM toolchain archive.'
         }
-        & tar.exe -xf $tarArchive -C $destination
+        # Windows' own bsdtar by path: a GNU tar earlier in PATH (Git's optional Unix
+        # tools, MSYS2) reads "C:\..." as a remote host and fails to extract.
+        $tarExe = Join-Path ([Environment]::SystemDirectory) 'tar.exe'
+        if (-not (Test-Path -LiteralPath $tarExe -PathType Leaf)) { $tarExe = 'tar.exe' }
+        & $tarExe -xf $tarArchive -C $destination
         if ($LASTEXITCODE -ne 0) { throw 'Unable to extract the LLVM toolchain.' }
     }
     finally {
