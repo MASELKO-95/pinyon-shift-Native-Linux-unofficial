@@ -24,8 +24,8 @@
   output resolutions, and portable installs.
 - Made setup report the failed step and its first real error, retry locked
   runtime copies, start PowerShell by its full path, explain a declined
-  administrator prompt, tolerate shader-pack misses on slower PCs and size the
-  build's parallel jobs to memory.
+  administrator prompt, tolerate shader-pack misses on slower PCs, unpack the
+  compiler with Windows' own tar and size the build's parallel jobs to memory.
 
 ## 0.1.1 - 2026-08-27
 
