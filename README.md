@@ -39,7 +39,11 @@ or a prebuilt game executable.
 - **1x to 4x internal resolution**, FSR 1 output scaling, anisotropic and
   trilinear filtering, FXAA, and optional motion blur and depth of field.
 - **Settings in game (F6)** for display, graphics, audio and controls, plus a
-  trainer, photo export, save backups and [mods](docs/MODDING.md).
+  trainer (F10: credits, game speed, time of day, free camera, collectibles on
+  the map), photo export, save backups and [mods](docs/MODDING.md).
+- **The Treasure Map included.** The add-on that showed every discount sign and
+  barn find on the map was sold for Tokens through a service that no longer
+  exists; it is on by default and can be turned off in the launcher.
 
 ## Performance
 
@@ -126,10 +130,12 @@ Vulkan path got here is in the [performance backlog](docs/PERFORMANCE_BACKLOG.md
    free disk space.
 6. Choose **Play Pinyon Shift**. Press **F6** in game for settings.
 
-**Graphics** in the launcher picks the graphics API (Vulkan, recommended, or
+**Settings** in the launcher picks the graphics API (Vulkan, recommended, or
 Direct3D 12), the internal resolution and the output scaling (bilinear, CAS or
 FSR 1), and says what that means on your screen: for example, renders
-1280 × 720, FSR 1 upscales to 3840 × 2160. Vulkan is faster at 1x and 2x; for
+1280 × 720, FSR 1 upscales to 3840 × 2160. The Treasure Map toggle is there
+too: on by default, and once a save's map is revealed it stays revealed, as
+after a purchase. Vulkan is faster at 1x and 2x; for
 3x and 4x choose Direct3D 12, which prepares shader packs for your computer
 before its first start. Everything else, including the **Performance 120** and
 **Quality 60** presets, is in the in-game settings, where most changes apply at
