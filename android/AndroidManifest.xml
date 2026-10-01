@@ -49,6 +49,10 @@
         android:hardwareAccelerated="true"
         android:enableOnBackInvokedCallback="false">
 
+        <!-- simpleperf from adb on a release build (AP-7.0): profiling only,
+             no debugger. -->
+        <profileable android:shell="true" />
+
         <!-- The title's 16:9 at any width; letterboxed by the presenter. -->
         <meta-data android:name="android.max_aspect" android:value="3.0" />
         <!-- PERFORMANCE and BATTERY game modes (res/xml/game_mode_config.xml). -->
