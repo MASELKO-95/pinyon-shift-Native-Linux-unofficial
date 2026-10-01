@@ -15,7 +15,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import unittest
 
@@ -333,14 +332,30 @@ class StageFileScriptTests(unittest.TestCase):
             source.write_bytes(b"new backend")
             destination.write_bytes(b"old backend")
             kernel32, handle = self.lock(destination)
-            release = threading.Timer(1.5, lambda: kernel32.CloseHandle(ctypes.c_void_p(handle)))
-            release.start()
+            # Release the lock once the script reports its first failed copy,
+            # not on a timer: starting CMake on a CI runner can take longer
+            # than any fixed delay, so the lock was gone before the first try.
+            process = subprocess.Popen(
+                [find_cmake(), f"-DSOURCE={source}", f"-DDESTINATION={destination}",
+                 "-DATTEMPTS=8", "-P", str(self.SCRIPT)],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            )
+            output = []
             try:
-                result = self.stage(source, destination, 8)
+                for line in process.stdout:
+                    output.append(line)
+                    if handle is not None and "is in use" in line:
+                        kernel32.CloseHandle(ctypes.c_void_p(handle))
+                        handle = None
+                returncode = process.wait(timeout=60)
             finally:
-                release.join()
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertIn("is in use", result.stdout + result.stderr)
+                if handle is not None:
+                    kernel32.CloseHandle(ctypes.c_void_p(handle))
+                process.stdout.close()
+            output = "".join(output)
+            self.assertEqual(returncode, 0, output)
+            self.assertIn("is in use", output)
+            self.assertIn("Staged rexgpu-fh1-staged.dll after 2 attempts.", output)
             self.assertEqual(destination.read_bytes(), b"new backend")
 
 
