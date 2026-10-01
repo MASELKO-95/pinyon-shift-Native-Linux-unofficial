@@ -33,6 +33,7 @@
 #include "cheats.h"
 #include "cheats_map.h"
 #include "dlc_treasure_map.h"
+#include "stall_dump.h"
 #include "mod/mod_host.h"
 #include "mod/overlay_device.h"
 #include "save/live_profile.h"
@@ -3944,6 +3945,7 @@ void ApplyUiMutationExperiment() {
 
 void PinyonShiftTraceFrameTelemetry(PPCRegister& r28, PPCRegister& r31) {
   PROFILE_SIMULATION_TICK();
+  pinyon_shift::stall::NoteFrame();
   ApplyUiMutationExperiment();
   // The trainer's collectible markers (NP-8.6) queue their pass here, so it
   // also runs while the pause map is open.

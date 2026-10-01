@@ -32,6 +32,7 @@ set(PINYON_SHIFT_HOST_SOURCES
     src/cheats.cpp
     src/cheats_map.cpp
     src/dlc_treasure_map.cpp
+    src/stall_dump.cpp
     src/save/car_cards.cpp
     src/save/live_profile.cpp
     src/save/profile_body.cpp
