@@ -287,6 +287,8 @@ void SettingsPages::Save() {
 
 std::unique_ptr<MenuScreen> SettingsPages::Display() {
   std::vector<MenuRow> rows;
+  // An Android activity is always full screen on its one display.
+#if !defined(__ANDROID__)
   rows.push_back(Toggle("FULLSCREEN", "fullscreen"));
   rows.push_back(Setting("MONITOR",
                          {{"DEFAULT", {{"monitor", "0"}}},
@@ -302,6 +304,7 @@ std::unique_ptr<MenuScreen> SettingsPages::Display() {
                       {"window_height", std::to_string(height)}}});
   }
   rows.push_back(Setting("WINDOW SIZE", std::move(sizes)));
+#endif
   // Letterbox keeps the guest's aspect with bars, crop fills the window by
   // cutting into the title's overscan margin, stretch fills it by scaling.
   rows.push_back(Setting("ASPECT RATIO",
@@ -334,7 +337,9 @@ std::unique_ptr<MenuScreen> SettingsPages::Display() {
                           {"60", {{"host_present_fps_limit", "60"}}},
                           {"120", {{"host_present_fps_limit", "120"}}},
                           {"240", {{"host_present_fps_limit", "240"}}}}));
+#if !defined(__ANDROID__)
   rows.push_back(Toggle("VARIABLE REFRESH RATE", "d3d12_allow_variable_refresh_rate_and_tearing"));
+#endif
   // How the rendered image is scaled to the window: FSR 1 and CAS keep 2x
   // on a 4K display and 3x on 1440p sharp where bilinear blurs. The page's
   // note gives both sizes.
@@ -378,12 +383,21 @@ std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
                             {"pinyon_shift_fh1_render_fps_limit", "60"}}}}));
   // Vulkan (the default since config schema 27) records draws on a second
   // thread; Direct3D 12 loads prebuilt shader packs and keeps one thread.
+#if !defined(__ANDROID__)
   rows.push_back(Setting("GRAPHICS API",
                          {{"VULKAN", {{"gpu_backend", "\"vulkan\""}, {"gpu_record_thread", "true"}}},
                           {"DIRECT3D 12",
                            {{"gpu_backend", "\"d3d12\""}, {"gpu_record_thread", "false"}}}}));
+#endif
   std::vector<Choice> scales;
-  for (int scale = 1; scale <= 4; ++scale) {
+  // Android renders at 1x: higher scales need resolve buffers a phone's
+  // shared memory cannot hold (AP-2.5).
+#if defined(__ANDROID__)
+  constexpr int kMaxScale = 1;
+#else
+  constexpr int kMaxScale = 4;
+#endif
+  for (int scale = 1; scale <= kMaxScale; ++scale) {
     const std::string value = std::to_string(scale);
     scales.push_back({value + "X",
                       {{"draw_resolution_scale_x", value}, {"draw_resolution_scale_y", value}}});
@@ -399,7 +413,9 @@ std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
   }
   rows.push_back(std::move(resolution));
   // Read by graphics preparation before the next start.
+#if !defined(__ANDROID__)
   rows.push_back(Toggle("PREPARE ALL SCALES", "pinyon_shift_prepare_all_scales"));
+#endif
   // anisotropic_override holds the Xenos filter: 3, 4 and 5 are 4x, 8x, 16x.
   rows.push_back(Setting("ANISOTROPIC FILTERING",
                          {{"4X", {{"anisotropic_override", "3"}}},
