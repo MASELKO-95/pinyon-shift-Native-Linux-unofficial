@@ -49,6 +49,14 @@ NATIVE_LIBRARIES = (
     "libpinyon_shift_XMediaFacade_default.so",
     "libmain.so",
 )
+# libadrenotools' hooks, which the app does not load: the custom GPU driver
+# loader (Mesa Turnip) finds them in the native library folder.
+ADRENOTOOLS_HOOKS = (
+    "libhook_impl.so",
+    "libmain_hook.so",
+    "libfile_redirect_hook.so",
+    "libgsl_alloc_hook.so",
+)
 
 
 class AndroidError(RuntimeError):
@@ -207,7 +215,10 @@ def build(args: argparse.Namespace) -> int:
         run([tools.cmake, "--preset", f"android-arm64-{args.configuration.lower()}",
              f"-DCMAKE_MAKE_PROGRAM={tools.ninja}", f"-DPYTHON_EXECUTABLE={sys.executable}",
              f"-DPython3_EXECUTABLE={sys.executable}"], cwd=ROOT, env=environment)
-    command = [tools.cmake, "--build", directory, "--target", "pinyon_shift"]
+    # The game, and libadrenotools' hooks, which nothing links (they are
+    # loaded from the native library folder for a custom GPU driver).
+    command = [tools.cmake, "--build", directory, "--target", "pinyon_shift",
+               *(Path(name).stem.removeprefix("lib") for name in ADRENOTOOLS_HOOKS)]
     if args.jobs:
         command += ["-j", str(args.jobs)]
     run(command, cwd=ROOT, env=environment)
@@ -260,7 +271,7 @@ def package(args: argparse.Namespace, tools: Tools | None = None) -> int:
     tools = tools or Tools()
     directory = build_directory(args.configuration)
     libraries = []
-    for name in NATIVE_LIBRARIES:
+    for name in NATIVE_LIBRARIES + ADRENOTOOLS_HOOKS:
         found = list(directory.glob(f"**/{name}"))
         found = [path for path in found if "CMakeFiles" not in path.parts]
         if not found:
@@ -362,6 +373,32 @@ def push_data(args: argparse.Namespace) -> int:
     return 0
 
 
+def push_driver(args: argparse.Namespace) -> int:
+    """A custom Vulkan driver (Mesa Turnip) packaged for adrenotools, a .zip
+    with meta.json and the .so or a folder of them, into the state folder's
+    drivers/<name>; the game loads it with --android_gpu_driver=<name>."""
+    tools = Tools()
+    source = args.driver.resolve()
+    name = args.name or source.stem
+    staging = WORK / "driver-staging" / name
+    if staging.exists():
+        shutil.rmtree(staging)
+    if source.is_dir():
+        shutil.copytree(source, staging)
+    else:
+        with zipfile.ZipFile(source) as archive:
+            archive.extractall(staging)
+    if not any(staging.glob("*.so")):
+        raise AndroidError(f"{source} holds no driver library (.so)")
+    remote = f"{DEVICE_FILES}/state/drivers/{name}"
+    adb(tools, args, "shell", "rm", "-rf", remote)
+    adb(tools, args, "shell", "mkdir", "-p", remote)
+    adb(tools, args, "push", f"{staging}{os.sep}.", remote, stdout=subprocess.DEVNULL)
+    share_with_app(tools, args, f"{DEVICE_FILES}/state/drivers")
+    print(f"driver {name}: run with --android_gpu_driver={name}")
+    return 0
+
+
 def _pid(tools: Tools, args: argparse.Namespace) -> str:
     completed = subprocess.run([str(tools.adb)] + (["-s", args.serial] if args.serial else [])
                                + ["shell", "pidof", PACKAGE], capture_output=True, text=True)
@@ -384,11 +421,19 @@ def run_game(args: argparse.Namespace) -> int:
         # Like the Windows runner's private state per run: nothing a previous
         # run left (caches, backups, mods, repaired saves) carries over; only
         # the logs, crash reports and route output stay.
-        kept = ("logs", "crashes", "reports", "render-tests", "render-test-output")
+        kept = ("logs", "crashes", "reports", "render-tests", "render-test-output", "drivers")
         listing = subprocess.run([str(tools.adb)] + (["-s", args.serial] if args.serial else [])
                                  + ["shell", "ls", f"{DEVICE_FILES}/state/"],
                                  capture_output=True, text=True).stdout.split()
-        stale = [f"{DEVICE_FILES}/state/{name}" for name in listing if name not in kept]
+        stale = [f"{DEVICE_FILES}/state/{name}" for name in listing
+                 if name not in kept and name != "cache"]
+        # The title's cache partition is reset, but not the compiled
+        # pipelines a player keeps from run to run (cache/shaders).
+        if "cache" in listing:
+            cache = subprocess.run([str(tools.adb)] + (["-s", args.serial] if args.serial else [])
+                                   + ["shell", "ls", f"{DEVICE_FILES}/state/cache/"],
+                                   capture_output=True, text=True).stdout.split()
+            stale += [f"{DEVICE_FILES}/state/cache/{name}" for name in cache if name != "shaders"]
         if stale:
             adb(tools, args, "shell", "rm", "-rf", *stale)
         for folder in ("user", "config"):
@@ -528,6 +573,10 @@ def add_parser(commands) -> None:
     command("install", install, "install the APK on the device")
     parser = command("push-data", push_data, "copy the extracted game files to the device")
     parser.add_argument("--game-root", type=Path)
+    parser = command("push-driver", push_driver,
+                     "copy a custom Vulkan driver package (Mesa Turnip) to the device")
+    parser.add_argument("driver", type=Path, help="an adrenotools driver .zip or folder")
+    parser.add_argument("--name", help="the folder name on the device (default: the file's)")
     parser = command("run", run_game, "start the game on the device")
     parser.add_argument("--null-gpu", action="store_true", help="no renderer (gpu_backend=null)")
     parser.add_argument("--route", type=Path, help="a render-test route to run")

@@ -45,6 +45,10 @@ public class PinyonShiftActivity extends SDLActivity {
                 new File(base, "state").getAbsolutePath());
         setDefaultEnvironment("PINYON_SHIFT_GAME_ROOT",
                 new File(base, "game/base").getAbsolutePath());
+        // Custom GPU drivers (Mesa Turnip) the player copied in, chosen with
+        // android_gpu_driver; the runtime copies the chosen one inside.
+        setDefaultEnvironment("REX_ANDROID_DRIVERS_DIR",
+                new File(base, "state/drivers").getAbsolutePath());
         // The build's provenance, packaged as an asset, for logs and crash
         // reports (the game reads it beside the executable elsewhere).
         File manifest = new File(getFilesDir(), "pinyon_shift_build.json");
