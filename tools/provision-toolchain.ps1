@@ -31,7 +31,25 @@ if ([string]::IsNullOrWhiteSpace($vsRoot)) {
     }
     $helper = Join-Path $PSScriptRoot 'install-build-tools.ps1'
     $arguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$helper`" -Bootstrapper `"$bootstrap`""
-    $elevated = Start-Process -FilePath 'powershell.exe' -ArgumentList $arguments -Verb RunAs -Wait -PassThru
+    # The running PowerShell by its own path, since PATH may not hold it. Process.Start keeps
+    # the Win32 error that Start-Process drops, so a declined permission prompt
+    # (ERROR_CANCELLED) can be told apart from a failed installer.
+    $startInfo = [Diagnostics.ProcessStartInfo]::new((Get-Process -Id $PID).Path, $arguments)
+    $startInfo.Verb = 'runas'
+    $startInfo.UseShellExecute = $true
+    try {
+        $elevated = [Diagnostics.Process]::Start($startInfo)
+    }
+    catch {
+        $win32 = $_.Exception.InnerException -as [ComponentModel.Win32Exception]
+        if ($null -ne $win32 -and $win32.NativeErrorCode -eq 1223) {
+            throw ('Windows administrator permission was declined, so the Microsoft C++ Build Tools ' +
+                'were not installed. The build needs them: start the build again and choose Yes when ' +
+                'Windows asks for permission.')
+        }
+        throw
+    }
+    $elevated.WaitForExit()
     if ($elevated.ExitCode -notin @(0, 3010)) {
         throw "Microsoft C++ Build Tools installation stopped with exit code $($elevated.ExitCode)."
     }

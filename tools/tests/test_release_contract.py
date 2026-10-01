@@ -219,6 +219,27 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         self.assertIn("ConvertTo-PinyonCommandPath", common)
         self.assertIn("$inheritedPath = $env:PATH", common)
 
+    def test_powershell_is_started_by_full_path(self):
+        # A PATH without the WindowsPowerShell folder failed setup with "The
+        # specified file cannot be found" (#317).
+        launcher = (ROOT / "launcher/PinyonShift.Launcher/MainWindow.xaml.cs").read_text(
+            encoding="utf-8"
+        )
+        provision = (ROOT / "tools/provision-toolchain.ps1").read_text(encoding="utf-8")
+
+        self.assertNotIn('FileName = "powershell.exe"', launcher)
+        self.assertIn('"WindowsPowerShell", "v1.0", "powershell.exe"', launcher)
+        self.assertNotIn("'powershell.exe'", provision)
+        self.assertIn("(Get-Process -Id $PID).Path", provision)
+
+    def test_declined_build_tools_permission_is_explained(self):
+        # A declined UAC prompt surfaced only as a localized "the operation was
+        # canceled by the user" (#318).
+        provision = (ROOT / "tools/provision-toolchain.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("NativeErrorCode -eq 1223", provision)
+        self.assertIn("administrator permission was declined", provision)
+
     @unittest.skipUnless(shutil.which("powershell"), "Windows PowerShell is required")
     def test_command_path_removes_entry_quotes_without_losing_parentheses(self):
         command = (

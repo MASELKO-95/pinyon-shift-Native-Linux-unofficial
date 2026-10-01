@@ -239,7 +239,7 @@ public partial class MainWindow : Window
 
             var startInfo = new ProcessStartInfo
             {
-                FileName = "powershell.exe",
+                FileName = PowerShellExecutable(),
                 WorkingDirectory = _repositoryRoot,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
@@ -471,7 +471,7 @@ public partial class MainWindow : Window
             var launcher = Path.Combine(_repositoryRoot, "tools", "launch-preview.ps1");
             var startInfo = new ProcessStartInfo
             {
-                FileName = "powershell.exe",
+                FileName = PowerShellExecutable(),
                 WorkingDirectory = _repositoryRoot,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
@@ -546,6 +546,20 @@ public partial class MainWindow : Window
             ReportProblemButton.IsEnabled = true;
             UpdatePrimaryButton();
         }
+    }
+
+    // Windows PowerShell by its full path. A bare "powershell.exe" is found only through PATH,
+    // so a PATH that lost the WindowsPowerShell folder made every setup step fail with
+    // "The specified file cannot be found". PowerShell 7 serves when Windows PowerShell is gone.
+    private static string PowerShellExecutable()
+    {
+        string[] candidates =
+        [
+            Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PowerShell", "7",
+                "pwsh.exe")
+        ];
+        return candidates.FirstOrDefault(File.Exists) ?? "powershell.exe";
     }
 
     private static LaunchResult? ParseLaunchResult(string output)
@@ -947,7 +961,7 @@ public partial class MainWindow : Window
         if (!File.Exists(script)) throw new FileNotFoundException("The graphics settings tool is missing.", script);
         var startInfo = new ProcessStartInfo
         {
-            FileName = "powershell.exe",
+            FileName = PowerShellExecutable(),
             WorkingDirectory = _repositoryRoot,
             UseShellExecute = false,
             RedirectStandardOutput = true,
