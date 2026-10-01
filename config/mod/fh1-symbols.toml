@@ -31,6 +31,10 @@ sha256 = "DB40DF605ADE49A6"  # prefix of the supported default.xex SHA-256
 "time_of_day.request" = 0x825C7DD0       # r3 time-of-day object, f1 target seconds (add 86400 to pass midnight), f2 game seconds per second
 "time_of_day.update" = 0x825CB718        # per-frame clock and lighting update, r3 time-of-day object
 "world.game_mode" = 0x824878D0           # r3 world -> r3 game mode ([[world + 124] + 56]): 17 free roam, 3 inside an event (entry, race, results)
+"profile.from_user" = 0x824F04B0         # r3 user ([[0x832DF024] + 108]) -> r3 its career profile, 0 when none
+"profile.credits" = 0x824E4F78           # r3 profile -> r3 credits (Main/Credits)
+"profile.set_credits" = 0x824F2FA0       # r3 profile, r4 credits (clamped to 999,999,999); tells the balance's listeners (the HUD), saved with the profile
+"profile.add_value" = 0x824F2850         # r3 profile, r4 field path (C string, e.g. "Main/TotalWinnings"), r5 amount added to that u32 field
 
 # Byte offsets inside title objects, as the hooks above read them.
 [offsets]
@@ -44,3 +48,6 @@ sha256 = "DB40DF605ADE49A6"  # prefix of the supported default.xex SHA-256
 "time_of_day.script_hold" = 10505        # u8, set while a script holds the time (setters then skip it)
 "world.session" = 124                    # pointer to the object holding the game mode
 "session.game_mode" = 56                 # u32 game mode, as world.game_mode returns it
+"game.user" = 108                        # the user in the game object at [0x832DF024], as profile.from_user takes it
+"profile.values" = 32                    # the profile's value tree (Main/Credits and the other fields)
+"profile.loaded" = 40                    # u8, set once the values are loaded; the generic accessors skip a profile without it

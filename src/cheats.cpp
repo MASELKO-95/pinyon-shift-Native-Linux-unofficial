@@ -38,9 +38,10 @@ REXCVAR_DEFINE_STRING(cheat_set_profile_fields, "", "Cheats",
                       "Main/XP=450000); \"\" leaves them")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 REXCVAR_DEFINE_INT32(cheat_set_credits, -1, "Cheats",
-                     "Set the profile's credits to this when it next loads, once; -1 leaves them")
+                     "Set the profile's credits to this, once: at once while it is loaded, "
+                     "else when it next loads; -1 leaves them")
     .range(-1, 999999999)
-    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
 namespace pinyon_shift::cheats {
 
@@ -53,6 +54,20 @@ std::mutex g_fields_mutex;
 std::string g_fields_value;
 std::mutex g_applied_mutex;
 std::function<void(std::string_view)> g_applied;
+// Live credits changes waiting for the running profile, and what they did.
+std::mutex g_credits_mutex;
+CreditsChange g_credits_change;
+std::atomic<bool> g_credits_pending{false};
+std::atomic<int64_t> g_credits_added{0};
+
+void CallApplied(std::string_view setting) {
+  std::function<void(std::string_view)> applied;
+  {
+    std::lock_guard lock(g_applied_mutex);
+    applied = g_applied;
+  }
+  if (applied) applied(setting);
+}
 
 void StoreBe32(uint8_t* bytes, uint32_t value) {
   bytes[0] = uint8_t(value >> 24);
@@ -93,9 +108,12 @@ std::string Active() {
   if (const double seconds = TimeOfDaySeconds(); seconds >= 0.0) {
     active += fmt::format("{}time_of_day={:.2f}", active.empty() ? "" : ",", seconds / 3600.0);
   }
-  if (g_credits_applied.load(std::memory_order_acquire)) {
-    active += fmt::format("{}set_credits={}", active.empty() ? "" : ",",
-                          g_set_credits_value.load(std::memory_order_acquire));
+  if (const int32_t credits = g_set_credits_value.load(std::memory_order_acquire);
+      credits >= 0) {
+    active += fmt::format("{}set_credits={}", active.empty() ? "" : ",", credits);
+  }
+  if (const int64_t added = g_credits_added.load(std::memory_order_acquire); added != 0) {
+    active += fmt::format("{}add_credits={}", active.empty() ? "" : ",", added);
   }
   if (g_fields_applied.load(std::memory_order_acquire)) {
     std::lock_guard lock(g_fields_mutex);
@@ -184,12 +202,7 @@ static void EditLoadedProfileFields(uint8_t* body, size_t size) {
     std::lock_guard lock(g_fields_mutex);
     g_fields_value = fields;
   }
-  std::function<void(std::string_view)> applied;
-  {
-    std::lock_guard lock(g_applied_mutex);
-    applied = g_applied;
-  }
-  if (applied) applied("cheat_set_profile_fields");
+  CallApplied("cheat_set_profile_fields");
 }
 
 void EditLoadedProfile(uint8_t* body, size_t size) {
@@ -211,15 +224,73 @@ void EditLoadedProfile(uint8_t* body, size_t size) {
                             (uint32_t(value[2]) << 8) | uint32_t(value[3]);
   StoreBe32(value, static_cast<uint32_t>(credits));
   g_set_credits_value.store(credits, std::memory_order_release);
+  {
+    // Chosen while the profile was not loaded: the body took it, so the live
+    // path must not set it again over later changes.
+    std::lock_guard lock(g_credits_mutex);
+    if (g_credits_change.set == credits) {
+      g_credits_change.set = -1;
+      g_credits_pending.store(g_credits_change.add != 0, std::memory_order_release);
+    }
+  }
   diagnostics::RecordEvent("cheat.applied", {{"name", "cheat_set_credits"},
                                              {"previous", fmt::format("{}", previous)},
-                                             {"value", fmt::format("{}", credits)}});
-  std::function<void(std::string_view)> applied;
-  {
-    std::lock_guard lock(g_applied_mutex);
-    applied = g_applied;
+                                             {"value", fmt::format("{}", credits)},
+                                             {"when", "load"}});
+  CallApplied("cheat_set_credits");
+}
+
+void AddCredits(int32_t amount) {
+  if (!Enabled() || amount == 0) {
+    return;
   }
-  if (applied) applied("cheat_set_credits");
+  {
+    std::lock_guard lock(g_credits_mutex);
+    g_credits_change.add += amount;
+    g_credits_pending.store(true, std::memory_order_release);
+  }
+  diagnostics::RecordEvent("cheat.changed",
+                           {{"name", "cheat_add_credits"}, {"value", fmt::format("{}", amount)}});
+}
+
+bool CreditsPending() {
+  return g_credits_pending.load(std::memory_order_acquire) && Enabled();
+}
+
+CreditsChange TakeCredits() {
+  std::lock_guard lock(g_credits_mutex);
+  const CreditsChange change = g_credits_change;
+  g_credits_change = CreditsChange{};
+  g_credits_pending.store(false, std::memory_order_release);
+  return change;
+}
+
+void ReturnCredits(const CreditsChange& change) {
+  std::lock_guard lock(g_credits_mutex);
+  // Changes made meanwhile come after it: a set replaces it, additions add.
+  if (g_credits_change.set < 0) {
+    g_credits_change.set = change.set;
+    g_credits_change.add += change.add;
+  }
+  g_credits_pending.store(g_credits_change.set >= 0 || g_credits_change.add != 0,
+                          std::memory_order_release);
+}
+
+void CreditsApplied(const CreditsChange& change, uint32_t previous, uint32_t value) {
+  if (change.set >= 0) {
+    g_set_credits_value.store(int32_t(change.set), std::memory_order_release);
+  }
+  g_credits_added.fetch_add(change.add, std::memory_order_acq_rel);
+  diagnostics::RecordEvent("cheat.applied",
+                           {{"name", change.set >= 0 ? "cheat_set_credits" : "cheat_add_credits"},
+                            {"set", fmt::format("{}", change.set)},
+                            {"add", fmt::format("{}", change.add)},
+                            {"previous", fmt::format("{}", previous)},
+                            {"value", fmt::format("{}", value)},
+                            {"when", "live"}});
+  if (change.set >= 0) {
+    CallApplied("cheat_set_credits");
+  }
 }
 
 void SetAppliedCallback(std::function<void(std::string_view setting)> callback) {
@@ -231,13 +302,32 @@ void InstallChangeLog() {
   // Every setting the trainer changes, including the graphics and debug ones
   // it shares with SETTINGS.
   for (const char* name : {"cheat_time_scale", "cheat_time_of_day", "cheat_free_camera",
-                           "disable_motion_blur",
+                           "cheat_show_collectibles", "disable_motion_blur",
                            "disable_depth_of_field",
                            "force_trilinear_filtering", "fh1_render_test_log_file_opens"}) {
     rex::cvar::RegisterChangeCallback(name, [](std::string_view name, std::string_view value) {
       diagnostics::RecordEvent("cheat.changed", {{"name", name}, {"value", value}});
     });
   }
+  // A credits value chosen while the game runs waits for the running
+  // profile; clearing it to -1 after it applied is not a change.
+  rex::cvar::RegisterChangeCallback(
+      "cheat_set_credits", [](std::string_view name, std::string_view value) {
+        const std::string owned(value);
+        char* end = nullptr;
+        const long credits = std::strtol(owned.c_str(), &end, 10);
+        if (!Enabled() || end == owned.c_str() || *end || credits < 0) {
+          return;
+        }
+        {
+          std::lock_guard lock(g_credits_mutex);
+          g_credits_change.set = credits;
+          // A set replaces the additions made before it.
+          g_credits_change.add = 0;
+          g_credits_pending.store(true, std::memory_order_release);
+        }
+        diagnostics::RecordEvent("cheat.changed", {{"name", name}, {"value", value}});
+      });
 }
 
 }  // namespace pinyon_shift::cheats

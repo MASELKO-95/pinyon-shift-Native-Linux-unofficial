@@ -14,6 +14,7 @@
 #include <rex/audio/downmix.h>
 #include <rex/input/pad_remap.h>
 
+#include "cheats.h"
 #include "mod/mod_host.h"
 #include "pinyon_shift_diagnostics.h"
 #include <rex/cvar.h>
@@ -74,8 +75,8 @@ bool SameValue(std::string_view a, std::string_view b) {
 bool NeedsRestart(std::string_view name) {
   static constexpr std::string_view kNames[] = {
       "gpu_backend",       "gpu_record_thread",        "user_language",
-      "user_country",      "pinyon_shift_cheats",      "cheat_set_credits",
-      "cheat_set_profile_fields", "pinyon_shift_prepare_all_scales",
+      "user_country",      "pinyon_shift_cheats",      "cheat_set_profile_fields",
+      "pinyon_shift_prepare_all_scales",
   };
   return std::find(std::begin(kNames), std::end(kNames), name) != std::end(kNames);
 }
@@ -599,17 +600,36 @@ std::unique_ptr<MenuScreen> SettingsPages::Trainer() {
 }
 
 std::unique_ptr<MenuScreen> SettingsPages::TrainerPlayer() {
-  // The save editor (NP-8.3): written into the profile when it next loads,
-  // once, since the running title keeps its money encoded in memory.
+  // Credits (NP-8.3) go through the title's own setter at once, or when the
+  // profile loads if it has not yet: left and right pick the amount, enter
+  // applies it. A set goes through cheat_set_credits (cleared once applied,
+  // and kept in the file until then for a profile that loads next start).
   std::vector<MenuRow> rows;
-  std::vector<Choice> credits;
-  credits.push_back({"UNCHANGED", {{"cheat_set_credits", "-1"}}});
-  for (const auto& [label, value] : std::initializer_list<std::pair<const char*, const char*>>{
-           {"250,000", "250000"}, {"1,000,000", "1000000"}, {"5,000,000", "5000000"},
-           {"20,000,000", "20000000"}}) {
-    credits.push_back({label, {{"cheat_set_credits", value}}});
-  }
-  rows.push_back(Setting("SET CREDITS", std::move(credits)));
+  using Amount = std::pair<const char*, int32_t>;
+  static constexpr Amount kSetAmounts[] = {
+      {"0", 0}, {"250,000", 250000}, {"1,000,000", 1000000}, {"5,000,000", 5000000},
+      {"20,000,000", 20000000}};
+  static constexpr Amount kAddAmounts[] = {
+      {"+100,000", 100000}, {"+1,000,000", 1000000}, {"+10,000,000", 10000000}};
+  const auto amount_row = [](std::string label, const Amount* amounts, int count, int first,
+                             std::function<void(int32_t)> apply) {
+    auto index = std::make_shared<int>(first);
+    MenuRow row;
+    row.label = std::move(label);
+    row.value = [amounts, index] { return std::string(amounts[*index].first); };
+    row.adjust = [count, index](int direction) { *index = (*index + direction + count) % count; };
+    row.activate = [amounts, index, apply = std::move(apply)] { apply(amounts[*index].second); };
+    return row;
+  };
+  rows.push_back(amount_row("SET CREDITS", kSetAmounts, int(std::size(kSetAmounts)), 2,
+                            [this](int32_t credits) {
+                              const std::string value = std::to_string(credits);
+                              config_.Set("cheat_set_credits", value);
+                              rex::cvar::SetFlagByName("cheat_set_credits", value);
+                              Save();
+                            }));
+  rows.push_back(amount_row("ADD CREDITS", kAddAmounts, int(std::size(kAddAmounts)), 1,
+                            [](int32_t credits) { cheats::AddCredits(credits); }));
   // Any scalar profile field goes through cheat_set_profile_fields; the
   // wristband level also unlocks the events it gates.
   std::vector<Choice> wristbands;
@@ -621,7 +641,9 @@ std::unique_ptr<MenuScreen> SettingsPages::TrainerPlayer() {
   }
   rows.push_back(Setting("SET WRISTBAND", std::move(wristbands)));
   return std::make_unique<MenuScreen>("PLAYER", std::move(rows), [] {
-    return std::string("APPLIED ONCE WHEN THE PROFILE NEXT LOADS: RESTART THE GAME");
+    return std::string(cheats::CreditsPending()
+                           ? "CREDITS APPLY ONCE THE PROFILE HAS LOADED"
+                           : "ENTER APPLIES CREDITS AT ONCE; WRISTBAND AT THE NEXT PROFILE LOAD");
   });
 }
 

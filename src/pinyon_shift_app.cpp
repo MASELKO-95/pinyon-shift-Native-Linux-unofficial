@@ -690,11 +690,15 @@ void PinyonShiftApp::OnPostSetup() {
   rex::ui::RegisterBind("bind_game_menu", "F6", "Open the in-game settings menu",
                         [this] { ToggleGameMenu(); });
   pinyon_shift::cheats::InstallChangeLog();
-  // A one-shot save edit applied: clear its setting so the next start keeps
-  // the player's own progress.
+  // A one-shot save edit or a live credits set applied: clear its setting so
+  // the next start (and, for the credits, the next profile load) keeps the
+  // player's own progress.
   pinyon_shift::cheats::SetAppliedCallback([this](std::string_view setting) {
     if (!window()) return;
     window()->app_context().CallInUIThreadDeferred([this, name = std::string(setting)] {
+      if (name == "cheat_set_credits") {
+        rex::cvar::SetFlagByName(name, "-1");
+      }
       if (host_config_ && host_config_->Load()) {
         // The credits take -1 for "leave them", the field list "".
         host_config_->Set(name, name == "cheat_set_credits" ? "-1" : "");

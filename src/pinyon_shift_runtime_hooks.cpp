@@ -437,9 +437,11 @@ void SnapshotSavePayload(std::string_view kind, uint32_t address, uint32_t size,
 // Discovery for the save editor (NP-8.3), with PINYON_SHIFT_PROFILE_SCAN=1:
 // at each profile save, reads Credits, XP and TotalWinnings from the body and
 // logs guest words holding Credits next to the other two, else every word
-// holding Credits. Neither Credits nor TotalWinnings is stored plainly (the
-// title encodes money in memory; after a purchase only transient copies of
-// the new balance show up), which is why the editor works at load time.
+// holding Credits. It finds only transient copies: the profile's value tree
+// keeps Credits as a plain u32 in a typed value (vtable 0x82142440, the value
+// at +8, type 3 at +16), but in the heap below 0x40000000, which the scan
+// does not cover. The trainer sets credits through the title's own setter
+// instead (PinyonShiftApplyCredits).
 void ScanLiveProfile(uint32_t address, uint32_t size) {
   static const bool enabled = [] {
     const std::optional<std::string> value_owned =
@@ -4057,6 +4059,69 @@ static void PinyonShiftApplyFreeCamera() {
   });
 }
 
+// The trainer's live credits (NP-8.3), through the title's own accessors as
+// its CGivePlayerMoney script action (sub_825AD820) uses them: the profile is
+// sub_824F04B0 of the user at [[0x832DF024] + 108], sub_824E4F78 reads its
+// Main/Credits and sub_824F2FA0 sets it (clamped to 999,999,999), which also
+// tells the balance's listeners (the HUD) and marks the field for the next
+// save. Until the profile's values are loaded (the byte at +40 the title's
+// generic accessors check) the change waits, retried twice a second.
+static void PinyonShiftApplyCredits() {
+  static std::atomic<bool> queued{false};
+  static std::atomic<uint32_t> wait_frames{0};
+  if (queued.load(std::memory_order_acquire) || !pinyon_shift::cheats::CreditsPending()) {
+    return;
+  }
+  if (wait_frames.load(std::memory_order_relaxed) > 0) {
+    wait_frames.fetch_sub(1, std::memory_order_relaxed);
+    return;
+  }
+  queued.store(true, std::memory_order_release);
+  pinyon_shift::mod::EnqueueHostGuestTask([] {
+    constexpr uint32_t kUserHolder = 0x832DF024u;
+    constexpr uint32_t kHolderUser = 108;
+    constexpr uint32_t kProfileLoaded = 40;
+    constexpr uint32_t kProfileFromUser = 0x824F04B0u;
+    constexpr uint32_t kProfileCredits = 0x824E4F78u;
+    constexpr uint32_t kProfileSetCredits = 0x824F2FA0u;
+    constexpr int64_t kMaximumCredits = 999'999'999;
+    const pinyon_shift::cheats::CreditsChange change = pinyon_shift::cheats::TakeCredits();
+    if (change.set < 0 && change.add == 0) {
+      queued.store(false, std::memory_order_release);
+      return;
+    }
+    const uint32_t profile = [&]() -> uint32_t {
+      const uint32_t holder = LoadGuestU32(kUserHolder);
+      if (holder == 0 || !PinyonShiftGuestRangeReadable(holder + kHolderUser, 4)) {
+        return 0;
+      }
+      const uint32_t user = LoadGuestU32(holder + kHolderUser);
+      if (user == 0) {
+        return 0;
+      }
+      const uint32_t profile = pinyon_shift::mod::CallGuest(kProfileFromUser, {user});
+      if (profile == 0 || !PinyonShiftGuestRangeReadable(profile + kProfileLoaded, 1) ||
+          LoadGuestU8(profile + kProfileLoaded) == 0) {
+        return 0;
+      }
+      return profile;
+    }();
+    if (profile == 0) {
+      pinyon_shift::cheats::ReturnCredits(change);
+      wait_frames.store(30, std::memory_order_relaxed);
+      queued.store(false, std::memory_order_release);
+      return;
+    }
+    const uint32_t previous = pinyon_shift::mod::CallGuest(kProfileCredits, {profile});
+    const int64_t target = std::clamp<int64_t>(
+        (change.set >= 0 ? change.set : int64_t(previous)) + change.add, 0, kMaximumCredits);
+    pinyon_shift::mod::CallGuest(kProfileSetCredits, {profile, uint32_t(target)});
+    const uint32_t value = pinyon_shift::mod::CallGuest(kProfileCredits, {profile});
+    pinyon_shift::cheats::CreditsApplied(change, previous, value);
+    queued.store(false, std::memory_order_release);
+  });
+}
+
 void PinyonShiftObserveSimulationDelta(PPCRegister& f31) {
   double seconds = f31.f64;
   if (!std::isfinite(seconds) || seconds < 0.0 || seconds > 0.25) {
@@ -4085,6 +4150,7 @@ void PinyonShiftObserveSimulationDelta(PPCRegister& f31) {
   }
   PinyonShiftHoldTimeOfDay();
   PinyonShiftApplyFreeCamera();
+  PinyonShiftApplyCredits();
   PROFILE_SIMULATION_TIME_NS(
       static_cast<int64_t>(std::llround(seconds * 1'000'000'000.0)));
 }

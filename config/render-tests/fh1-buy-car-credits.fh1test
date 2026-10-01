@@ -1,0 +1,46 @@
+pinyon-shift-fh1-render-test-v1
+# NP-8.3 live credits and the title's next save: with cheats on
+# (--pinyon_shift_cheats=true), from seed appdata-2026-09-27 (167,700 Cr), as
+# fh1-buy-car, with cheat_set_credits set to 1000000 once free roam has
+# loaded. The title's setter takes it at once (cheat.applied, live), the
+# showroom then shows "Available: 1,000,000 Cr", and the saves after the
+# 120,000 purchase of the Jaguar XKR-S hold 880,000
+# (PINYON_SHIFT_M5_SAVE_TRACE=1 keeps their plaintext bodies).
+input 0 0000 0 0 0 0 0 0
+input 360 1000 0 0 0 0 0 0
+input 366 0000 0 0 0 0 0 0
+input 480 1000 0 0 0 0 0 0
+input 486 0000 0 0 0 0 0 0
+input 600 1000 0 0 0 0 0 0
+input 606 0000 0 0 0 0 0 0
+input 720 1000 0 0 0 0 0 0
+input 726 0000 0 0 0 0 0 0
+wait 1400 3000 vehicle
+cvar 1500 cheat_set_credits 1000000
+capture 1560 event-ready
+input 1680 4000 0 0 0 0 0 0
+input 1686 0000 0 0 0 0 0 0
+capture 1860 event-entered
+input 2040 1000 0 0 0 0 0 0
+input 2046 0000 0 0 0 0 0 0
+wait 2050 1200 file thumbnail_
+capture 2220 car-select
+input 2400 0004 0 0 0 0 0 0
+input 2406 0000 0 0 0 0 0 0
+input 2460 1000 0 0 0 0 0 0
+input 2466 0000 0 0 0 0 0 0
+wait 2470 1500 file shaders_ui_v16
+capture 2560 recommends
+input 2600 1000 0 0 0 0 0 0
+input 2606 0000 0 0 0 0 0 0
+wait 2610 900 file playerdatabase
+capture 2680 showroom
+input 2700 1000 0 0 0 0 0 0
+input 2706 0000 0 0 0 0 0 0
+capture 2750 confirm
+input 2770 1000 0 0 0 0 0 0
+input 2776 0000 0 0 0 0 0 0
+capture 2820 saving
+wait 2830 3000 file thumbnail_7
+capture 2900 after-thumbnail
+stop 3150

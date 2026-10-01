@@ -215,8 +215,10 @@ values are under `Main` (`Main/Credits`, `Main/XP`, `Main/Level`,
 `Main/WristbandLevel`). Class-serialised challenge states and padding follow
 the section. `tools/fh1-profile.py` decodes a body and edits a field. Edit a
 save after it is decrypted, not before it is encrypted: the running title
-keeps its money encoded in memory, so a value written into an outgoing save
-only lasts until the next save.
+keeps its own copy of the values, so a value written into an outgoing save
+only lasts until the next save. To change the credits while the game runs,
+call the title's accessors from a guest task instead (`profile.from_user`,
+`profile.credits` and `profile.set_credits`).
 
 ### Guest memory, symbols and calls
 
