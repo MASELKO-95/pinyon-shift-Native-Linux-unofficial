@@ -35,7 +35,7 @@ tunnel. Rows that need the reference device stay open.
 | AP-0.6 16 KiB pages | Open | Needs a 16 KiB kernel; every packaged library is checked for 16 KiB-aligned load segments |
 | AP-1.1 to AP-1.4 | **Done** | NDK presets, SDK CMake for Android, `main_android.h` glue, `libmain.so` with `SDL_main`, ANativeWindow surface, activity without Gradle |
 | AP-1.5 title screen | **Done (emulator)** | The FH1 executor draws the title screen through Vulkan on the emulator |
-| AP-2.0 capability report | **Done** | `VULKAN_CAPABILITY_REPORT` log line, on by default on Android; first report from the emulator's M4 |
+| AP-2.0 capability report | **Done** | `VULKAN_CAPABILITY_REPORT` log line, on by default on Android; the emulator's report is in [docs/android/](android/capability-emulator-apple-m4-pro.json); the reference device's goes beside it |
 | AP-2.1 dynamic rendering bug | **Done** | Requested once; the feature is linked from the device's own flag |
 | AP-2.2 geometry shaders | **Done** | Not required by default on Android. With every fallback forced on NVIDIA, `fh1-opening-sync` crashed the driver: the SPIR-V rectangle-list loop produced an invalid OpPhi, now fixed; all 444 translated modules pass `spirv-val`, menu captures within 1.5 MAE |
 | AP-3.1, AP-3.2 lifecycle | In progress | SDL app events reach a lifecycle listener in the UI thread before SDL blocks; the window drops and recreates its surface; GPU and audio pause |
@@ -71,6 +71,16 @@ tunnel. Rows that need the reference device stay open.
   title reads guest address `0x38` and stops). Routes can therefore fail at
   their first file wait on a device whose frames arrive in different bursts;
   re-timing the routes is a separate task.
+- **Gameplay renders on the emulator, with one texture fault.** Through
+  Vulkan on the emulator's GPU (gfxstream over MoltenVK on an Apple M4; its
+  [capability report](android/capability-emulator-apple-m4-pro.json): no
+  geometry shaders, no sparse binding, no multisampled storage images, no
+  D24S8, one 2 GB heap) the opening drive renders with its HUD, minimap and
+  speedometer at about 6 fps, but the car's paint shows a fine grid and its
+  stripes garbled texels where Windows draws them clean, and road markings
+  are jagged. Candidates: the missing `shaderStorageImageMultisample`, or a
+  tiling or format path the translation layer handles differently. To check
+  on the Adreno reference device before anything else in AP-2.3.
 - **No socket permission, no single player.** The title opens system-link
   sockets at the single-player menu and dereferences null when `socket()`
   fails, so the package asks for `INTERNET`.

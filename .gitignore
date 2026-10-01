@@ -30,6 +30,8 @@ private/
 !/docs/PERFORMANCE_BACKLOG.md
 !/docs/ANDROID_PORT_BACKLOG.md
 !/docs/ANDROID.md
+!/docs/android/
+!/docs/android/*.json
 !/docs/MODDING.md
 !/docs/releases/
 !/docs/releases/*.md
