@@ -13,6 +13,9 @@ $config = Get-PinyonReleaseToolchain
 $git = Get-PinyonGit
 $sdkRoot = Resolve-PinyonRexGlueRoot
 $isRepositoryCheckout = Test-Path -LiteralPath (Join-Path $root '.git')
+$logs = Resolve-PinyonLocalPath -RelativePath '.local/logs'
+$gitLog = Join-Path $logs 'rexglue-prepare.log'
+if (Test-Path -LiteralPath $gitLog) { Remove-Item -LiteralPath $gitLog -Force }
 
 function Invoke-PinyonGitWithRetry {
     param(
@@ -22,10 +25,14 @@ function Invoke-PinyonGitWithRetry {
     )
 
     $maximumAttempts = 3
+    $code = 0
     for ($attempt = 1; $attempt -le $maximumAttempts; $attempt++) {
         if ($null -ne $BeforeAttempt) { & $BeforeAttempt $attempt }
-        & $git @Arguments
-        if ($LASTEXITCODE -eq 0) { return }
+        # Keep Git's stderr (where it reports errors) in the output and in
+        # .local/logs/rexglue-prepare.log for the failure report.
+        Invoke-PinyonLoggedCommand -FilePath $git -Arguments $Arguments -LogPath $gitLog -Append
+        $code = $LASTEXITCODE
+        if ($code -eq 0) { return }
         if ($attempt -lt $maximumAttempts) {
             Write-PinyonEvent tools 35 `
                 "$Activity failed (attempt $attempt of $maximumAttempts); retrying." `
@@ -33,7 +40,9 @@ function Invoke-PinyonGitWithRetry {
             Start-Sleep -Seconds (2 * $attempt)
         }
     }
-    throw "$Activity failed after $maximumAttempts attempts. Check the build log for the Git error."
+    throw (New-PinyonCommandFailure -FailureMessage "$Activity failed after $maximumAttempts attempts." `
+        -Step $Activity -LogPath $gitLog -ExitCode $code `
+        -CommandLine (Format-PinyonCommandLine -FilePath $git -Arguments $Arguments))
 }
 
 function Repair-MaterializedLinks {

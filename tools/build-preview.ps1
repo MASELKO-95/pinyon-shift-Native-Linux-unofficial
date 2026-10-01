@@ -2,7 +2,8 @@
 param(
     [ValidateSet('Release', 'RelWithDebInfo')]
     [string]$Configuration = 'Release',
-    [ValidateRange(1, 32)] [int]$Parallel = [Math]::Max(2, [Math]::Min(16, [Environment]::ProcessorCount - 1)),
+    # 0 picks a job count from the logical processors and installed memory.
+    [ValidateRange(0, 32)] [int]$Parallel = 0,
     [switch]$CleanGenerated,
     # NP-3.5: 'auto' builds with FMA3 when this CPU has it (a faster build of
     # the same results); the build only runs on CPUs with the chosen baseline.
@@ -29,6 +30,7 @@ $logs = Resolve-PinyonLocalPath -RelativePath '.local/logs'
 [void](New-Item -ItemType Directory -Force -Path $logs)
 $env:SOURCE_DATE_EPOCH = '1784764800'
 $previewPreset = 'win-amd64-' + $Configuration.ToLowerInvariant()
+if ($Parallel -eq 0) { $Parallel = Get-PinyonBuildJobCount }
 function Test-PinyonCpuFma {
     # Windows reports AVX2 only when it also saves the AVX register state, and
     # every CPU with AVX2 has FMA3.
@@ -62,14 +64,17 @@ $guestPatchPath = Join-Path $root 'config/rexglue/analysis/fh1-post-processing.t
 $guestPatchSetSha256 = (Get-FileHash -LiteralPath $guestPatchPath -Algorithm SHA256).Hash
 
 Write-PinyonEvent build 62 'Building the local code generator.' -JsonEvents:$JsonEvents
+$memoryBytes = Get-PinyonTotalMemoryBytes
+$memoryText = if ($memoryBytes -gt 0) { ", $([Math]::Round($memoryBytes / 1GB)) GB memory" } else { '' }
+Write-PinyonEvent build 62 "Compiling with $Parallel parallel jobs ($([Environment]::ProcessorCount) logical processors$memoryText)." -JsonEvents:$JsonEvents
 Push-Location $sdkRoot
 try {
     Invoke-PinyonBuildCommand $environment.CMake @('--preset', 'win-amd64',
         '-DREXGLUE_ENABLE_TRACY=OFF', '-DSDL_HIDAPI_LIBUSB=OFF') `
-        (Join-Path $logs 'rexglue-configure.log') 'ReXGlue configuration failed.'
+        (Join-Path $logs 'rexglue-configure.log') 'ReXGlue configuration failed.' -Step 'Configure the ReXGlue code generator'
     Invoke-PinyonBuildCommand $environment.CMake @('--build', '--preset', 'win-amd64-release',
         '--target', 'rexglue', '--parallel', "$Parallel") `
-        (Join-Path $logs 'rexglue-build.log') 'ReXGlue code-generator build failed.'
+        (Join-Path $logs 'rexglue-build.log') 'ReXGlue code-generator build failed.' -Step 'Build the ReXGlue code generator'
 }
 finally { Pop-Location }
 if (-not (Test-Path -LiteralPath $rexglueExe -PathType Leaf)) {
@@ -95,12 +100,16 @@ if ($requiresBootstrap) {
         Remove-Item -LiteralPath $codegenLog -Force
     }
     & $rexglueExe --log-level info --log-file $codegenLog codegen $manifest
-    if ($LASTEXITCODE -ne 0) {
+    $codegenExit = $LASTEXITCODE
+    if ($codegenExit -ne 0) {
         foreach ($tree in $generatedTrees) {
             $stamp = Join-Path $generatedRoot "$tree/codegen.build.stamp"
             if (Test-Path -LiteralPath $stamp) { Remove-Item -LiteralPath $stamp -Force }
         }
-        throw 'Local code generation failed; incomplete generation stamps were removed.'
+        throw (New-PinyonCommandFailure -FailureMessage 'Local code generation failed; incomplete generation stamps were removed.' `
+            -Step 'Translate the game code' -LogPath $codegenLog -ExitCode $codegenExit `
+            -CommandLine (Format-PinyonCommandLine -FilePath $rexglueExe -Arguments @(
+                '--log-level', 'info', '--log-file', $codegenLog, 'codegen', $manifest)))
     }
     try {
         & (Join-Path $PSScriptRoot 'verify-codegen-log.ps1') -LogPath $codegenLog | Out-Host
@@ -134,9 +143,9 @@ try {
     Invoke-PinyonBuildCommand $environment.CMake @('--preset', $previewPreset, "-DREXSDK_DIR=$sdkRoot",
         "-DPINYON_SHIFT_CPU_BASELINE=$cpuBaseline", "-DCMAKE_C_FLAGS=$cpuFlags",
         "-DCMAKE_CXX_FLAGS=$cpuFlags", "-DPYTHON_EXECUTABLE=$(Get-PinyonPython)") `
-        (Join-Path $logs 'preview-configure.log') 'Preview configuration failed.'
+        (Join-Path $logs 'preview-configure.log') 'Preview configuration failed.' -Step 'Configure the game build'
     Invoke-PinyonBuildCommand $environment.CMake @('--build', '--preset', $previewPreset, '--parallel', "$Parallel") `
-        (Join-Path $logs 'preview-build.log') 'Preview compilation failed.'
+        (Join-Path $logs 'preview-build.log') 'Preview compilation failed.' -Step 'Compile the game'
 }
 finally { Pop-Location }
 

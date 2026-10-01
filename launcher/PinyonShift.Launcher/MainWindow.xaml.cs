@@ -231,6 +231,8 @@ public partial class MainWindow : Window
         SetSubhead("The first build takes 20 to 60 minutes. You can leave it running.");
         AppendLog("Starting local setup. The first build can take a while.");
 
+        var setupStartedUtc = DateTime.UtcNow;
+        _setupFailurePrinted = false;
         try
         {
             var script = Path.Combine(_repositoryRoot, "tools", "setup-preview.ps1");
@@ -273,7 +275,7 @@ public partial class MainWindow : Window
             });
             await process.WaitForExitAsync(_cancellation.Token);
             if (process.ExitCode != 0)
-                throw new InvalidOperationException("Setup stopped before completing. The details above contain the cause.");
+                throw new InvalidOperationException(DescribeSetupFailure(process.ExitCode, setupStartedUtc));
 
             DetectExistingBuild();
             if (_gameExecutable is null)
@@ -304,6 +306,7 @@ public partial class MainWindow : Window
         const string prefix = "::pinyon::";
         if (!line.StartsWith(prefix, StringComparison.Ordinal))
         {
+            if (line.StartsWith(SetupFailureBanner, StringComparison.Ordinal)) _setupFailurePrinted = true;
             AppendLog(line);
             return;
         }
@@ -347,6 +350,61 @@ public partial class MainWindow : Window
         {
             AppendLog(line);
         }
+    }
+
+    // tools/release-common.ps1 (Format-PinyonFailureRecord) starts its failure report with this line.
+    private const string SetupFailureBanner = "==================== SETUP FAILED";
+    private bool _setupFailurePrinted;
+
+    // The failed step, exit code, log and first error from .local/logs/setup-error.json. The report
+    // is repeated in the log only when the setup output did not already show it, so a lost or
+    // interleaved stream still leaves the cause on screen.
+    private string DescribeSetupFailure(int exitCode, DateTime startedUtc)
+    {
+        var fallback = $"Setup stopped before completing (exit code {exitCode}). The details above contain the cause.";
+        if (_repositoryRoot is null) return fallback;
+        var path = Path.Combine(_repositoryRoot, ".local", "logs", "setup-error.json");
+        SetupFailure? failure;
+        try
+        {
+            if (!File.Exists(path) || File.GetLastWriteTimeUtc(path) < startedUtc.AddSeconds(-2)) return fallback;
+            failure = JsonSerializer.Deserialize<SetupFailure>(File.ReadAllText(path));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return fallback;
+        }
+        if (failure is null) return fallback;
+
+        var excerpt = new List<string>();
+        if (failure.ErrorExcerpt is { ValueKind: JsonValueKind.Array } lines)
+            excerpt.AddRange(lines.EnumerateArray().Select(x => x.ValueKind == JsonValueKind.String ? x.GetString() ?? "" : x.ToString()));
+        else if (failure.ErrorExcerpt is { ValueKind: JsonValueKind.String } single)
+            excerpt.Add(single.GetString() ?? "");
+        var code = failure.ExitCode is { ValueKind: JsonValueKind.Number } number ? number.ToString() : null;
+
+        if (!_setupFailurePrinted)
+        {
+            AppendLog($"Setup failure report ({path}):");
+            if (!string.IsNullOrWhiteSpace(failure.Message)) AppendLog($"Error: {failure.Message}");
+            if (!string.IsNullOrWhiteSpace(failure.Step)) AppendLog($"Failed step: {failure.Step}");
+            if (code is not null) AppendLog($"Exit code: {code}");
+            if (!string.IsNullOrWhiteSpace(failure.BuildLog)) AppendLog($"Full log: {failure.BuildLog}");
+            if (excerpt.Count > 0)
+            {
+                AppendLog("First error from the log:");
+                foreach (var line in excerpt) AppendLog("    " + line);
+            }
+            if (!string.IsNullOrWhiteSpace(failure.Hint)) AppendLog($"What to try: {failure.Hint}");
+        }
+
+        var summary = string.IsNullOrWhiteSpace(failure.Step) ? "Setup stopped" : $"{failure.Step} failed";
+        if (code is not null) summary += $" (exit code {code})";
+        summary += ". ";
+        summary += string.IsNullOrWhiteSpace(failure.Hint)
+            ? (excerpt.Count > 0 ? "The first error is shown in the log above." : failure.Message ?? "The details above contain the cause.")
+            : failure.Hint;
+        return summary;
     }
 
     private void SetProgress(int percent, string? message)
@@ -1159,6 +1217,13 @@ public partial class MainWindow : Window
     }
 
     private sealed record ProgressMessage(string? Stage, int Percent, string? Message);
+    private sealed record SetupFailure(
+        [property: JsonPropertyName("message")] string? Message,
+        [property: JsonPropertyName("step")] string? Step,
+        [property: JsonPropertyName("exit_code")] JsonElement? ExitCode,
+        [property: JsonPropertyName("build_log")] string? BuildLog,
+        [property: JsonPropertyName("error_excerpt")] JsonElement? ErrorExcerpt,
+        [property: JsonPropertyName("hint")] string? Hint);
     private sealed record LaunchResult(
         [property: JsonPropertyName("result")] string? Result,
         [property: JsonPropertyName("crash_id")] string? CrashId,
