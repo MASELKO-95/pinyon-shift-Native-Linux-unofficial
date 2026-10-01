@@ -2,10 +2,11 @@
 
 // The POSIX crash reporter: a handler for the fatal signals, on its own stack,
 // writes <crash_root>/<session>-<signal>.txt with the signal, the faulting
-// address, the program counter and a backtrace, then lets the default action
-// end the process (and leave a core dump where the system keeps them). Only
-// async-signal-safe calls run in the handler, except backtrace(), which glibc
-// and macOS support there once it has been called before the fault.
+// address, the program counter (with its library and offset) and a backtrace,
+// then lets the default action end the process (and leave a core dump where
+// the system keeps them). Only async-signal-safe calls run in the handler,
+// except dladdr() and backtrace(), which glibc, bionic and macOS support there
+// once backtrace() has been called before the fault.
 
 #include <fcntl.h>
 #include <signal.h>
@@ -18,10 +19,12 @@
 #include <cstdint>
 #include <cstring>
 
-#if defined(__GLIBC__) || defined(__APPLE__)
+#if defined(__GLIBC__) || defined(__APPLE__) || \
+    (defined(__ANDROID__) && __ANDROID_API__ >= 33)
 #include <execinfo.h>
 #define PINYON_SHIFT_HAVE_BACKTRACE 1
 #endif
+#include <dlfcn.h>
 
 namespace pinyon_shift::diagnostics::crash {
 namespace {
@@ -96,7 +99,17 @@ void Handler(int signal, siginfo_t* info, void* context) {
       Write(file, SignalName(signal));
       Write(file, "\n");
       WriteHex(file, "fault_address=", uint64_t(uintptr_t(info ? info->si_addr : nullptr)));
-      WriteHex(file, "pc=", ProgramCounter(context));
+      const uint64_t pc = ProgramCounter(context);
+      WriteHex(file, "pc=", pc);
+      // The library holding the PC and the offset into it, which a
+      // symbolizer needs where the load address differs per run.
+      Dl_info module{};
+      if (pc && dladdr(reinterpret_cast<void*>(uintptr_t(pc)), &module) && module.dli_fname) {
+        Write(file, "pc_module=");
+        Write(file, module.dli_fname);
+        Write(file, "\n");
+        WriteHex(file, "pc_offset=", pc - uint64_t(uintptr_t(module.dli_fbase)));
+      }
 #if defined(PINYON_SHIFT_HAVE_BACKTRACE)
       void* frames[64];
       const int count = backtrace(frames, 64);
@@ -137,6 +150,20 @@ void Refresh() {
   action.sa_flags = SA_SIGINFO | SA_ONSTACK;
   sigemptyset(&action.sa_mask);
   for (const int signal : kSignals) {
+    // A handler installed after this one (the runtime's, which serves guest
+    // MMIO and write watches through SIGSEGV) keeps this one as its fallback
+    // and forwards the faults it does not expect, so it must stay in front;
+    // replacing it would turn every expected fault into a crash. Only an
+    // absent or reset handler is (re)installed.
+    struct sigaction current {};
+    if (sigaction(signal, nullptr, &current) == 0 && (current.sa_flags & SA_SIGINFO) &&
+        current.sa_sigaction && current.sa_sigaction != Handler) {
+      continue;
+    }
+    if (!(current.sa_flags & SA_SIGINFO) && current.sa_handler != SIG_DFL &&
+        current.sa_handler != SIG_IGN) {
+      continue;
+    }
     sigaction(signal, &action, nullptr);
   }
 }
