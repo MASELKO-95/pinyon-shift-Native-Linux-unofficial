@@ -200,9 +200,10 @@ pinyon_shift_attach_rexglue(pinyon_shift)
 # Keep this as an always-built staging target so mapping-only updates do not
 # require relinking the game host.
 add_custom_target(pinyon_shift_stage_controller_mappings ALL
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/config/gamecontrollerdb.txt"
-        "$<TARGET_FILE_DIR:pinyon_shift>/gamecontrollerdb.txt"
+    COMMAND ${CMAKE_COMMAND}
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/config/gamecontrollerdb.txt"
+        "-DDESTINATION=$<TARGET_FILE_DIR:pinyon_shift>/gamecontrollerdb.txt"
+        -P "${PINYON_SHIFT_STAGE_FILE_SCRIPT}"
     DEPENDS pinyon_shift "${CMAKE_CURRENT_SOURCE_DIR}/config/gamecontrollerdb.txt"
     COMMENT "Staging project gamepad mappings beside pinyon_shift"
     VERBATIM)

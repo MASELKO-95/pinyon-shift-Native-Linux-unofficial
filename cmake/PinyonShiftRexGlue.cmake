@@ -253,6 +253,8 @@ else()
 endif()
 endif()  # NOT PINYON_SHIFT_HOST_TESTS_ONLY
 
+set(PINYON_SHIFT_STAGE_FILE_SCRIPT "${CMAKE_CURRENT_LIST_DIR}/PinyonStageFile.cmake")
+
 function(pinyon_shift_attach_rexglue target_name)
     if(PINYON_SHIFT_RECOMP_PGO STREQUAL "GENERATE")
         target_compile_definitions(${target_name} PRIVATE PINYON_SHIFT_PGO_GENERATE=1)
@@ -300,15 +302,19 @@ function(pinyon_shift_attach_rexglue target_name)
         # ReXGlue's target helper copies runtime DLLs only after the host links.
         # An incremental SDK-only relink would therefore leave older runtime or
         # graphics backend DLLs next to an otherwise current host. This target
-        # runs on every build (with copy_if_different) and makes the executable's
-        # load-time artifacts exact.
+        # runs on every build (copying only changed files) and makes the
+        # executable's load-time artifacts exact. PinyonStageFile.cmake retries
+        # while antivirus briefly holds a fresh DLL and otherwise names the
+        # locked file and the fix instead of a bare "Error copying file".
         add_custom_target(${target_name}_stage_rexruntime ALL
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:rexruntime>
-                $<TARGET_FILE_DIR:${target_name}>/$<TARGET_FILE_NAME:rexruntime>
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:rexgpu-fh1>
-                $<TARGET_FILE_DIR:${target_name}>/$<TARGET_FILE_NAME:rexgpu-fh1>
+            COMMAND ${CMAKE_COMMAND}
+                -DSOURCE=$<TARGET_FILE:rexruntime>
+                -DDESTINATION=$<TARGET_FILE_DIR:${target_name}>/$<TARGET_FILE_NAME:rexruntime>
+                -P ${PINYON_SHIFT_STAGE_FILE_SCRIPT}
+            COMMAND ${CMAKE_COMMAND}
+                -DSOURCE=$<TARGET_FILE:rexgpu-fh1>
+                -DDESTINATION=$<TARGET_FILE_DIR:${target_name}>/$<TARGET_FILE_NAME:rexgpu-fh1>
+                -P ${PINYON_SHIFT_STAGE_FILE_SCRIPT}
             DEPENDS ${target_name} rexruntime rexgpu-fh1
             COMMENT "Staging the current ReXGlue runtime and graphics backend beside ${target_name}"
             VERBATIM)
