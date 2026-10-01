@@ -31,7 +31,7 @@ tunnel. Rows that need the reference device stay open.
 | AP-0.2 memory ordering | **Done** | `sync`/`eieio` lower to a full fence, `lwsync` to acquire-release, `isync` to acquire, through `REX_PPC_*` macros that are empty on x86-64 (70 + 230 + 20 sites in FH1) |
 | AP-0.3 ARM64 build | **Done (Android)** | `android-arm64-*` presets; every target links with NDK r29; Linux ARM64 presets not added |
 | AP-0.4 boot and opening route | **Done (Android)** | `fh1-opening-sync` completes on the emulator with `--null-gpu`, simulation-time ratio 1.037; fixes on the way: memfd shared memory, reserve-then-fix guest arena, module library names, fault-handler chaining, socket permission |
-| AP-0.5 parity gates | **Mostly done** | On the emulator with `--gpu_backend=null`: `fh1-opening-sync`, `fh1-buy-car` (three consecutive runs), `fh1-race-sync`, `fh1-free-roam`, `fh1-pause` and `fh1-timing-straight` pass with simulation-time ratios 1.01-1.07; the vehicle state matches Windows to three decimals at `event-ready`. Found and fixed on the way: APCs never delivered (bionic `sigqueue` takes a process id), a second `pthread_join` aborting on bionic. Open: the hour-long soak, and save payload hashes (they differ between any two runs, Windows included, so they need a deterministic route first) |
+| AP-0.5 parity gates | **Mostly done** | On the emulator with `--gpu_backend=null`: `fh1-opening-sync`, `fh1-buy-car` (three consecutive runs), `fh1-race-sync`, `fh1-free-roam`, `fh1-pause` and `fh1-timing-straight` pass with simulation-time ratios 1.01-1.07; the vehicle state matches Windows to three decimals at `event-ready`. Found and fixed on the way: APCs never delivered (bionic `sigqueue` takes a process id), a second `pthread_join` aborting on bionic. The hour-long soak passes too: `fh1-long-drive` stretched to 216,000 frames ran 4,011 simulated seconds in 63.6 minutes (ratio 1.05, frame median 16.8 ms, p99 62 ms) without a hang or a failure; the car is parked after the drive, so it covers the threads and timers rather than the physics. Open: save payload hashes (they differ between any two runs, Windows included, so they need a deterministic route first) |
 | AP-0.6 16 KiB pages | Open | Needs a 16 KiB kernel; every packaged library is checked for 16 KiB-aligned load segments |
 | AP-1.1 to AP-1.4 | **Done** | NDK presets, SDK CMake for Android, `main_android.h` glue, `libmain.so` with `SDL_main`, ANativeWindow surface, activity without Gradle |
 | AP-1.5 title screen | **Done (emulator)** | The FH1 executor draws the title screen through Vulkan on the emulator |
@@ -78,8 +78,9 @@ tunnel. Rows that need the reference device stay open.
   D24S8, one 2 GB heap) the opening drive renders with its HUD, minimap and
   speedometer at about 6 fps, but the car's paint shows a fine grid and its
   stripes garbled texels where Windows draws them clean, and road markings
-  are jagged. Candidates: the missing `shaderStorageImageMultisample`, or a
-  tiling or format path the translation layer handles differently. To check
+  are jagged. Not the no-geometry-shader paths: forced on NVIDIA, the same
+  frame is clean. Candidates: the missing `shaderStorageImageMultisample`, or
+  a tiling or format path the translation layer handles differently. To check
   on the Adreno reference device before anything else in AP-2.3.
 - **No socket permission, no single player.** The title opens system-link
   sockets at the single-player menu and dereferences null when `socket()`
