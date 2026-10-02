@@ -139,7 +139,7 @@ std::atomic<bool> g_queued{false};
 void ApplyTreasureMap() {
   static uint32_t logged_owned = 0;
   const uint32_t manager = ActivityManager();
-  if (manager == 0) return;
+  if (manager == 0 || !pinyon_shift::dlc::GameModeReady()) return;
   if ((pinyon_shift::mod::CallGuest(kCollectiblesLive, {0}) & 0xFF) == 0) return;
   // While free roam loads the list is still empty, and sub_828AF780 finds an
   // empty list all revealed.
@@ -170,6 +170,17 @@ void ApplyTreasureMap() {
 }  // namespace
 
 namespace pinyon_shift::dlc {
+
+bool GameModeReady() {
+  // The world as sub_828BC9D8 reaches it ([[[0x832DF024] + 4] + 4]), and the
+  // game mode object at +124 whose +56 sub_824878D0 returns.
+  constexpr uint32_t kWorldGameMode = 124;
+  constexpr uint32_t kGameModeValue = 56;
+  const uint32_t holder = LoadPointer(kGameHolder, kHolderHandle + 4);
+  const uint32_t handle = holder ? LoadPointer(holder + kHolderHandle, 8) : 0;
+  const uint32_t world = handle ? LoadPointer(handle + 4, kWorldGameMode + 4) : 0;
+  return world && LoadPointer(world + kWorldGameMode, kGameModeValue + 4) != 0;
+}
 
 void UpdateTreasureMap() {
   static uint32_t frames = 0;
