@@ -11,6 +11,13 @@ param(
     [string]$RenderTestOutput,
     [string]$RenderDocCommand,
     [string]$RenderDocCapturePrefix,
+    # Nsight Graphics GPU Trace: ngfx.exe, the folder for the trace, and the
+    # frame (presents counted from the start) to trace.
+    [string]$NsightCommand,
+    [string]$NsightOutputDir,
+    [int]$NsightStartAfterFrames = 0,
+    [ValidateRange(1, 10)]
+    [int]$NsightFrames = 1,
     [ValidateRange(1, 3600)]
     [int]$RenderTestTimeoutSeconds,
     [switch]$CollectFh1PassInventory,
@@ -187,6 +194,20 @@ try {
             '-d', (Split-Path $executable -Parent), '-c',
             [IO.Path]::GetFullPath($RenderDocCapturePrefix), $executable) +
             $normalizedGameArguments
+    }
+    if ($NsightCommand) {
+        if (-not $NsightOutputDir) { throw '-NsightOutputDir is required with -NsightCommand.' }
+        if ($RenderDocCommand) { throw '-NsightCommand and -RenderDocCommand are exclusive.' }
+        $start.FilePath = (Resolve-Path -LiteralPath $NsightCommand).Path
+        $start.ArgumentList = @('--activity', '"GPU Trace Profiler"',
+            '--exe', ('"' + $executable + '"'), '--dir', ('"' + (Split-Path $executable -Parent) + '"'),
+            '--args', ('"' + ($normalizedGameArguments -join ' ') + '"'),
+            '--start-after-frames', [string]$NsightStartAfterFrames,
+            '--limit-to-frames', [string]$NsightFrames,
+            '--auto-export', '--output-dir', ('"' + [IO.Path]::GetFullPath($NsightOutputDir) + '"'))
+        # ngfx reports why a trace failed only on its own output.
+        $start.RedirectStandardOutput = Join-Path ([IO.Path]::GetFullPath($NsightOutputDir)) 'ngfx.log'
+        $start.RedirectStandardError = Join-Path ([IO.Path]::GetFullPath($NsightOutputDir)) 'ngfx.err.log'
     }
     if ($DirectChildProcess) {
         # Keep capture/debugger child-process hooks on the launching process.

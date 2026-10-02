@@ -602,6 +602,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         command.append("-Hidden")
     if args.collect_pass_inventory:
         command.append("-CollectFh1PassInventory")
+    if args.nsight_gpu_trace:
+        if not args.nsight_output_dir:
+            raise SystemExit("--nsight-output-dir is required with --nsight-gpu-trace")
+        command += [
+            "-NsightCommand", str(args.nsight_gpu_trace),
+            "-NsightOutputDir", str(args.nsight_output_dir.resolve()),
+            "-NsightStartAfterFrames", str(args.nsight_start_after_frames),
+            "-NsightFrames", str(args.nsight_frames),
+        ]
     if args.shader_capture_dir:
         command.extend(
             ["-ShaderCaptureDir", str(args.shader_capture_dir.resolve())]
@@ -940,6 +949,16 @@ def main() -> int:
         help="run on the null GPU backend: guest GPU packets only, no images",
     )
     parser.add_argument("--timeout", type=int)
+    parser.add_argument(
+        "--nsight-gpu-trace", type=Path, metavar="NGFX",
+        help="trace frames with Nsight Graphics GPU Trace (path to ngfx.exe)",
+    )
+    parser.add_argument("--nsight-output-dir", type=Path, help="where the GPU trace goes")
+    parser.add_argument(
+        "--nsight-start-after-frames", type=int, default=0,
+        help="presents to wait before the GPU trace",
+    )
+    parser.add_argument("--nsight-frames", type=int, default=1, help="frames to trace")
     parser.add_argument(
         "--configuration", choices=("Release", "RelWithDebInfo"),
         help="preview build to launch (launch-preview.ps1 default: Release)",
