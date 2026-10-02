@@ -30,6 +30,7 @@ private/
 !/docs/PERFORMANCE_BACKLOG.md
 !/docs/ANDROID_PORT_BACKLOG.md
 !/docs/ANDROID_60FPS_BACKLOG.md
+!/docs/DESKTOP_RENDERER_BACKLOG.md
 !/docs/ANDROID.md
 !/docs/android/
 !/docs/android/*.json
