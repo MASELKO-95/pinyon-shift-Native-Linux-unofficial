@@ -370,9 +370,11 @@ std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
   // AP-7.5: a handheld renders at 1x (AP-2.5) and trades frame rate for
   // battery and heat. BATTERY 30 is the Xbox 360's own rate (the guest
   // vblank at 60 Hz) with the game's 4x MSAA; SMOOTH 60 doubles it and
-  // sharpens the upscale to the panel with FSR 1, and renders without MSAA:
-  // on a Snapdragon 8 Elite the race's busiest part takes 25 ms with MSAA
-  // and holds 60 fps without it.
+  // renders without MSAA: on a Snapdragon 8 Elite the race's busiest part
+  // takes 25 ms with MSAA and holds 60 fps cold without it. Both scale to the
+  // panel bilinearly and keep the game's own anisotropic filtering: FSR 1 at
+  // the panel's 2400x1504 cost 1.4 ms a frame and forced 4x anisotropy
+  // 0.4 ms, measured by alternating each in one run.
   rows.push_back(Setting("GRAPHICS PRESET",
                          {{"BATTERY 30",
                            {{"gpu_backend", "\"vulkan\""},
@@ -380,6 +382,7 @@ std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
                             {"draw_resolution_scale_x", "1"},
                             {"draw_resolution_scale_y", "1"},
                             {"present_effect", "\"bilinear\""},
+                            {"anisotropic_override", "-1"},
                             {"fh1_msaa_single_sample", "false"},
                             {"pinyon_shift_fh1_render_fps_limit", "30"}}},
                           {"SMOOTH 60",
@@ -387,13 +390,15 @@ std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
                             {"gpu_record_thread", "true"},
                             {"draw_resolution_scale_x", "1"},
                             {"draw_resolution_scale_y", "1"},
-                            {"present_effect", "\"fsr\""},
+                            {"present_effect", "\"bilinear\""},
+                            {"anisotropic_override", "-1"},
                             {"fh1_msaa_single_sample", "true"},
                             {"pinyon_shift_fh1_render_fps_limit", "60"}}}}));
   // The game's 4x MSAA is most of a handheld GPU's frame: off, edges are
   // harder and the frame much cheaper.
-  rows.push_back(Setting("ANTI-ALIASING", {{"4X MSAA", {{"fh1_msaa_single_sample", "false"}}},
-                                          {"OFF", {{"fh1_msaa_single_sample", "true"}}}}));
+  // Labelled apart from the FXAA row (ANTI-ALIASING) below.
+  rows.push_back(Setting("MSAA", {{"4X", {{"fh1_msaa_single_sample", "false"}}},
+                                  {"OFF", {{"fh1_msaa_single_sample", "true"}}}}));
 #else
   rows.push_back(Setting("GRAPHICS PRESET",
                          {{"PERFORMANCE 120",
@@ -446,9 +451,11 @@ std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
 #if !defined(__ANDROID__)
   rows.push_back(Toggle("PREPARE ALL SCALES", "pinyon_shift_prepare_all_scales"));
 #endif
-  // anisotropic_override holds the Xenos filter: 3, 4 and 5 are 4x, 8x, 16x.
+  // anisotropic_override holds the Xenos filter: 3, 4 and 5 are 4x, 8x, 16x;
+  // -1 keeps what each of the game's textures asks for.
   rows.push_back(Setting("ANISOTROPIC FILTERING",
-                         {{"4X", {{"anisotropic_override", "3"}}},
+                         {{"GAME", {{"anisotropic_override", "-1"}}},
+                          {"4X", {{"anisotropic_override", "3"}}},
                           {"8X", {{"anisotropic_override", "4"}}},
                           {"16X", {{"anisotropic_override", "5"}}}}));
   rows.push_back(Toggle("TRILINEAR FILTERING", "force_trilinear_filtering"));
