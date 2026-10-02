@@ -507,6 +507,15 @@ address = 0x823F4F60
 name = "PinyonShiftThrottleRenderJobs"
 registers = ["r1"]
 
+# Constant per-update steps written for the console's 30 updates a second,
+# scaled by real time between updates (pinyon_shift_fixed_steps_real_time).
+# CUI4AnimatedCamera::Update (sub_82649960) has chosen its per-call step (1/30
+# s, or 1/60 under a UI flag) in f1, about to advance the scripted shot by it.
+[[midasm_hook]]
+address = 0x826499C8
+name = "PinyonShiftScaleAnimatedCameraStep"
+registers = ["r31", "f1"]
+
 # FH1 has finalized the variable gameplay delta in f31 immediately before
 # storing it at +448 on the main-loop owner and dispatching update systems.
 # Accumulate that title-authored delta for wall-time validation without

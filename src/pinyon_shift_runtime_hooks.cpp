@@ -66,6 +66,11 @@ REXCVAR_DEFINE_DOUBLE(pinyon_shift_max_simulation_step_ms, 33.4, "Pinyon Shift",
                       "With pinyon_shift_host_simulation_delta, the longest simulation step "
                       "(ms); longer gaps between ticks are dropped")
     .range(4.0, 250.0);
+REXCVAR_DEFINE_BOOL(pinyon_shift_fixed_steps_real_time, true, "Pinyon Shift",
+                    "Scale FH1's constant per-update steps, written for 30 updates a second, by "
+                    "the real time between updates, so they keep their speed at high frame "
+                    "rates: the scripted UI cameras (car purchase and reveal)")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
 REXCVAR_DEFINE_BOOL(disable_motion_blur, false, "Pinyon Shift",
                     "Disable Forza Horizon motion blur");
 REXCVAR_DEFINE_BOOL(disable_depth_of_field, false, "Pinyon Shift",
@@ -4168,6 +4173,79 @@ static void PinyonShiftApplyCredits() {
     pinyon_shift::cheats::CreditsApplied(change, previous, value);
     queued.store(false, std::memory_order_release);
   });
+}
+
+namespace {
+// A guest site that advances some state by a constant step per call, written
+// for the console's 30 updates a second. Here updates come as often as the
+// render limit allows, so the step becomes the real time since the same
+// object's previous update times 30 (the 30 fps limit is unchanged); a gap
+// over 0.25 s (a new shot, a pause) keeps the constant for that call.
+struct FixedStepSite {
+  using Clock = std::chrono::steady_clock;
+  const char* name;
+  std::mutex mutex;
+  struct ObjectClock {
+    uint32_t object = 0;
+    Clock::time_point last;
+  };
+  std::array<ObjectClock, 8> clocks{};
+  Clock::time_point log_window{};
+  uint32_t log_calls = 0;
+  double log_fixed = 0.0, log_applied = 0.0;
+};
+
+void ScaleFixedStep(FixedStepSite& site, uint32_t object, PPCRegister& step) {
+  using Clock = FixedStepSite::Clock;
+  const Clock::time_point now = Clock::now();
+  std::lock_guard<std::mutex> lock(site.mutex);
+  FixedStepSite::ObjectClock* clock = nullptr;
+  for (auto& entry : site.clocks) {
+    if (entry.object == object && entry.last != Clock::time_point{}) clock = &entry;
+  }
+  if (!clock) {
+    clock = &*std::min_element(site.clocks.begin(), site.clocks.end(),
+                               [](const auto& a, const auto& b) { return a.last < b.last; });
+    *clock = {object, {}};
+  }
+  const double fixed = step.f64;
+  double applied = fixed;
+  if (clock->last != Clock::time_point{} &&
+      REXCVAR_GET(pinyon_shift_fixed_steps_real_time)) {
+    const double elapsed = std::chrono::duration<double>(now - clock->last).count();
+    if (elapsed >= 0.0 && elapsed < 0.25) {
+      applied = fixed * std::min(elapsed, 0.1) * 30.0;
+      step.f64 = applied;
+    }
+  }
+  clock->last = now;
+  ++site.log_calls;
+  site.log_fixed += fixed;
+  site.log_applied += applied;
+  if (now - site.log_window >= std::chrono::seconds(2)) {
+    if (site.log_window != Clock::time_point{} && site.log_calls) {
+      const double seconds = std::chrono::duration<double>(now - site.log_window).count();
+      pinyon_shift::diagnostics::RecordEvent(
+          "fh1.fixed_step.rate",
+          {{"site", site.name},
+           {"updates_per_second", fmt::format("{:.1f}", site.log_calls / seconds)},
+           {"fixed_mean", fmt::format("{:.6f}", site.log_fixed / site.log_calls)},
+           {"fixed_per_second", fmt::format("{:.4f}", site.log_fixed / seconds)},
+           {"applied_per_second", fmt::format("{:.4f}", site.log_applied / seconds)}});
+    }
+    site.log_window = now;
+    site.log_calls = 0;
+    site.log_fixed = site.log_applied = 0.0;
+  }
+}
+
+FixedStepSite animated_camera_step{"animated_camera"};
+}  // namespace
+
+// CUI4AnimatedCamera::Update (sub_82649960), the scripted UI shots (car
+// purchase and reveal): f1 holds its 1/30 s step (1/60 under a UI flag).
+void PinyonShiftScaleAnimatedCameraStep(PPCRegister& r31, PPCRegister& f1) {
+  ScaleFixedStep(animated_camera_step, uint32_t(r31.u64), f1);
 }
 
 void PinyonShiftObserveSimulationDelta(PPCRegister& f31) {
