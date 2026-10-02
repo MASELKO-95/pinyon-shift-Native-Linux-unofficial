@@ -29,6 +29,7 @@ private/
 !/docs/NATIVE_PORT_BACKLOG.md
 !/docs/PERFORMANCE_BACKLOG.md
 !/docs/ANDROID_PORT_BACKLOG.md
+!/docs/ANDROID_60FPS_BACKLOG.md
 !/docs/ANDROID.md
 !/docs/android/
 !/docs/android/*.json
