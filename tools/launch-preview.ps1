@@ -205,7 +205,8 @@ try {
             '--start-after-frames', [string]$NsightStartAfterFrames,
             '--limit-to-frames', [string]$NsightFrames,
             '--auto-export', '--output-dir', ('"' + [IO.Path]::GetFullPath($NsightOutputDir) + '"'))
-        # ngfx reports why a trace failed only on its own output.
+        # ngfx reports why a trace failed only on its own output, in the trace folder.
+        [void][IO.Directory]::CreateDirectory([IO.Path]::GetFullPath($NsightOutputDir))
         $start.RedirectStandardOutput = Join-Path ([IO.Path]::GetFullPath($NsightOutputDir)) 'ngfx.log'
         $start.RedirectStandardError = Join-Path ([IO.Path]::GetFullPath($NsightOutputDir)) 'ngfx.err.log'
     }
