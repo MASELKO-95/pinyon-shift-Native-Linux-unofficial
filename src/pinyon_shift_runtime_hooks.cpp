@@ -16,6 +16,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -4252,6 +4253,55 @@ FixedStepSite animated_camera_step{"animated_camera"};
 void PinyonShiftScaleAnimatedCameraStep(PPCRegister& r31, PPCRegister& f1) {
   ScaleFixedStep(animated_camera_step, uint32_t(r31.u64), f1);
 }
+
+namespace {
+// The trackside crowd's animation frames (proceduralGeometry, sub_82E08A00 on
+// the render thread) advance by a step the title sets to one per rendered
+// frame, so the crowd played at the render rate over 30. Each update call is
+// given the whole 30 Hz steps of real time since the same models' previous
+// call instead, the fraction carried to the next (DR-1.5).
+struct CrowdClock {
+  std::chrono::steady_clock::time_point last;
+  double carry = 0.0;
+};
+std::mutex crowd_clock_mutex;
+std::unordered_map<uint32_t, CrowdClock> crowd_clocks;
+thread_local uint32_t crowd_call_steps = 1;
+}  // namespace
+
+// sub_82E08A00 after its prologue: r29 is the procedural models object.
+void PinyonShiftCrowdStepBegin(PPCRegister& r29) {
+  const auto now = std::chrono::steady_clock::now();
+  std::lock_guard<std::mutex> lock(crowd_clock_mutex);
+  if (crowd_clocks.size() >= 1024) crowd_clocks.clear();
+  CrowdClock& clock = crowd_clocks[uint32_t(r29.u64)];
+  uint32_t steps = 1;
+  if (clock.last != std::chrono::steady_clock::time_point{}) {
+    const double elapsed = std::chrono::duration<double>(now - clock.last).count();
+    if (elapsed >= 0.0 && elapsed < 0.25) {
+      clock.carry += elapsed * 30.0;
+      steps = uint32_t(clock.carry);
+      clock.carry -= steps;
+    } else {
+      clock.carry = 0.0;
+    }
+  }
+  clock.last = now;
+  crowd_call_steps = steps;
+}
+
+namespace {
+void ApplyCrowdSteps(PPCRegister& r10) {
+  if (REXCVAR_GET(pinyon_shift_fixed_steps_real_time) && r10.u32 != 0) {
+    r10.u64 = crowd_call_steps;
+  }
+}
+}  // namespace
+
+// The title's step (r10) about to be added to a crowd instance's frame: the
+// instances that pick a random clip at the end of one, and the looping ones.
+void PinyonShiftCrowdStepRandom(PPCRegister& r10) { ApplyCrowdSteps(r10); }
+void PinyonShiftCrowdStepLooping(PPCRegister& r10) { ApplyCrowdSteps(r10); }
 
 // The swap interrupt (sub_829EED78) targets the next vblank when the swap
 // arrives more than its threshold (20 % of a display period) after the

@@ -525,6 +525,25 @@ address = 0x826499C8
 name = "PinyonShiftScaleAnimatedCameraStep"
 registers = ["r31", "f1"]
 
+# The trackside crowd's animation update (proceduralGeometry, sub_82E08A00):
+# r29 is the models object once the prologue has run; at 0x82E09144 and
+# 0x82E0945C r10 holds the per-frame step the title loaded from +0x3EAE4 of
+# the render context, about to be added to an instance's animation frame.
+[[midasm_hook]]
+address = 0x82E08A30
+name = "PinyonShiftCrowdStepBegin"
+registers = ["r29"]
+
+[[midasm_hook]]
+address = 0x82E09144
+name = "PinyonShiftCrowdStepRandom"
+registers = ["r10"]
+
+[[midasm_hook]]
+address = 0x82E0945C
+name = "PinyonShiftCrowdStepLooping"
+registers = ["r10"]
+
 # FH1 has finalized the variable gameplay delta in f31 immediately before
 # storing it at +448 on the main-loop owner and dispatching update systems.
 # Accumulate that title-authored delta for wall-time validation without
