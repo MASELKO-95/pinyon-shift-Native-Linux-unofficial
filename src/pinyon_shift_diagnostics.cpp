@@ -1,9 +1,5 @@
 #include "pinyon_shift_diagnostics.h"
 
-#if defined(__x86_64__) || defined(_M_X64)
-#include <cpuid.h>
-#endif
-
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -23,6 +19,13 @@
 
 #include "crash_reporter.h"
 #include "platform/host_platform.h"
+
+// After every other header: its __cpuid macro breaks the declaration of the
+// function of the same name in clang's MSVC <intrin.h>, which fmt includes
+// (issue #325, where no precompiled header had included it first).
+#if defined(__x86_64__) || defined(_M_X64)
+#include <cpuid.h>
+#endif
 
 namespace pinyon_shift::diagnostics {
 namespace {
