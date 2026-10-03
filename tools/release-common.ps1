@@ -501,7 +501,10 @@ function Get-PinyonSystemSummary {
 }
 
 function Format-PinyonFailureRecord {
-    param([Parameter(Mandatory)] [Collections.IDictionary]$Record)
+    param(
+        [Parameter(Mandatory)] [Collections.IDictionary]$Record,
+        [string]$ReportPath = '.local\logs\setup-error.json'
+    )
     $lines = [Collections.Generic.List[string]]::new()
     $lines.Add('==================== SETUP FAILED ====================')
     $lines.Add("Error: $($Record.message)")
@@ -513,7 +516,7 @@ function Format-PinyonFailureRecord {
         foreach ($line in @($Record.error_excerpt)) { $lines.Add("    $line") }
     }
     if ($Record.Contains('hint')) { $lines.Add("What to try: $($Record.hint)") }
-    $lines.Add('When reporting this, attach .local\logs\setup-error.json' +
+    $lines.Add("When reporting this, attach $ReportPath" +
         $(if ($Record.Contains('build_log')) { ' and the full log named above.' } else { '.' }))
     $lines.Add('======================================================')
     [string[]]$lines.ToArray()

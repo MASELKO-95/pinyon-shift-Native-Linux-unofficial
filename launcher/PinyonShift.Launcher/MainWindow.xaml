@@ -105,6 +105,10 @@
                             Height="54" Padding="24,0" Margin="12,0,0,0" Visibility="Collapsed"
                             Click="GraphicsSettingsButton_Click"
                             AutomationProperties.HelpText="Choose the graphics API, the resolution and the Treasure Map."/>
+                    <Button x:Name="AndroidButton" Content="Build Android APK" Style="{StaticResource QuietButton}"
+                            Height="54" Padding="24,0" Margin="12,0,0,0" Visibility="Collapsed"
+                            Click="AndroidButton_Click"
+                            AutomationProperties.HelpText="Build an Android package of the game from this PC's build, for your own device."/>
                 </StackPanel>
 
                 <!-- Setup steps, while there is setup left to do. -->

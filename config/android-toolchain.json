@@ -17,5 +17,22 @@
     ]
   },
   "jdk_major": 17,
+  "bootstrap": {
+    "android_sdk_path": ".local/toolchain/android-sdk",
+    "cmdline_tools": {
+      "url": "https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip",
+      "sha256": "90AE805D20434428BFFCB699C290860F19BB5F66A67E6B330067E3DE801FB04A",
+      "bytes": 155655386,
+      "license_url": "https://developer.android.com/studio/terms"
+    },
+    "jdk": {
+      "version": "17.0.20.1+1",
+      "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_x64_windows_hotspot_17.0.20.1_1.zip",
+      "sha256": "E53A79C3C3D86865BD7E787903884331068E71321714FFD44F145785AFFC7CB0",
+      "bytes": 190817615,
+      "install_path": ".local/toolchain/jdk-17.0.20.1+1",
+      "license_url": "https://adoptium.net/about/"
+    }
+  },
   "configure_preset": "android-arm64-release"
 }

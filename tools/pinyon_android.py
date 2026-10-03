@@ -6,7 +6,8 @@ pinyon_shift.exe, it is built on their PC and installed on their own device;
 the device never compiles and nothing is uploaded anywhere. The extracted
 game files travel from the PC to the device over adb.
 
-  pinyon.py android doctor [--install]   check (or install) the SDK, NDK, JDK
+  pinyon.py android doctor [--install [--accept-licenses]]
+                                         check (or install) the SDK, NDK, JDK
   pinyon.py android build                cross-compile and package the APK
   pinyon.py android package              package already built libraries
   pinyon.py android install              adb install -r the package
@@ -40,6 +41,10 @@ CONFIG = json.loads((ROOT / "config" / "android-toolchain.json").read_text(encod
 PACKAGE = CONFIG["package"]
 ACTIVITY = CONFIG["activity"]
 WORK = ROOT / ".local" / "android"
+# Where tools/build-android.ps1 unpacks the pinned command-line tools and JDK
+# when the PC has no Android SDK or JDK of its own.
+LOCAL_SDK = ROOT / CONFIG["bootstrap"]["android_sdk_path"]
+LOCAL_JDK = ROOT / CONFIG["bootstrap"]["jdk"]["install_path"]
 DEVICE_FILES = f"/sdcard/Android/data/{PACKAGE}/files"
 # The libraries the package carries besides the C++ runtime, in load order.
 NATIVE_LIBRARIES = (
@@ -76,12 +81,39 @@ def sdk_root() -> Path:
     if WINDOWS and os.environ.get("LOCALAPPDATA"):
         candidates.append(str(Path(os.environ["LOCALAPPDATA"]) / "Android" / "Sdk"))
     home = Path.home()
-    candidates += [str(home / "Library" / "Android" / "sdk"), str(home / "Android" / "Sdk")]
+    candidates += [str(home / "Library" / "Android" / "sdk"), str(home / "Android" / "Sdk"),
+                   str(LOCAL_SDK)]
     for candidate in candidates:
         if candidate and (Path(candidate) / "platform-tools").is_dir():
             return Path(candidate)
+    # An SDK with only the command-line tools yet, which doctor --install
+    # completes.
+    for candidate in candidates:
+        if candidate and (Path(candidate) / "cmdline-tools" / "latest" / "bin").is_dir():
+            return Path(candidate)
     raise AndroidError("the Android SDK was not found; set ANDROID_HOME "
                        "(Android Studio's SDK Manager or the command-line tools install it)")
+
+
+def java_home() -> Path | None:
+    """JAVA_HOME, or the JDK tools/build-android.ps1 unpacked."""
+    if os.environ.get("JAVA_HOME"):
+        return Path(os.environ["JAVA_HOME"])
+    if (LOCAL_JDK / "bin" / _exe("javac")).is_file():
+        return LOCAL_JDK
+    return None
+
+
+def rexsdk_dir() -> Path:
+    """The ShiftGlue SDK the game builds against: the submodule in a
+    checkout, the pinned clone in .local/rexglue in a launcher install
+    (tools/prepare-rexglue.ps1), or PINYON_REXSDK_DIR."""
+    if os.environ.get("PINYON_REXSDK_DIR"):
+        return Path(os.environ["PINYON_REXSDK_DIR"])
+    submodule = ROOT / "thirdparty" / "shiftglue-sdk"
+    if (submodule / "CMakeLists.txt").is_file():
+        return submodule
+    return ROOT / ".local" / "rexglue"
 
 
 class Tools:
@@ -97,8 +129,8 @@ class Tools:
         self.zipalign = self.build_tools / _exe("zipalign")
         self.apksigner = self.build_tools / _script("apksigner")
         self.sdkmanager = self.sdk / "cmdline-tools" / "latest" / "bin" / _script("sdkmanager")
-        java_home = os.environ.get("JAVA_HOME")
-        java_bin = Path(java_home) / "bin" if java_home else None
+        self.java_home = java_home()
+        java_bin = self.java_home / "bin" if self.java_home else None
         self.javac = self._find(java_bin, "javac")
         self.keytool = self._find(java_bin, "keytool")
         host = "windows-x86_64" if WINDOWS else f"{platform.system().lower()}-x86_64"
@@ -189,7 +221,16 @@ def doctor(args: argparse.Namespace) -> int:
         if not tools.sdkmanager.is_file():
             raise AndroidError("the SDK's command-line tools are needed to install packages")
         packages = CONFIG["android_sdk"]["packages"]
-        run([tools.sdkmanager, "--install", *packages], input="y\n" * 8, text=True)
+        environment = dict(os.environ)
+        if tools.java_home:
+            environment["JAVA_HOME"] = str(tools.java_home)
+        command = [tools.sdkmanager, f"--sdk_root={tools.sdk}", "--install", *packages]
+        if args.accept_licenses:
+            # The player accepted the Android SDK license (the launcher
+            # shows it before the build); otherwise sdkmanager asks here.
+            run(command, input="y\n" * 16, text=True, env=environment)
+        else:
+            run(command, env=environment)
         missing = Tools().missing()
     for line in (f"sdk: {tools.sdk}", f"ndk: {tools.ndk}", f"build-tools: {tools.build_tools}",
                  f"javac: {tools.javac}", f"cmake: {tools.cmake}", f"ninja: {tools.ninja}"):
@@ -213,6 +254,7 @@ def build(args: argparse.Namespace) -> int:
     environment = dict(os.environ, ANDROID_NDK_HOME=str(tools.ndk))
     if not (directory / "CMakeCache.txt").is_file():
         run([tools.cmake, "--preset", f"android-arm64-{args.configuration.lower()}",
+             f"-DREXSDK_DIR={rexsdk_dir().as_posix()}",
              f"-DCMAKE_MAKE_PROGRAM={tools.ninja}", f"-DPYTHON_EXECUTABLE={sys.executable}",
              f"-DPython3_EXECUTABLE={sys.executable}"], cwd=ROOT, env=environment)
     # The game, and libadrenotools' hooks, which nothing links (they are
@@ -238,14 +280,42 @@ def _keystore(tools: Tools) -> Path:
 
 
 def _git(*command: str, cwd: Path = ROOT) -> str:
-    completed = subprocess.run(["git", *command], cwd=cwd, capture_output=True, text=True)
+    """Git's answer, or "unknown" (a launcher install is no Git checkout and
+    may have only the pinned MinGit)."""
+    git = shutil.which("git")
+    if not git:
+        toolchain = json.loads((ROOT / "config" / "release-toolchain.json").read_text(
+            encoding="utf-8"))["git"]
+        mingit = ROOT / toolchain["install_path"] / toolchain["executable"]
+        if not mingit.is_file():
+            return "unknown"
+        git = str(mingit)
+    try:
+        completed = subprocess.run([git, *command], cwd=cwd, capture_output=True, text=True)
+    except OSError:
+        return "unknown"
     return completed.stdout.strip() if completed.returncode == 0 else "unknown"
+
+
+def _source_commit() -> str:
+    commit = _git("rev-parse", "HEAD")
+    if commit != "unknown":
+        return commit
+    # A launcher payload records the commit it was packaged from.
+    provenance = ROOT / "config" / "source-provenance.json"
+    if provenance.is_file():
+        return str(json.loads(provenance.read_text(encoding="utf-8")).get("commit", "unknown"))
+    return "unknown"
+
+
+def _dirty(status: str) -> str:
+    return "unknown" if status == "unknown" else str(bool(status)).lower()
 
 
 def _build_manifest(tools: Tools, version_name: str, libraries: list[Path]) -> dict:
     """The provenance the game logs at start and puts in crash reports
     (AP-6.4), as tools/build-preview.ps1 writes it beside the executable."""
-    sdk = ROOT / "thirdparty" / "shiftglue-sdk"
+    sdk = rexsdk_dir()
     main = next(path for path in libraries if path.name == "libmain.so")
     return {
         "schema_version": 3,
@@ -259,11 +329,11 @@ def _build_manifest(tools: Tools, version_name: str, libraries: list[Path]) -> d
         "executable": "libmain.so",
         "executable_sha256": hashlib.sha256(main.read_bytes()).hexdigest().upper(),
         "generated_locally": True,
-        "pinyon_shift_commit": _git("rev-parse", "HEAD"),
-        "pinyon_shift_dirty": str(bool(_git("status", "--porcelain", "--", ".",
-                                            ":!BUGS.md", ":!docs"))).lower(),
+        "pinyon_shift_commit": _source_commit(),
+        "pinyon_shift_dirty": _dirty(_git("status", "--porcelain", "--", ".", ":!BUGS.md",
+                                          ":!docs")),
         "rexglue_commit": _git("rev-parse", "HEAD", cwd=sdk),
-        "rexglue_dirty": str(bool(_git("status", "--porcelain", cwd=sdk))).lower(),
+        "rexglue_dirty": _dirty(_git("status", "--porcelain", cwd=sdk)),
     }
 
 
@@ -301,8 +371,8 @@ def package(args: argparse.Namespace, tools: Tools | None = None) -> int:
          "--version-name", version_name, "--version-code", str(version_code),
          *(["--debug-mode"] if getattr(args, "debuggable", False) else [])])
 
-    sdl_java = ROOT / "thirdparty" / "shiftglue-sdk" / "thirdparty" / "sdl3" / "android-project" \
-        / "app" / "src" / "main" / "java"
+    sdl_java = rexsdk_dir() / "thirdparty" / "sdl3" / "android-project" / "app" / "src" / "main" \
+        / "java"
     sources = sorted(sdl_java.rglob("*.java")) + sorted((ROOT / "android" / "java").rglob("*.java"))
     run([tools.javac, "-source", "1.8", "-target", "1.8", "-nowarn", "-Xlint:-options",
          "-bootclasspath", tools.android_jar, "-classpath", tools.android_jar,
@@ -565,6 +635,8 @@ def add_parser(commands) -> None:
 
     parser = command("doctor", doctor, "check the Android toolchain")
     parser.add_argument("--install", action="store_true", help="install missing SDK packages")
+    parser.add_argument("--accept-licenses", action="store_true",
+                        help="answer yes to the Android SDK licenses sdkmanager shows")
     parser = command("build", build, "cross-compile the game and package the APK")
     parser.add_argument("--jobs", type=int)
     parser.add_argument("--debuggable", action="store_true",

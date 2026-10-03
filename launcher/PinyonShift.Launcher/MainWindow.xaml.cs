@@ -252,6 +252,7 @@ public partial class MainWindow : Window
         _busy = true;
         ChooseInstallRootButton.IsEnabled = false;
         GraphicsSettingsButton.IsEnabled = false;
+        AndroidButton.IsEnabled = false;
         _cancellation = new CancellationTokenSource();
         BrowseButton.IsEnabled = false;
         OwnershipCheckBox.IsEnabled = false;
@@ -391,11 +392,12 @@ public partial class MainWindow : Window
     // The failed step, exit code, log and first error from .local/logs/setup-error.json. The report
     // is repeated in the log only when the setup output did not already show it, so a lost or
     // interleaved stream still leaves the cause on screen.
-    private string DescribeSetupFailure(int exitCode, DateTime startedUtc)
+    private string DescribeSetupFailure(int exitCode, DateTime startedUtc,
+        string reportName = "setup-error.json", string what = "Setup")
     {
-        var fallback = $"Setup stopped before completing (exit code {exitCode}). The details above contain the cause.";
+        var fallback = $"{what} stopped before completing (exit code {exitCode}). The details above contain the cause.";
         if (_repositoryRoot is null) return fallback;
-        var path = Path.Combine(_repositoryRoot, ".local", "logs", "setup-error.json");
+        var path = Path.Combine(_repositoryRoot, ".local", "logs", reportName);
         SetupFailure? failure;
         try
         {
@@ -417,7 +419,7 @@ public partial class MainWindow : Window
 
         if (!_setupFailurePrinted)
         {
-            AppendLog($"Setup failure report ({path}):");
+            AppendLog($"{what} failure report ({path}):");
             if (!string.IsNullOrWhiteSpace(failure.Message)) AppendLog($"Error: {failure.Message}");
             if (!string.IsNullOrWhiteSpace(failure.Step)) AppendLog($"Failed step: {failure.Step}");
             if (code is not null) AppendLog($"Exit code: {code}");
@@ -430,7 +432,7 @@ public partial class MainWindow : Window
             if (!string.IsNullOrWhiteSpace(failure.Hint)) AppendLog($"What to try: {failure.Hint}");
         }
 
-        var summary = string.IsNullOrWhiteSpace(failure.Step) ? "Setup stopped" : $"{failure.Step} failed";
+        var summary = string.IsNullOrWhiteSpace(failure.Step) ? $"{what} stopped" : $"{failure.Step} failed";
         if (code is not null) summary += $" (exit code {code})";
         summary += ". ";
         summary += string.IsNullOrWhiteSpace(failure.Hint)
@@ -544,6 +546,7 @@ public partial class MainWindow : Window
         _busy = true;
         ChooseInstallRootButton.IsEnabled = false;
         GraphicsSettingsButton.IsEnabled = false;
+        AndroidButton.IsEnabled = false;
         PrimaryButton.IsEnabled = false;
         SetPrimaryText("Starting…");
         HeadlineText.Text = "Starting";
@@ -901,6 +904,110 @@ public partial class MainWindow : Window
             GraphicsPanel.Visibility != Visibility.Visible;
         PrimaryButton.IsEnabled = !_busy && (_pendingReport is not null || _gameExecutable is not null ||
             (_repositoryRoot is not null && File.Exists(IsoPathTextBox.Text) && OwnershipCheckBox.IsChecked == true));
+        // The Android package is made from the game this PC built.
+        AndroidButton.Visibility = _gameExecutable is not null && _pendingReport is null
+            ? Visibility.Visible : Visibility.Collapsed;
+        AndroidButton.IsEnabled = !_busy;
+    }
+
+    private async void AndroidButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy || _repositoryRoot is null || _gameExecutable is null) return;
+        var script = Path.Combine(_repositoryRoot, "tools", "build-android.ps1");
+        if (!File.Exists(script))
+        {
+            SetFailure("Android build unavailable", "This release does not include the Android build workflow.");
+            SetPrimaryText("Play");
+            return;
+        }
+        // The player sees what will be downloaded and accepts the Android SDK license
+        // before sdkmanager is answered for them.
+        var answer = MessageBox.Show(this,
+            "Build an Android package (APK) of the game from this PC's build, for your own device. " +
+            "The first build takes 20 to 60 minutes and about 10 GB of disk.\n\n" +
+            "If this PC has no Android SDK or JDK, the launcher downloads Google's Android SDK command-line " +
+            "tools and the Eclipse Temurin JDK 17 into the install folder, then installs the Android NDK, " +
+            "build tools and platform. Those packages are covered by the Android Software Development Kit " +
+            "License Agreement (https://developer.android.com/studio/terms).\n\n" +
+            "Accept the Android SDK license and build?",
+            "Build Android APK", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes) return;
+
+        _busy = true;
+        ChooseInstallRootButton.IsEnabled = false;
+        GraphicsSettingsButton.IsEnabled = false;
+        AndroidButton.IsEnabled = false;
+        PrimaryButton.IsEnabled = false;
+        _cancellation?.Dispose();
+        _cancellation = new CancellationTokenSource();
+        ShowPanel(View.Log);
+        SetProgress(0, "Starting the Android build.");
+        HeadlineText.Text = "Building for Android";
+        SetSubhead("The first build takes 20 to 60 minutes. You can leave it running.");
+        AppendLog("Starting the Android build.");
+
+        var startedUtc = DateTime.UtcNow;
+        _setupFailurePrinted = false;
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = PowerShellExecutable(),
+                WorkingDirectory = _repositoryRoot,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            foreach (var argument in new[] { "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
+                         "-AcceptAndroidLicenses", "-JsonEvents" })
+                startInfo.ArgumentList.Add(argument);
+
+            using var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
+            process.OutputDataReceived += (_, args) => Dispatcher.Invoke(() => HandleOutput(args.Data));
+            process.ErrorDataReceived += (_, args) => Dispatcher.Invoke(() =>
+            {
+                if (!string.IsNullOrWhiteSpace(args.Data)) AppendLog(args.Data);
+            });
+            if (!process.Start())
+                throw new InvalidOperationException("Windows could not start the Android build.");
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            using var registration = _cancellation.Token.Register(() =>
+            {
+                try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+            });
+            await process.WaitForExitAsync(_cancellation.Token);
+            if (process.ExitCode != 0)
+                throw new InvalidOperationException(DescribeSetupFailure(process.ExitCode, startedUtc,
+                    "android-error.json", "The Android build"));
+
+            var apk = Path.Combine(_repositoryRoot, ".local", "android", "pinyon-shift.apk");
+            if (!File.Exists(apk))
+                throw new InvalidOperationException("The Android build completed without producing pinyon-shift.apk.");
+            SetProgress(100, "Android package ready.");
+            HeadlineText.Text = "Android package ready";
+            SetSubhead("Install it on your own device: copy the APK over, or with USB debugging run " +
+                "\"python tools\\pinyon.py android install\" and \"android push-data\" in the install folder.");
+            AppendLog($"Android package: {apk}");
+            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{apk}\"") { UseShellExecute = true });
+        }
+        catch (OperationCanceledException)
+        {
+            SetFailure("Android build cancelled", "Start it again to resume where it stopped.");
+        }
+        catch (Exception ex)
+        {
+            SetFailure("Android build stopped", ex.Message);
+        }
+        finally
+        {
+            _busy = false;
+            GraphicsSettingsButton.IsEnabled = true;
+            // The game is still built: the primary action stays Play.
+            SetPrimaryText("Play");
+            UpdatePrimaryButton();
+        }
     }
 
     private void AppendLog(string line)

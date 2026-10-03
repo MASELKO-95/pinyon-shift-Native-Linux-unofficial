@@ -25,11 +25,22 @@ refuses Android packages, libraries and signing keys (see
   there.
 - The Android SDK command-line tools (Android Studio installs them) and JDK
   17. `pinyon.py android doctor --install` adds the pinned NDK, build tools
-  and platform from `config/android-toolchain.json`.
+  and platform from `config/android-toolchain.json`, and shows the Android
+  SDK license for you to accept (`--accept-licenses` answers yes).
 - The device: arm64, Android 13 (API 33) or later, a Vulkan 1.3 driver,
   about 8 GB free, USB debugging turned on.
 
 ## From the PC to the device
+
+In the launcher, once the game is built, **Build Android APK** does the
+first two steps below. It asks you to accept the Android SDK license, and on
+a PC with no Android SDK or JDK it fetches the pinned command-line tools and
+Eclipse Temurin JDK 17 into the install folder (`.local/toolchain`), checked
+against their SHA-256. A failure is described in
+`.local/logs/android-error.json`. Then install the package and copy the
+game with the last two commands.
+
+From a terminal:
 
 ```bash
 python tools/pinyon.py android doctor --install
