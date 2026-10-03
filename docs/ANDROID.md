@@ -1,10 +1,10 @@
 # Pinyon Shift on Android
 
-**Status: alpha, for developers.** The game builds for Android, installs,
-boots and reaches the title screen through the Vulkan renderer. It completes
-the opening drive on the renderer-free null backend on an arm64 device. It
-has been run on an Android 16 arm64 emulator on an Apple M4, not yet on a
-phone or a handheld. The target is a high-end Android handheld or phone with
+**Status: alpha, for developers.** The game builds for Android, installs and
+plays through the Vulkan renderer. On the reference tablet (nubia NP05J,
+Snapdragon 8 Elite) the race runs at 60 fps at 1x until the device heats up,
+and settles near 30 once its skin passes about 44 C
+([60 fps backlog](ANDROID_60FPS_BACKLOG.md)). The target is a high-end Android handheld or phone with
 a Snapdragon 8 Gen 2 or newer (Adreno 740+), 12 GB of memory and Android 13
 or later. The plan and its progress are in the
 [Android port backlog](ANDROID_PORT_BACKLOG.md).

@@ -33,10 +33,9 @@ the pinned ShiftGlue submodule needed to create the preview on your own
 computer. It does **not** contain the game, game assets, generated translations
 or a prebuilt game executable.
 
-> **Early days.** Rendering regressions, accelerated crowd animations at high
-> frame rates, and slowdowns in some areas remain possible. See the
-> [0.3.0 release notes](docs/releases/0.3.0.md) for what the latest release
-> contains and its known limitations.
+> **Early days.** Rendering regressions and slowdowns in some areas remain
+> possible. See the [0.4.0 release notes](docs/releases/0.4.0.md) for what the
+> latest release contains and its known limitations.
 
 ## Highlights
 
