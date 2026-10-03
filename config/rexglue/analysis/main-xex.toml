@@ -507,6 +507,15 @@ address = 0x823F4F60
 name = "PinyonShiftThrottleRenderJobs"
 registers = ["r1"]
 
+# The swap interrupt (sub_829EED78) compares how late the swap is (r7, percent
+# of a display period) with its threshold (r27) to choose between the
+# current and the next vblank; r8 is the previous swap's target vblank, r10
+# the current vblank count.
+[[midasm_hook]]
+address = 0x829EEE44
+name = "PinyonShiftReleaseLateSwap"
+registers = ["r7", "r8", "r10"]
+
 # Constant per-update steps written for the console's 30 updates a second,
 # scaled by real time between updates (pinyon_shift_fixed_steps_real_time).
 # CUI4AnimatedCamera::Update (sub_82649960) has chosen its per-call step (1/30

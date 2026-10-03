@@ -71,6 +71,11 @@ REXCVAR_DEFINE_BOOL(pinyon_shift_fixed_steps_real_time, true, "Pinyon Shift",
                     "the real time between updates, so they keep their speed at high frame "
                     "rates: the scripted UI cameras (car purchase and reveal)")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+REXCVAR_DEFINE_BOOL(pinyon_shift_release_late_swaps, true, "Pinyon Shift",
+                    "Show a frame that misses its vblank as soon as it is ready instead of at "
+                    "the next guest vblank (4.17 ms later at the 120 limit); frames on time "
+                    "keep their vblank alignment")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
 REXCVAR_DEFINE_BOOL(disable_motion_blur, false, "Pinyon Shift",
                     "Disable Forza Horizon motion blur");
 REXCVAR_DEFINE_BOOL(disable_depth_of_field, false, "Pinyon Shift",
@@ -4246,6 +4251,19 @@ FixedStepSite animated_camera_step{"animated_camera"};
 // purchase and reveal): f1 holds its 1/30 s step (1/60 under a UI flag).
 void PinyonShiftScaleAnimatedCameraStep(PPCRegister& r31, PPCRegister& f1) {
   ScaleFixedStep(animated_camera_step, uint32_t(r31.u64), f1);
+}
+
+// The swap interrupt (sub_829EED78) targets the next vblank when the swap
+// arrives more than its threshold (20 % of a display period) after the
+// latest vblank. When a whole frame of guest vblanks (two: the guest vblank
+// runs at twice the render limit) has already passed since the previous
+// swap's target, the frame is late anyway: report it as on time (r7, the
+// percent, to 0) so the title flips it now (DR-5.2). r8 is that previous
+// target, r10 the current vblank count.
+void PinyonShiftReleaseLateSwap(PPCRegister& r7, PPCRegister& r8, PPCRegister& r10) {
+  if (REXCVAR_GET(pinyon_shift_release_late_swaps) && r10.u32 - r8.u32 >= 2) {
+    r7.u64 = 0;
+  }
 }
 
 void PinyonShiftObserveSimulationDelta(PPCRegister& f31) {
