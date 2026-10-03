@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AP-7.5: Android's game modes. Declaring PERFORMANCE and BATTERY lets the
+     system and the device maker's game tools run the title in either; the
+     title applies no scaling or frame rate override of its own. -->
+<game-mode-config xmlns:android="http://schemas.android.com/apk/res/android"
+    android:supportsPerformanceGameMode="true"
+    android:supportsBatteryGameMode="true"
+    android:allowGameDownscaling="false"
+    android:allowGameFpsOverride="false" />

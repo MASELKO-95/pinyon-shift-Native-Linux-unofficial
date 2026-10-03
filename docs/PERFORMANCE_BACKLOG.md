@@ -1,7 +1,9 @@
 # Performance backlog: 4K at 120 fps on Vulkan
 
 Status: **worked through on 2026-09-30; every item is taken, measured and
-dropped, sized and deferred, or waiting on a person.** Created 2026-09-30 at
+dropped, sized and deferred, or waiting on a person.** The long-term
+follow-up, compiling FH1's display lists inside the executor, is
+[DESKTOP_RENDERER_BACKLOG.md](DESKTOP_RENDERER_BACKLOG.md). Created 2026-09-30 at
 `dev` checkpoint `58473da` (ShiftGlue `b9a5de0`).
 
 **Outcome before the final pass.** The Vulkan race at 1x went from 20.8 ms

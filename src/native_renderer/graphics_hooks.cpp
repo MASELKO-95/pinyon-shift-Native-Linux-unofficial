@@ -143,5 +143,10 @@ void PinyonShiftGpuFenceWait(PPCRegister& r3) {
   if (load(fence_address) != last_seen) {
     return;
   }
+  const auto wait_start = Clock::now();
   rex::system::WaitForGpuWrite(sequence, std::chrono::milliseconds(1));
+  PERF_counter_inc(kTitleGpuFenceWaitCount);
+  PERF_counter_add(kTitleGpuFenceWaitNs, std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                             Clock::now() - wait_start)
+                                             .count());
 }

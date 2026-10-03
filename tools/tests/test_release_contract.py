@@ -298,6 +298,27 @@ catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
         for shipped in ("host-config.ps1", "set-graphics-experiment.ps1", "verify-codegen-log.ps1"):
             self.assertIn(shipped, package_script)
 
+    def test_launcher_payload_ships_the_android_build(self):
+        # The launcher's Build Android APK action runs build-android.ps1, which
+        # runs pinyon.py; pinyon.py imports pinyon_android, which reads the
+        # toolchain pins and packages the android/ sources.
+        package = (ROOT / "tools/package-launcher.ps1").read_text(encoding="utf-8")
+        include = package.split("$include = @(", 1)[1].split("\n)", 1)[0]
+        paths = set(re.findall(r"'([^']+)'", include))
+        for required in ("tools/pinyon.py", "tools/pinyon_android.py", "tools/build-android.ps1",
+                         "config/android-toolchain.json", "android"):
+            self.assertIn(required, paths)
+            self.assertTrue((ROOT / required).exists(), required)
+        launcher = (ROOT / "launcher/PinyonShift.Launcher/MainWindow.xaml.cs").read_text(
+            encoding="utf-8")
+        self.assertIn('"build-android.ps1"', launcher)
+        self.assertIn("-AcceptAndroidLicenses", launcher)
+        # The bootstrap downloads are pinned like the PC toolchain's.
+        android = json.loads((ROOT / "config/android-toolchain.json").read_text(encoding="utf-8"))
+        for pin in (android["bootstrap"]["cmdline_tools"], android["bootstrap"]["jdk"]):
+            self.assertTrue(pin["url"].startswith("https://"))
+            self.assertRegex(pin["sha256"], r"^[0-9A-F]{64}$")
+
     def test_native_tools_use_the_configured_sdk_and_ship_their_sources(self):
         cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
         package = (ROOT / "tools/package-launcher.ps1").read_text(encoding="utf-8")

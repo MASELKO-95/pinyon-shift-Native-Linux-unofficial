@@ -66,6 +66,15 @@ foreach ($file in @('fh1-gpu-prewarm-v3.txt', 'fh1-native-pipelines-v1.bin', "sh
 }
 '{"result":"shaders-validated"}' | Set-Content (Join-Path $work 'production.json')
 ''')
+            (root / "tools/prepare-fh1-vulkan.ps1").write_text(r'''
+param($StateRoot, $GameRoot, $BuildDirectory, [switch]$JsonEvents)
+$root = Split-Path $PSScriptRoot -Parent
+Add-Content (Join-Path $root 'calls.txt') 'vulkan'
+if ($env:PINYON_TEST_VULKAN_FAIL -eq '1') { return }
+$shareable = Join-Path $StateRoot 'cache/shaders/shareable'
+[void][IO.Directory]::CreateDirectory($shareable)
+[IO.File]::WriteAllText((Join-Path $shareable '4D5309C9.fbo.vk.xpso'), 'pipelines')
+''')
             state = root / "state"
             save = state / "user/ForzaProfile/ForzaProfile"
             save.parent.mkdir(parents=True)
@@ -93,10 +102,22 @@ function Get-Process { return $null }
 
             active = state / "cache/fh1-artifacts.json"
             # Vulkan, the default (and what any config before schema 27
-            # migrates to), translates shaders as it runs: nothing is prepared.
+            # migrates to), keeps the shaders and pipelines it creates as it
+            # runs; its storage is filled once before the first start. A
+            # failed preparation is not retried until the build changes.
+            environment["PINYON_TEST_VULKAN_FAIL"] = "1"
             run()
+            run()
+            self.assertEqual(calls(), ["vulkan"])
+            executable = root / "out/build/win-amd64-release/pinyon_shift.exe"
+            executable.parent.mkdir(parents=True, exist_ok=True)
+            executable.write_text("rebuilt")
+            environment["PINYON_TEST_VULKAN_FAIL"] = "0"
+            run()
+            run()
+            self.assertEqual(calls(), ["vulkan", "vulkan"])
             self.assertFalse(active.exists())
-            self.assertFalse((root / "calls.txt").exists())
+            (root / "calls.txt").unlink()
             # Direct3D 12 loads prepared packs.
             (state / "config").mkdir()
             config = state / "config/pinyon_shift.toml"

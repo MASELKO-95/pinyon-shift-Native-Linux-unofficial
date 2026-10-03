@@ -83,6 +83,16 @@ class HostUi final : public rex::ui::UIDrawer, public rex::ui::WindowInputListen
     float x = 0.0f, y = 0.0f, size = 24.0f;
   };
   void SetHudSource(std::function<std::vector<HudText>()> source) { hud_source_ = std::move(source); }
+  // Discs drawn over the game while no menu is open (the touch controls), in
+  // window pixels; pressed ones are brighter.
+  struct OverlayDisc {
+    float x = 0.0f, y = 0.0f, radius = 0.0f;
+    std::string label;
+    bool pressed = false;
+  };
+  void SetOverlaySource(std::function<std::vector<OverlayDisc>()> source) {
+    overlay_source_ = std::move(source);
+  }
   void HudChanged();
   // Closes every screen. Safe to call from a row's action. The guest gets its
   // input back only once no pad button or key is held, so the press that
@@ -125,6 +135,8 @@ class HostUi final : public rex::ui::UIDrawer, public rex::ui::WindowInputListen
   void DrawMenu(rex::ui::UIDrawContext& context);
   void DrawToasts(rex::ui::UIDrawContext& context);
   void DrawHud(rex::ui::UIDrawContext& context);
+  void DrawOverlay(rex::ui::UIDrawContext& context);
+  void DrawDisc(float x, float y, float radius, uint32_t color);
   bool HasHud() const;
   // Sets the canvas for this draw; false while there is nothing to draw to.
   bool PrepareCanvas(rex::ui::UIDrawContext& context);
@@ -177,6 +189,7 @@ class HostUi final : public rex::ui::UIDrawer, public rex::ui::WindowInputListen
   };
   std::vector<Toast> toasts_;
   std::function<std::vector<HudText>()> hud_source_;
+  std::function<std::vector<OverlayDisc>()> overlay_source_;
   // Closed, waiting for held buttons and keys to be released.
   bool draining_ = false;
   std::chrono::steady_clock::time_point drain_started_;

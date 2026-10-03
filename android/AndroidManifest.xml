@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pinyon Shift for Android (AP-1.4). The package is built on the player's PC
+  from their own disc by tools/pinyon_android.py and installed on their own
+  device; it is never published. The version attributes, the minimum and
+  target SDK and the package name are set when the package is linked.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    android:installLocation="auto">
+
+    <!-- The renderer is Vulkan only; 1.3-class drivers are the floor. -->
+    <uses-feature
+        android:name="android.hardware.vulkan.version"
+        android:version="0x403000"
+        android:required="true" />
+
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.gamepad"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.bluetooth"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.usb.host"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.type.pc"
+        android:required="false" />
+
+    <!-- Rumble on the device itself (SDL's haptics). -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- The title opens system-link sockets at the single-player menu, as it
+         does on Windows; without this permission socket() fails and the
+         title dereferences null on that path. Nothing contacts a server. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:label="Pinyon Shift"
+        android:allowBackup="false"
+        android:hasCode="true"
+        android:extractNativeLibs="true"
+        android:isGame="true"
+        android:appCategory="game"
+        android:largeHeap="true"
+        android:hardwareAccelerated="true"
+        android:enableOnBackInvokedCallback="false">
+
+        <!-- simpleperf from adb on a release build (AP-7.0): profiling only,
+             no debugger. -->
+        <profileable android:shell="true" />
+
+        <!-- The title's 16:9 at any width; letterboxed by the presenter. -->
+        <meta-data android:name="android.max_aspect" android:value="3.0" />
+        <!-- PERFORMANCE and BATTERY game modes (res/xml/game_mode_config.xml). -->
+        <meta-data android:name="android.game_mode_config"
+            android:resource="@xml/game_mode_config" />
+
+        <activity
+            android:name="com.pinyonshift.fh1.PinyonShiftActivity"
+            android:label="Pinyon Shift"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:screenOrientation="sensorLandscape"
+            android:resizeableActivity="false"
+            android:alwaysRetainTaskState="true"
+            android:launchMode="singleInstance"
+            android:configChanges="layoutDirection|locale|grammaticalGender|fontScale|fontWeightAdjustment|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
+            android:preferMinimalPostProcessing="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

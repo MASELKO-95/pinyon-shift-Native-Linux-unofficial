@@ -494,6 +494,56 @@ address = 0x823EDA10
 name = "PinyonShiftTraceFrameTelemetry"
 registers = ["r28", "r31"]
 
+# FH1's render job queue (sub_823F4B30) keeps a producer at most twice its
+# threshold ahead of the job thread by yielding, then gives up after 1000
+# yields and posts anyway. On the 360 that wait outlasts a render thread
+# stall; on the host NtYieldExecution returns at once, so a slow GPU frame
+# let the main thread queue hundreds of jobs, the job thread then filled
+# more than the render thread's 12 slots in one pass, and the render thread
+# read a slot early (AV in sub_82416A00) or waited on a lost signal (hang).
+# The hook, before the yield, waits in host time instead: still bounded.
+[[midasm_hook]]
+address = 0x823F4F60
+name = "PinyonShiftThrottleRenderJobs"
+registers = ["r1"]
+
+# The swap interrupt (sub_829EED78) compares how late the swap is (r7, percent
+# of a display period) with its threshold (r27) to choose between the
+# current and the next vblank; r8 is the previous swap's target vblank, r10
+# the current vblank count.
+[[midasm_hook]]
+address = 0x829EEE44
+name = "PinyonShiftReleaseLateSwap"
+registers = ["r7", "r8", "r10"]
+
+# Constant per-update steps written for the console's 30 updates a second,
+# scaled by real time between updates (pinyon_shift_fixed_steps_real_time).
+# CUI4AnimatedCamera::Update (sub_82649960) has chosen its per-call step (1/30
+# s, or 1/60 under a UI flag) in f1, about to advance the scripted shot by it.
+[[midasm_hook]]
+address = 0x826499C8
+name = "PinyonShiftScaleAnimatedCameraStep"
+registers = ["r31", "f1"]
+
+# The trackside crowd's animation update (proceduralGeometry, sub_82E08A00):
+# r29 is the models object once the prologue has run; at 0x82E09144 and
+# 0x82E0945C r10 holds the per-frame step the title loaded from +0x3EAE4 of
+# the render context, about to be added to an instance's animation frame.
+[[midasm_hook]]
+address = 0x82E08A30
+name = "PinyonShiftCrowdStepBegin"
+registers = ["r29"]
+
+[[midasm_hook]]
+address = 0x82E09144
+name = "PinyonShiftCrowdStepRandom"
+registers = ["r10"]
+
+[[midasm_hook]]
+address = 0x82E0945C
+name = "PinyonShiftCrowdStepLooping"
+registers = ["r10"]
+
 # FH1 has finalized the variable gameplay delta in f31 immediately before
 # storing it at +448 on the main-loop owner and dispatching update systems.
 # Accumulate that title-authored delta for wall-time validation without

@@ -15,6 +15,8 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <thread>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -33,6 +35,7 @@
 #include "cheats.h"
 #include "cheats_map.h"
 #include "dlc_treasure_map.h"
+#include "stall_dump.h"
 #include "mod/mod_host.h"
 #include "mod/overlay_device.h"
 #include "save/live_profile.h"
@@ -42,6 +45,9 @@
 
 REXCVAR_DEFINE_BOOL(pinyon_shift_skip_opening_movies, false, "Pinyon Shift",
                     "Complete the opening splash movies immediately");
+REXCVAR_DEFINE_BOOL(pinyon_shift_record_file_opens, false, "Pinyon Shift",
+                    "Record each distinct game file the title opens as a guest.file.opened "
+                    "session event (which files a route needs, for a partial device copy)");
 REXCVAR_DEFINE_BOOL(
     pinyon_shift_stabilize_vehicle_presentation, false, "Pinyon Shift",
     "Suppress isolated implausible player-vehicle presentation transforms");
@@ -61,6 +67,16 @@ REXCVAR_DEFINE_DOUBLE(pinyon_shift_max_simulation_step_ms, 33.4, "Pinyon Shift",
                       "With pinyon_shift_host_simulation_delta, the longest simulation step "
                       "(ms); longer gaps between ticks are dropped")
     .range(4.0, 250.0);
+REXCVAR_DEFINE_BOOL(pinyon_shift_fixed_steps_real_time, true, "Pinyon Shift",
+                    "Scale FH1's constant per-update steps, written for 30 updates a second, by "
+                    "the real time between updates, so they keep their speed at high frame "
+                    "rates: the scripted UI cameras (car purchase and reveal)")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+REXCVAR_DEFINE_BOOL(pinyon_shift_release_late_swaps, true, "Pinyon Shift",
+                    "Show a frame that misses its vblank as soon as it is ready instead of at "
+                    "the next guest vblank (4.17 ms later at the 120 limit); frames on time "
+                    "keep their vblank alignment")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
 REXCVAR_DEFINE_BOOL(disable_motion_blur, false, "Pinyon Shift",
                     "Disable Forza Horizon motion blur");
 REXCVAR_DEFINE_BOOL(disable_depth_of_field, false, "Pinyon Shift",
@@ -591,6 +607,18 @@ void PinyonShiftObserveGuestFileOpen(std::string_view guest_path) {
     }
   }
   pinyon_shift::fh1_render_test::ObserveFileOpened(path);
+  if (REXCVAR_GET(pinyon_shift_record_file_opens)) {
+    static std::mutex opened_mutex;
+    static std::set<std::string> opened;
+    bool first = false;
+    {
+      std::lock_guard lock(opened_mutex);
+      first = opened.insert(path).second;
+    }
+    if (first) {
+      pinyon_shift::diagnostics::RecordEvent("guest.file.opened", {{"path", path}});
+    }
+  }
   if (pinyon_shift::mod::HasSubscribers(PINYON_HOOK_FILE_OPEN)) {
     PinyonHookEvent event{};
     event.hook = PINYON_HOOK_FILE_OPEN;
@@ -3927,8 +3955,32 @@ void ApplyUiMutationExperiment() {
   }
 }
 
+// Before each yield of the render job queue's producer wait (sub_823F4B30,
+// counter at 84(r1), 1000 down to 0, run only while the queue is over its
+// limit): sleep briefly instead of a bare yield, and keep the loop going
+// until the job thread catches up or two seconds pass, so the title's own
+// escape needs a real stall, as on the 360.
+void PinyonShiftThrottleRenderJobs(PPCRegister& r1) {
+  using Clock = std::chrono::steady_clock;
+  constexpr uint32_t kIterations = 1000;
+  constexpr auto kLimit = std::chrono::seconds(2);
+  thread_local Clock::time_point started;
+  const uint32_t counter = r1.u32 + 84;
+  const uint32_t left = LoadGuestU32(counter);
+  const Clock::time_point now = Clock::now();
+  if (left >= kIterations) {
+    started = now;
+    return;  // The first pass yields as before: usually that is enough.
+  }
+  if (now - started < kLimit) {
+    if (left < 2) StoreGuestU32(counter, 2);
+    std::this_thread::sleep_for(std::chrono::microseconds(50));
+  }
+}
+
 void PinyonShiftTraceFrameTelemetry(PPCRegister& r28, PPCRegister& r31) {
   PROFILE_SIMULATION_TICK();
+  pinyon_shift::stall::NoteFrame();
   ApplyUiMutationExperiment();
   // The trainer's collectible markers (NP-8.6) queue their pass here, so it
   // also runs while the pause map is open.
@@ -4127,6 +4179,141 @@ static void PinyonShiftApplyCredits() {
     pinyon_shift::cheats::CreditsApplied(change, previous, value);
     queued.store(false, std::memory_order_release);
   });
+}
+
+namespace {
+// A guest site that advances some state by a constant step per call, written
+// for the console's 30 updates a second. Here updates come as often as the
+// render limit allows, so the step becomes the real time since the same
+// object's previous update times 30 (the 30 fps limit is unchanged); a gap
+// over 0.25 s (a new shot, a pause) keeps the constant for that call.
+struct FixedStepSite {
+  using Clock = std::chrono::steady_clock;
+  const char* name;
+  std::mutex mutex;
+  struct ObjectClock {
+    uint32_t object = 0;
+    Clock::time_point last;
+  };
+  std::array<ObjectClock, 8> clocks{};
+  Clock::time_point log_window{};
+  uint32_t log_calls = 0;
+  double log_fixed = 0.0, log_applied = 0.0;
+};
+
+void ScaleFixedStep(FixedStepSite& site, uint32_t object, PPCRegister& step) {
+  using Clock = FixedStepSite::Clock;
+  const Clock::time_point now = Clock::now();
+  std::lock_guard<std::mutex> lock(site.mutex);
+  FixedStepSite::ObjectClock* clock = nullptr;
+  for (auto& entry : site.clocks) {
+    if (entry.object == object && entry.last != Clock::time_point{}) clock = &entry;
+  }
+  if (!clock) {
+    clock = &*std::min_element(site.clocks.begin(), site.clocks.end(),
+                               [](const auto& a, const auto& b) { return a.last < b.last; });
+    *clock = {object, {}};
+  }
+  const double fixed = step.f64;
+  double applied = fixed;
+  if (clock->last != Clock::time_point{} &&
+      REXCVAR_GET(pinyon_shift_fixed_steps_real_time)) {
+    const double elapsed = std::chrono::duration<double>(now - clock->last).count();
+    if (elapsed >= 0.0 && elapsed < 0.25) {
+      applied = fixed * std::min(elapsed, 0.1) * 30.0;
+      step.f64 = applied;
+    }
+  }
+  clock->last = now;
+  ++site.log_calls;
+  site.log_fixed += fixed;
+  site.log_applied += applied;
+  if (now - site.log_window >= std::chrono::seconds(2)) {
+    if (site.log_window != Clock::time_point{} && site.log_calls) {
+      const double seconds = std::chrono::duration<double>(now - site.log_window).count();
+      pinyon_shift::diagnostics::RecordEvent(
+          "fh1.fixed_step.rate",
+          {{"site", site.name},
+           {"updates_per_second", fmt::format("{:.1f}", site.log_calls / seconds)},
+           {"fixed_mean", fmt::format("{:.6f}", site.log_fixed / site.log_calls)},
+           {"fixed_per_second", fmt::format("{:.4f}", site.log_fixed / seconds)},
+           {"applied_per_second", fmt::format("{:.4f}", site.log_applied / seconds)}});
+    }
+    site.log_window = now;
+    site.log_calls = 0;
+    site.log_fixed = site.log_applied = 0.0;
+  }
+}
+
+FixedStepSite animated_camera_step{"animated_camera"};
+}  // namespace
+
+// CUI4AnimatedCamera::Update (sub_82649960), the scripted UI shots (car
+// purchase and reveal): f1 holds its 1/30 s step (1/60 under a UI flag).
+void PinyonShiftScaleAnimatedCameraStep(PPCRegister& r31, PPCRegister& f1) {
+  ScaleFixedStep(animated_camera_step, uint32_t(r31.u64), f1);
+}
+
+namespace {
+// The trackside crowd's animation frames (proceduralGeometry, sub_82E08A00 on
+// the render thread) advance by a step the title sets to one per rendered
+// frame, so the crowd played at the render rate over 30. Each update call is
+// given the whole 30 Hz steps of real time since the same models' previous
+// call instead, the fraction carried to the next (DR-1.5).
+struct CrowdClock {
+  std::chrono::steady_clock::time_point last;
+  double carry = 0.0;
+};
+std::mutex crowd_clock_mutex;
+std::unordered_map<uint32_t, CrowdClock> crowd_clocks;
+thread_local uint32_t crowd_call_steps = 1;
+}  // namespace
+
+// sub_82E08A00 after its prologue: r29 is the procedural models object.
+void PinyonShiftCrowdStepBegin(PPCRegister& r29) {
+  const auto now = std::chrono::steady_clock::now();
+  std::lock_guard<std::mutex> lock(crowd_clock_mutex);
+  if (crowd_clocks.size() >= 1024) crowd_clocks.clear();
+  CrowdClock& clock = crowd_clocks[uint32_t(r29.u64)];
+  uint32_t steps = 1;
+  if (clock.last != std::chrono::steady_clock::time_point{}) {
+    const double elapsed = std::chrono::duration<double>(now - clock.last).count();
+    if (elapsed >= 0.0 && elapsed < 0.25) {
+      clock.carry += elapsed * 30.0;
+      steps = uint32_t(clock.carry);
+      clock.carry -= steps;
+    } else {
+      clock.carry = 0.0;
+    }
+  }
+  clock.last = now;
+  crowd_call_steps = steps;
+}
+
+namespace {
+void ApplyCrowdSteps(PPCRegister& r10) {
+  if (REXCVAR_GET(pinyon_shift_fixed_steps_real_time) && r10.u32 != 0) {
+    r10.u64 = crowd_call_steps;
+  }
+}
+}  // namespace
+
+// The title's step (r10) about to be added to a crowd instance's frame: the
+// instances that pick a random clip at the end of one, and the looping ones.
+void PinyonShiftCrowdStepRandom(PPCRegister& r10) { ApplyCrowdSteps(r10); }
+void PinyonShiftCrowdStepLooping(PPCRegister& r10) { ApplyCrowdSteps(r10); }
+
+// The swap interrupt (sub_829EED78) targets the next vblank when the swap
+// arrives more than its threshold (20 % of a display period) after the
+// latest vblank. When a whole frame of guest vblanks (two: the guest vblank
+// runs at twice the render limit) has already passed since the previous
+// swap's target, the frame is late anyway: report it as on time (r7, the
+// percent, to 0) so the title flips it now (DR-5.2). r8 is that previous
+// target, r10 the current vblank count.
+void PinyonShiftReleaseLateSwap(PPCRegister& r7, PPCRegister& r8, PPCRegister& r10) {
+  if (REXCVAR_GET(pinyon_shift_release_late_swaps) && r10.u32 - r8.u32 >= 2) {
+    r7.u64 = 0;
+  }
 }
 
 void PinyonShiftObserveSimulationDelta(PPCRegister& f31) {
@@ -4659,11 +4846,7 @@ static bool PinyonShiftGuestRangeReadable(uint32_t address, uint32_t size) {
   while (cursor <= end) {
     auto* host_address =
         memory->TranslateVirtual(static_cast<uint32_t>(cursor));
-    size_t region_length = page_size;
-    rex::memory::PageAccess host_access =
-        rex::memory::PageAccess::kNoAccess;
-    if (!rex::memory::QueryProtect(host_address, region_length, host_access) ||
-        host_access == rex::memory::PageAccess::kNoAccess) {
+    if (!rex::memory::IsHostReadable(host_address)) {
       return false;
     }
 

@@ -45,3 +45,28 @@ jobs:
       - name: Build and run the host tests
         shell: powershell
         run: .\tools\ci-host-tests.ps1
+
+  android:
+    # The Android runtime, GPU plugin and host tests cross-compiled with the
+    # pinned NDK (AP-8.2), without game files: no generated code, no package.
+    if: github.event.repository.visibility == 'public'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - name: Install the pinned NDK and Ninja
+        run: |
+          ndk=$(python3 -c "import json; print(json.load(open('config/android-toolchain.json'))['android_sdk']['ndk'])")
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ndk" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk" >> "$GITHUB_ENV"
+          sudo apt-get install -y ninja-build
+      - name: Configure for android-arm64
+        run: >
+          cmake --preset android-arm64-release -B out/build/android-ci
+          -DPINYON_SHIFT_HOST_TESTS_ONLY=ON
+          -DPYTHON_EXECUTABLE=$(command -v python3)
+          -DPython3_EXECUTABLE=$(command -v python3)
+      - name: Build the runtime, GPU plugin and host tests
+        run: cmake --build out/build/android-ci --target rexruntime rexgpu-fh1 pinyon_shift_host_tests -j 4

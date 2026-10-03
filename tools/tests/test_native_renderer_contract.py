@@ -43,7 +43,11 @@ class NativeRendererContractTests(unittest.TestCase):
             self.assertNotIn(token, source)
 
         cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
-        self.assertEqual(cmake.count("src/native_renderer/graphics_hooks.cpp"), 2)
+        # Once, in the host source list every platform's game target uses.
+        self.assertEqual(cmake.count("src/native_renderer/graphics_hooks.cpp"), 1)
+        host_sources = cmake[cmake.index("set(PINYON_SHIFT_HOST_SOURCES"):]
+        host_sources = host_sources[:host_sources.index(")")]
+        self.assertIn("src/native_renderer/graphics_hooks.cpp", host_sources)
 
     def test_census_ledger_tracks_exact_starting_baseline(self):
         ledger = (ROOT / "docs/native-renderer/archive/RENDER_PASS_CENSUS.md").read_text(

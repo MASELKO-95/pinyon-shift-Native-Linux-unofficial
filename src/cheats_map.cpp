@@ -16,6 +16,7 @@
 #include <rex/system/xmemory.h>
 
 #include "cheats.h"
+#include "dlc_treasure_map.h"
 #include "mod/mod_host.h"
 #include "pinyon_shift_diagnostics.h"
 
@@ -124,10 +125,7 @@ bool Readable(uint32_t address, uint32_t size) {
   uint64_t cursor = address;
   while (cursor <= end) {
     auto* host = memory->TranslateVirtual(static_cast<uint32_t>(cursor));
-    size_t length = page_size;
-    rex::memory::PageAccess access = rex::memory::PageAccess::kNoAccess;
-    if (!rex::memory::QueryProtect(host, length, access) ||
-        access == rex::memory::PageAccess::kNoAccess) {
+    if (!rex::memory::IsHostReadable(host)) {
       return false;
     }
     const size_t page_left = page_size - (reinterpret_cast<uintptr_t>(host) % page_size);
@@ -268,7 +266,9 @@ void SyncMarkers(bool show, bool log) {
     g_added.clear();
     g_added_list = begin;
   }
-  const bool live = show && (pinyon_shift::mod::CallGuest(kCollectiblesLive, {0}) & 0xFF) != 0;
+  // Not while the game mode is missing: the query would read guest 0x38.
+  const bool live = show && pinyon_shift::dlc::GameModeReady() &&
+                    (pinyon_shift::mod::CallGuest(kCollectiblesLive, {0}) & 0xFF) != 0;
   Census census;
   uint32_t shown = 0, removed = 0;
   for (uint32_t slot = begin; slot < end; slot += 4) {

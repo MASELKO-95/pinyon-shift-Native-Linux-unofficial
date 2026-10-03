@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.0 - 2026-10-03
+
+- Fixed Vulkan losing the GPU on AMD Radeon cards: the game could wait on a
+  fence before it was submitted. Fixed three other Vulkan validation errors.
+- Fixed green, white and pink blocks while shaders compile, a stop at guest
+  address 0x38 with the Treasure Map, a setup compile error on some PCs, and
+  a hang or crash when the render job queue overran during heavy frames.
+- Played the start-line crowd and the car purchase cameras at console speed
+  at 60 and 120 fps.
+- Showed late frames as soon as they are ready, steadying 120 fps at 1x.
+- Made 2x to 4x lighter on the GPU (compute texture loads, resolves written
+  into the textures that read them) and the GPU recorder thread cheaper.
+- Prepared Vulkan shaders during setup.
+- Added Build Android APK to the launcher (alpha): the game cross-compiled
+  for arm64 Android from the PC build, with touch controls and presets.
+- Wrote the guest threads' stacks to the log when the game stops responding.
+
 ## 0.3.1 - 2026-10-01
 
 - Fixed setup and launches with Direct3D 12 stopping while preparing graphics

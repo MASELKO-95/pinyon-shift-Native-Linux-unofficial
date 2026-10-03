@@ -1,9 +1,5 @@
 #include "pinyon_shift_diagnostics.h"
 
-#if defined(__x86_64__) || defined(_M_X64)
-#include <cpuid.h>
-#endif
-
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -23,6 +19,13 @@
 
 #include "crash_reporter.h"
 #include "platform/host_platform.h"
+
+// After every other header: its __cpuid macro breaks the declaration of the
+// function of the same name in clang's MSVC <intrin.h>, which fmt includes
+// (issue #325, where no precompiled header had included it first).
+#if defined(__x86_64__) || defined(_M_X64)
+#include <cpuid.h>
+#endif
 
 namespace pinyon_shift::diagnostics {
 namespace {
@@ -113,8 +116,11 @@ std::string JsonStringField(const std::string& json, std::string_view key) {
 
 BuildProvenance LoadBuildProvenance() {
   BuildProvenance result;
-  std::ifstream input(ExecutableDirectory() / "pinyon_shift_build.json",
-                      std::ios::binary);
+  // Beside the executable; Android packages it as an asset the activity
+  // copies out and names in PINYON_SHIFT_BUILD_MANIFEST.
+  const auto manifest = EnvironmentPath("PINYON_SHIFT_BUILD_MANIFEST")
+                            .value_or(ExecutableDirectory() / "pinyon_shift_build.json");
+  std::ifstream input(manifest, std::ios::binary);
   if (!input) {
     return result;
   }
@@ -184,6 +190,9 @@ bool InitializeEarly() {
   for (const char* directory : {"cache", "config", "crashes", "logs", "update", "user"}) {
     std::filesystem::create_directories(g_state_root / directory, error);
     if (error) {
+      // The only trace of a silent exit on Android: logcat.
+      REXLOG_ERROR("Cannot create the state folder {}: {}",
+                   (g_state_root / directory).string(), error.message());
       return false;
     }
   }

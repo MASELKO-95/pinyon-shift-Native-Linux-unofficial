@@ -28,6 +28,12 @@ private/
 !/docs/UI_ASSETS.md
 !/docs/NATIVE_PORT_BACKLOG.md
 !/docs/PERFORMANCE_BACKLOG.md
+!/docs/ANDROID_PORT_BACKLOG.md
+!/docs/ANDROID_60FPS_BACKLOG.md
+!/docs/DESKTOP_RENDERER_BACKLOG.md
+!/docs/ANDROID.md
+!/docs/android/
+!/docs/android/*.json
 !/docs/MODDING.md
 !/docs/releases/
 !/docs/releases/*.md
@@ -54,6 +60,15 @@ __pycache__/
 *.trace
 *.obj
 *.lib
+# Android packages, libraries and signing keys (built from the player's disc).
+*.so
+*.apk
+*.aab
+*.idsig
+*.keystore
+*.jks
+*.dex
+*.class
 .artifacts/
 launcher/**/bin/
 launcher/**/obj/

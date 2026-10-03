@@ -287,6 +287,8 @@ void SettingsPages::Save() {
 
 std::unique_ptr<MenuScreen> SettingsPages::Display() {
   std::vector<MenuRow> rows;
+  // An Android activity is always full screen on its one display.
+#if !defined(__ANDROID__)
   rows.push_back(Toggle("FULLSCREEN", "fullscreen"));
   rows.push_back(Setting("MONITOR",
                          {{"DEFAULT", {{"monitor", "0"}}},
@@ -302,6 +304,7 @@ std::unique_ptr<MenuScreen> SettingsPages::Display() {
                       {"window_height", std::to_string(height)}}});
   }
   rows.push_back(Setting("WINDOW SIZE", std::move(sizes)));
+#endif
   // Letterbox keeps the guest's aspect with bars, crop fills the window by
   // cutting into the title's overscan margin, stretch fills it by scaling.
   rows.push_back(Setting("ASPECT RATIO",
@@ -334,7 +337,9 @@ std::unique_ptr<MenuScreen> SettingsPages::Display() {
                           {"60", {{"host_present_fps_limit", "60"}}},
                           {"120", {{"host_present_fps_limit", "120"}}},
                           {"240", {{"host_present_fps_limit", "240"}}}}));
+#if !defined(__ANDROID__)
   rows.push_back(Toggle("VARIABLE REFRESH RATE", "d3d12_allow_variable_refresh_rate_and_tearing"));
+#endif
   // How the rendered image is scaled to the window: FSR 1 and CAS keep 2x
   // on a 4K display and 3x on 1440p sharp where bilinear blurs. The page's
   // note gives both sizes.
@@ -361,6 +366,40 @@ std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
   // renders at 1x and scales to the display with FSR 1; at 2x the race's
   // busiest part runs at a 12.7 ms median (79 fps), so it holds 60. At 3x
   // Vulkan is GPU-bound at about 29 ms, where Direct3D 12 takes 17.5 ms.
+#if defined(__ANDROID__)
+  // AP-7.5: a handheld renders at 1x (AP-2.5) and trades frame rate for
+  // battery and heat. BATTERY 30 is the Xbox 360's own rate (the guest
+  // vblank at 60 Hz) with the game's 4x MSAA; SMOOTH 60 doubles it and
+  // renders without MSAA: on a Snapdragon 8 Elite the race's busiest part
+  // takes 25 ms with MSAA and holds 60 fps cold without it. Both scale to the
+  // panel bilinearly and keep the game's own anisotropic filtering: FSR 1 at
+  // the panel's 2400x1504 cost 1.4 ms a frame and forced 4x anisotropy
+  // 0.4 ms, measured by alternating each in one run.
+  rows.push_back(Setting("GRAPHICS PRESET",
+                         {{"BATTERY 30",
+                           {{"gpu_backend", "\"vulkan\""},
+                            {"gpu_record_thread", "true"},
+                            {"draw_resolution_scale_x", "1"},
+                            {"draw_resolution_scale_y", "1"},
+                            {"present_effect", "\"bilinear\""},
+                            {"anisotropic_override", "-1"},
+                            {"fh1_msaa_single_sample", "false"},
+                            {"pinyon_shift_fh1_render_fps_limit", "30"}}},
+                          {"SMOOTH 60",
+                           {{"gpu_backend", "\"vulkan\""},
+                            {"gpu_record_thread", "true"},
+                            {"draw_resolution_scale_x", "1"},
+                            {"draw_resolution_scale_y", "1"},
+                            {"present_effect", "\"bilinear\""},
+                            {"anisotropic_override", "-1"},
+                            {"fh1_msaa_single_sample", "true"},
+                            {"pinyon_shift_fh1_render_fps_limit", "60"}}}}));
+  // The game's 4x MSAA is most of a handheld GPU's frame: off, edges are
+  // harder and the frame much cheaper.
+  // Labelled apart from the FXAA row (ANTI-ALIASING) below.
+  rows.push_back(Setting("MSAA", {{"4X", {{"fh1_msaa_single_sample", "false"}}},
+                                  {"OFF", {{"fh1_msaa_single_sample", "true"}}}}));
+#else
   rows.push_back(Setting("GRAPHICS PRESET",
                          {{"PERFORMANCE 120",
                            {{"gpu_backend", "\"vulkan\""},
@@ -376,14 +415,24 @@ std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
                             {"draw_resolution_scale_y", "2"},
                             {"present_effect", "\"bilinear\""},
                             {"pinyon_shift_fh1_render_fps_limit", "60"}}}}));
+#endif
   // Vulkan (the default since config schema 27) records draws on a second
   // thread; Direct3D 12 loads prebuilt shader packs and keeps one thread.
+#if !defined(__ANDROID__)
   rows.push_back(Setting("GRAPHICS API",
                          {{"VULKAN", {{"gpu_backend", "\"vulkan\""}, {"gpu_record_thread", "true"}}},
                           {"DIRECT3D 12",
                            {{"gpu_backend", "\"d3d12\""}, {"gpu_record_thread", "false"}}}}));
+#endif
   std::vector<Choice> scales;
-  for (int scale = 1; scale <= 4; ++scale) {
+  // Android renders at 1x: higher scales need resolve buffers a phone's
+  // shared memory cannot hold (AP-2.5).
+#if defined(__ANDROID__)
+  constexpr int kMaxScale = 1;
+#else
+  constexpr int kMaxScale = 4;
+#endif
+  for (int scale = 1; scale <= kMaxScale; ++scale) {
     const std::string value = std::to_string(scale);
     scales.push_back({value + "X",
                       {{"draw_resolution_scale_x", value}, {"draw_resolution_scale_y", value}}});
@@ -399,10 +448,14 @@ std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
   }
   rows.push_back(std::move(resolution));
   // Read by graphics preparation before the next start.
+#if !defined(__ANDROID__)
   rows.push_back(Toggle("PREPARE ALL SCALES", "pinyon_shift_prepare_all_scales"));
-  // anisotropic_override holds the Xenos filter: 3, 4 and 5 are 4x, 8x, 16x.
+#endif
+  // anisotropic_override holds the Xenos filter: 3, 4 and 5 are 4x, 8x, 16x;
+  // -1 keeps what each of the game's textures asks for.
   rows.push_back(Setting("ANISOTROPIC FILTERING",
-                         {{"4X", {{"anisotropic_override", "3"}}},
+                         {{"GAME", {{"anisotropic_override", "-1"}}},
+                          {"4X", {{"anisotropic_override", "3"}}},
                           {"8X", {{"anisotropic_override", "4"}}},
                           {"16X", {{"anisotropic_override", "5"}}}}));
   rows.push_back(Toggle("TRILINEAR FILTERING", "force_trilinear_filtering"));
@@ -943,6 +996,24 @@ std::unique_ptr<MenuScreen> SettingsPages::Root() {
     row.label = "ACHIEVEMENTS";
     row.activate = [self = shared_from_this()] {
       self->host_ui_.Push(self->services_.achievements());
+    };
+    rows.push_back(std::move(row));
+  }
+  if (services_.trainer && pinyon_shift::cheats::Enabled()) {
+    MenuRow row;
+    row.label = "TRAINER";
+    row.activate = [self = shared_from_this()] {
+      self->host_ui_.Push(CreateTrainerMenu(self->host_ui_, self->config_));
+    };
+    rows.push_back(std::move(row));
+  }
+  if (services_.save_photo) {
+    MenuRow row;
+    row.label = "SAVE PHOTO";
+    // After the menu closes, so the photo is the game alone.
+    row.activate = [self = shared_from_this()] {
+      self->host_ui_.Close();
+      self->services_.save_photo();
     };
     rows.push_back(std::move(row));
   }

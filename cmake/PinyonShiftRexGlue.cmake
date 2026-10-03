@@ -216,6 +216,13 @@ set(_all_generated_sources
     ${PINYON_SHIFT_XMEDIA_GENERATED_SOURCES})
 set_source_files_properties(${_all_generated_sources}
     PROPERTIES COMPILE_OPTIONS "${REXGLUE_RECOMP_OPTIONS}")
+set(_all_generated_headers)
+foreach(_generated_dir IN ITEMS default speech xmedia)
+    foreach(_header IN ITEMS pinyon_shift_pch.h pinyon_shift_init.h pinyon_shift_funcs.h)
+        list(APPEND _all_generated_headers
+            "${PINYON_SHIFT_GENERATED_ROOT}/${_generated_dir}/${_header}")
+    endforeach()
+endforeach()
 
 function(pinyon_shift_apply_recomp_settings target_name generated_directory)
     target_precompile_headers(${target_name} PRIVATE
@@ -229,9 +236,13 @@ endfunction()
 if(NOT PINYON_SHIFT_FROZEN_CODEGEN)
 add_custom_command(
     OUTPUT "${PINYON_SHIFT_GENERATED_DIR}/codegen.build.stamp"
+    # The headers every unit includes are outputs too: Ninja reads the state
+    # of a file no edge produces once, before the generator runs, so a header
+    # it rewrote would otherwise leave the precompiled headers stale.
     BYPRODUCTS
         "${PINYON_SHIFT_GENERATED_DIR}/codegen.d"
         ${_all_generated_sources}
+        ${_all_generated_headers}
     COMMAND ${CMAKE_COMMAND} -E make_directory
         "${CMAKE_CURRENT_SOURCE_DIR}/.local/logs"
     COMMAND "${PINYON_SHIFT_REXGLUE_CODEGEN}"

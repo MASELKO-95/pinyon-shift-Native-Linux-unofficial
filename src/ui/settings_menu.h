@@ -33,6 +33,11 @@ struct SettingsServices {
   // Where the latest frame reached the window, in pixels (after output
   // scaling and letterboxing); the display and graphics notes give it.
   std::function<std::optional<std::pair<uint32_t, uint32_t>>()> output_size;
+  // SAVE PHOTO: the frame behind the menu as a PNG, as F8 saves it; no row
+  // without it. With the trainer, TRAINER (F10) opens it while cheats are
+  // on. Both reach a controller-only or touch-only player (AP-4.4).
+  std::function<void()> save_photo;
+  bool trainer = false;
 };
 
 std::unique_ptr<hostui::MenuScreen> CreateSettingsMenu(hostui::HostUi& host_ui,

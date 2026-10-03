@@ -18,7 +18,15 @@
     ".trace",
     ".obj",
     ".lib",
-    ".zip"
+    ".zip",
+    ".so",
+    ".apk",
+    ".aab",
+    ".idsig",
+    ".keystore",
+    ".jks",
+    ".dex",
+    ".class"
   ],
   "forbidden_path_segments": [
     ".local",
@@ -37,7 +45,8 @@
   ],
   "forbidden_magic_ascii": [
     "XEX2",
-    "MZ"
+    "MZ",
+    "\u007fELF"
   ],
   "allowed_large_files": []
 }
