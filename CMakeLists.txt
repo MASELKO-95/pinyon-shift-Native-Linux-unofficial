@@ -19,7 +19,24 @@ if(WIN32)
     set(SDL_HIDAPI_LIBUSB OFF CACHE BOOL "Disable optional libusb HID backend on Windows" FORCE)
 endif()
 
+# Release source bundles omit developer tests; full checkouts keep them enabled.
+set(_pinyon_tests_default OFF)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")
+    set(_pinyon_tests_default ON)
+endif()
+option(PINYON_SHIFT_BUILD_TESTS "Configure developer test targets" ${_pinyon_tests_default})
+if(PINYON_SHIFT_HOST_TESTS_ONLY AND NOT PINYON_SHIFT_BUILD_TESTS)
+    message(FATAL_ERROR "Host tests require the full source checkout and PINYON_SHIFT_BUILD_TESTS=ON")
+endif()
+
 include(cmake/PinyonShiftRexGlue.cmake)
+
+# Linux preview has one renderer. Never pull DirectX tooling into its build.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    if(NOT REXGLUE_USE_VULKAN)
+        message(FATAL_ERROR "The Linux preview requires REXGLUE_USE_VULKAN=ON")
+    endif()
+endif()
 
 set(PINYON_SHIFT_HOST_SOURCES
     src/main.cpp
@@ -84,12 +101,26 @@ else()
     )
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    if(NOT PINYON_SHIFT_HOST_TESTS_ONLY)
+        target_sources(pinyon_shift PRIVATE src/save/live_profile_linux.cpp)
+    endif()
+    if(PINYON_SHIFT_BUILD_TESTS)
+    add_executable(pinyon_shift_live_profile_tests EXCLUDE_FROM_ALL
+        tests/save/live_profile_linux_test.cpp src/save/live_profile_linux.cpp)
+    target_include_directories(pinyon_shift_live_profile_tests PRIVATE src)
+    endif()
+endif()
+
+if(PINYON_SHIFT_BUILD_TESTS)
 add_executable(pinyon_shift_fh1_ui_api_tests EXCLUDE_FROM_ALL
     tests/ui/fh1_ui_api_test.cpp
     src/ui/fh1_ui_api.cpp
 )
 target_include_directories(pinyon_shift_fh1_ui_api_tests PRIVATE src)
 
+if(WIN32)
+# These exercise the precompiled D3D12 packs, not the Vulkan shader path.
 add_executable(pinyon_shift_fh1_shader_pack_tests EXCLUDE_FROM_ALL
     tests/native_renderer/fh1_shader_pack_test.cpp
     ${REXSDK_DIR}/src/graphics/fh1_shader_pack.cpp
@@ -98,7 +129,6 @@ add_executable(pinyon_shift_fh1_shader_pack_tests EXCLUDE_FROM_ALL
 target_include_directories(pinyon_shift_fh1_shader_pack_tests PRIVATE
     ${REXSDK_DIR}/include ${REXSDK_DIR})
 target_link_libraries(pinyon_shift_fh1_shader_pack_tests PRIVATE rex::runtime)
-if(WIN32)
     target_link_libraries(pinyon_shift_fh1_shader_pack_tests PRIVATE bcrypt)
 endif()
 
@@ -119,6 +149,10 @@ add_executable(pinyon_shift_host_config_tests EXCLUDE_FROM_ALL
     src/platform/host_platform.cpp
 )
 target_include_directories(pinyon_shift_host_config_tests PRIVATE src)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_compile_definitions(pinyon_shift_host_config_tests PRIVATE PINYON_SHIFT_SDL_DISPLAY=1)
+    target_link_libraries(pinyon_shift_host_config_tests PRIVATE SDL3::SDL3)
+endif()
 
 add_executable(pinyon_shift_profile_body_tests EXCLUDE_FROM_ALL
     tests/save/profile_body_test.cpp
@@ -141,15 +175,26 @@ target_link_libraries(pinyon_shift_fh1_edram_tiles_tests PRIVATE rex::runtime)
 
 # Every host-side test, for CI (PINYON_SHIFT_HOST_TESTS_ONLY) and local runs.
 add_custom_target(pinyon_shift_host_tests)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_dependencies(pinyon_shift_host_tests pinyon_shift_live_profile_tests)
+    add_executable(pinyon_shift_perf_csv_tests EXCLUDE_FROM_ALL
+        tests/native_renderer/perf_csv_test.cpp)
+    target_link_libraries(pinyon_shift_perf_csv_tests PRIVATE rex::runtime)
+    add_dependencies(pinyon_shift_host_tests pinyon_shift_perf_csv_tests)
+endif()
 add_dependencies(pinyon_shift_host_tests
     pinyon_shift_fh1_ui_api_tests
-    pinyon_shift_fh1_shader_pack_tests
     pinyon_shift_hostui_tests
     pinyon_shift_host_config_tests
     pinyon_shift_profile_body_tests
     pinyon_shift_car_cards_tests
     pinyon_shift_fh1_edram_tiles_tests
     pinyon_shift_mod_hello_telemetry)
+if(WIN32)
+    add_dependencies(pinyon_shift_host_tests pinyon_shift_fh1_shader_pack_tests)
+endif()
+
+endif()  # PINYON_SHIFT_BUILD_TESTS
 
 add_executable(pinyon_shift_fh1_archive_extract EXCLUDE_FROM_ALL
     tools/fh1_archive_extract.cpp
@@ -198,6 +243,10 @@ if(WIN32)
 else()
     find_package(Threads REQUIRED)
     target_link_libraries(pinyon_shift PRIVATE Threads::Threads ${CMAKE_DL_LIBS} rex::gpu-fh1)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_compile_definitions(pinyon_shift PRIVATE PINYON_SHIFT_SDL_DISPLAY=1)
+        target_link_libraries(pinyon_shift PRIVATE SDL3::SDL3)
+    endif()
 endif()
 
 # The mod ABI header (NP-7) and the TOML parser mod.toml is read with.

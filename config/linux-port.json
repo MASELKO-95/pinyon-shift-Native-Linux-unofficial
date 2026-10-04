@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "version": "1.0.0",
+  "upstream_version": "0.4.0",
+  "upstream_revision": "c6b1f7ebab7c887f5ab147ae90b8eee02ccc577a",
+  "sdk_revision": "0038a402bb5e504d3a7b5b74bbd66c0fd0fd385f",
+  "sdk_patch": "patches/linux/shiftglue-linux.patch",
+  "sdk_patch_sha256": "662e490ea752e6a7e1f6706cafc2ecda04e927408d874504eb6dd4c3b9987273",
+  "vulkan_sdk_tag": "vulkan-sdk-1.4.363.0",
+  "vulkan": {
+    "headers": {
+      "path": "thirdparty/vulkan-headers",
+      "version": "1.4.363",
+      "revision": "6802bb4733b63ed5efd3adb308a6c885ef180ea1"
+    },
+    "loader": {
+      "path": "thirdparty/vulkan-loader",
+      "version": "1.4.363",
+      "revision": "fa218055ff4948b159f31d43f800c808a13d51df"
+    }
+  }
+}

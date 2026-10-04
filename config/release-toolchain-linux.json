@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "platform": "linux-x64",
+  "cmake": {
+    "version": "3.31.10",
+    "url": "https://github.com/Kitware/CMake/releases/download/v3.31.10/cmake-3.31.10-linux-x86_64.tar.gz",
+    "sha256": "3cb3dd247b6a1de2d0f4b20c6fd4326c9024e894cebc9dc8699758887e566ca7",
+    "install_path": ".local/toolchain/cmake-3.31.10-linux-x86_64",
+    "executable": "bin/cmake",
+    "system_package": "cmake",
+    "minimum_version": "3.25.0"
+  },
+  "git": {
+    "system_package": "git",
+    "executable": "git"
+  },
+  "xz": {
+    "system_package": "xz-utils",
+    "executable": "xz"
+  },
+  "llvm": {
+    "version": "20.1.8",
+    "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/LLVM-20.1.8-Linux-X64.tar.xz",
+    "sha256": "1ead36b3dfcb774b57be530df42bec70ab2d239fbce9889447c7a29a4ddc1ae6",
+    "install_path": ".local/toolchain/llvm-20.1.8",
+    "executable": "bin/clang",
+    "system_package": "clang",
+    "minimum_version": "18.0.0"
+  },
+  "ninja": {
+    "system_package": "ninja-build",
+    "executable": "ninja"
+  },
+  "extract_xiso": {
+    "version": "2.7.1",
+    "url": "https://github.com/XboxDev/extract-xiso/releases/download/build-202505152050/extract-xiso_Linux.zip",
+    "sha256": "982bbfefc9255d51f5348a477d7135d68abf81c0af9600e5728edb1246cfa200",
+    "install_path": ".local/toolchain/extract-xiso-2.7.1",
+    "executable": "extract-xiso"
+  },
+  "python": {
+    "system_package": "python3",
+    "executable": "python3",
+    "minimum_version": "3.11.0"
+  },
+  "rexglue": {
+    "repository": "https://github.com/arcanite24/shiftglue-sdk",
+    "revision": "0038a402bb5e504d3a7b5b74bbd66c0fd0fd385f",
+    "submodule_path": "thirdparty/shiftglue-sdk",
+    "fallback_path": ".local/rexglue"
+  }
+}

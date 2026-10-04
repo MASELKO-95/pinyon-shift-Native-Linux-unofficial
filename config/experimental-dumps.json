@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "policy": {
+    "match": "exact_sha256_and_size",
+    "unknown_dump_action": "reject",
+    "opt_in": "--experimental",
+    "original_input_mutation": "never"
+  },
+  "dumps": [
+    {
+      "id": "forza-horizon-europe-polish-nxe-base",
+      "status": "experimental_codegen_verified_gameplay_unverified",
+      "platform": "Xbox 360",
+      "region": "Europe (owner-reported Polish retail edition)",
+      "serial": "not-recorded",
+      "title_id": "4D5309C9",
+      "media_id": "2B7A1346",
+      "version": "0.0.0.7",
+      "provenance": "ISO reconstructed from the owner-provided NXE installation; not a full retail disc dump.",
+      "iso": {
+        "size_bytes": 7630606336,
+        "sha256": "A33B6515FB587AF02C69A5451A6FB7D2CE0420DBB6E85524BDBFA97CDA6A799F"
+      },
+      "extraction": {
+        "tool": "extract-xiso",
+        "skip_system_update": true,
+        "file_count": 2414,
+        "size_bytes": 7528888587
+      },
+      "executables": [
+        {
+          "guest_path": "default.xex",
+          "role": "entrypoint",
+          "size_bytes": 20856832,
+          "sha256": "B95C1E0262FA51FD23D1B638DFAD087B14CBFA0E561B6B919DC0C0F85FFAE91D"
+        },
+        {
+          "guest_path": "SpeechFacade_default.xex",
+          "role": "candidate_module",
+          "size_bytes": 2138112,
+          "sha256": "4DDD48A4BBA2C5AB9B7BAF133E96129A0DBA88C5FE2022F0AD18672F5D5BAD04"
+        },
+        {
+          "guest_path": "XMediaFacade_default.xex",
+          "role": "candidate_module",
+          "size_bytes": 2662400,
+          "sha256": "CEC56CD4216AF8603AF0BCE58BBF315704B3E81672CFDDBDD9D633A7717D2623"
+        }
+      ]
+    }
+  ]
+}

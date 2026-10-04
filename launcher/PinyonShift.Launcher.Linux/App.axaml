@@ -1,0 +1,48 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="PinyonShift.Launcher.Linux.App" RequestedThemeVariant="Dark">
+  <Application.Styles>
+    <FluentTheme />
+    <Style Selector="Window">
+      <Setter Property="FontFamily" Value="Noto Sans, DejaVu Sans" />
+      <Setter Property="Foreground" Value="#EEF3EC" />
+    </Style>
+    <Style Selector="TextBlock.muted"><Setter Property="Foreground" Value="#A4B7AA" /></Style>
+    <Style Selector="TextBlock.label">
+      <Setter Property="Foreground" Value="#A4B7AA" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+    <Style Selector="Button">
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="18,10" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="#5CD08A" />
+      <Setter Property="Foreground" Value="#0A0F0C" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="FontSize" Value="17" />
+      <Setter Property="MinHeight" Value="52" />
+      <Setter Property="MinWidth" Value="205" />
+    </Style>
+    <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#7EE0A4" />
+      <Setter Property="Foreground" Value="#0A0F0C" />
+    </Style>
+    <Style Selector="Button.quiet"><Setter Property="Background" Value="#1D2B22" /></Style>
+    <Style Selector="Button.link">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="#A4B7AA" />
+      <Setter Property="Padding" Value="10,8" />
+    </Style>
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="#101C15" />
+      <Setter Property="BorderBrush" Value="#30483A" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Padding" Value="24" />
+    </Style>
+    <Style Selector="ComboBox"><Setter Property="HorizontalAlignment" Value="Stretch" /></Style>
+  </Application.Styles>
+</Application>

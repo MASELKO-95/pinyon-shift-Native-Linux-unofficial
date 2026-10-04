@@ -1,0 +1,182 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PinyonShift.Launcher.Linux.MainWindow"
+        Title="Pinyon Shift" Width="1120" Height="800" MinWidth="900" MinHeight="700"
+        WindowStartupLocation="CenterScreen" Background="#0A0F0C"
+        Icon="avares://PinyonShiftLauncher/Branding/mark-light.png"
+        DragDrop.AllowDrop="True">
+  <Grid RowDefinitions="76,*,76">
+    <Grid Grid.RowSpan="3" IsHitTestVisible="False" ClipToBounds="True">
+      <Border>
+        <Border.Background>
+          <LinearGradientBrush StartPoint="0%,0%" EndPoint="85%,100%">
+            <GradientStop Color="#17452E" Offset="0" />
+            <GradientStop Color="#0E2519" Offset="0.48" />
+            <GradientStop Color="#0A0F0C" Offset="1" />
+          </LinearGradientBrush>
+        </Border.Background>
+      </Border>
+      <Image Source="avares://PinyonShiftLauncher/Branding/mark-light.png" Width="420"
+             HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,28,0" Opacity="0.045" />
+      <Path VerticalAlignment="Bottom" Height="170" Stretch="Fill" Opacity="0.55" Fill="#183D29"
+            Data="M0,150 L0,96 L70,62 L120,84 L190,40 L260,78 L330,52 L400,86 L470,48 L560,82 L630,58 L720,90 L800,50 L880,80 L960,44 L1040,76 L1120,54 L1180,70 L1180,150 Z" />
+      <Path VerticalAlignment="Bottom" Height="100" Stretch="Fill" Opacity="0.85" Fill="#102A1C"
+            Data="M0,92 L0,64 L40,44 L60,56 L90,30 L120,52 L170,38 L230,60 L290,34 L340,56 L400,42 L470,66 L540,36 L600,58 L660,44 L740,64 L820,32 L880,54 L950,40 L1020,62 L1090,38 L1140,52 L1180,44 L1180,92 Z" />
+    </Grid>
+    <Grid Margin="38,0" ColumnDefinitions="*,Auto">
+      <Image Source="avares://PinyonShiftLauncher/Branding/logo-light.png" Height="27" HorizontalAlignment="Left" />
+      <Border Grid.Column="1" Background="#183E2A" CornerRadius="20" Padding="15,6" VerticalAlignment="Center">
+        <TextBlock Text="UNOFFICIAL LINUX  /  VULKAN" FontSize="11" LetterSpacing="1.5" Foreground="#8AE3AE" />
+      </Border>
+    </Grid>
+    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="52,25,52,24" Spacing="22">
+        <StackPanel Spacing="10">
+          <TextBlock x:Name="Headline" Text="Build your preview" FontSize="42" FontWeight="SemiBold" />
+          <TextBlock x:Name="Subhead" Classes="muted" FontSize="15" TextWrapping="Wrap"
+                     Text="Verified, extracted and compiled on this PC. Nothing is uploaded." />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <Button x:Name="PrimaryButton" Classes="primary" Content="Verify and build" Click="Primary_Click" />
+          <Button x:Name="SettingsButton" Classes="quiet" Content="Settings" Click="Settings_Click" />
+          <Button x:Name="RebuildButton" Classes="link" Content="Rebuild" Click="Rebuild_Click" />
+          <Button x:Name="SelectIsoButton" Classes="link" Content="Choose another ISO" Click="SelectIso_Click" />
+          <Button x:Name="CancelButton" Classes="quiet" Content="Cancel build" IsVisible="False" Click="Cancel_Click" />
+        </StackPanel>
+        <Border x:Name="SetupPanel" Classes="card">
+          <StackPanel Spacing="14">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Spacing="6">
+                <TextBlock Text="Your Forza Horizon disc image" FontSize="18" FontWeight="SemiBold" />
+                <TextBlock Text="Choose an ISO, or drop it into this window." Classes="muted" FontSize="13" />
+              </StackPanel>
+              <Button Grid.Column="1" x:Name="BrowseButton" Content="Choose ISO" Classes="quiet" Click="Browse_Click" />
+            </Grid>
+            <TextBox x:Name="IsoPath" Watermark="/path/to/your-disc.iso" TextChanged="IsoPath_Changed"
+                     AutomationProperties.Name="Disc image path" />
+            <CheckBox x:Name="Ownership" Content="I own this copy and dumped it from my own disc."
+                      IsCheckedChanged="Input_Changed" />
+            <StackPanel Spacing="6">
+              <TextBlock Text="Disc edition (verified by checksum)" Classes="muted" FontSize="13" />
+              <ComboBox x:Name="DiscEditionChoice" SelectedIndex="0" AutomationProperties.Name="Disc edition" />
+              <TextBlock Text="Choose the Polish NXE edition only for that verified image. Unknown images are rejected." Classes="muted" FontSize="12" TextWrapping="Wrap" />
+            </StackPanel>
+            <CheckBox x:Name="DownloadTools" IsChecked="True">
+              <TextBlock Text="Download missing build tools into this project" FontSize="13" />
+            </CheckBox>
+            <TextBlock x:Name="InstallLocation" Classes="muted" TextWrapping="Wrap" FontSize="12" />
+          </StackPanel>
+        </Border>
+        <Border x:Name="ReadyPanel" Classes="card" IsVisible="False">
+          <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
+            <TextBlock Text="Built on your PC" FontWeight="SemiBold" FontSize="18" />
+            <TextBlock Grid.Column="1" Text="●  READY" Foreground="#5CD08A" FontSize="12" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="1" Grid.ColumnSpan="2" x:Name="ReadySummary" Classes="muted" Margin="0,10,0,0" />
+            <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="F6 · In-game settings     F10 · Trainer" Classes="muted" FontSize="12" Margin="0,16,0,0" />
+            <StackPanel Grid.Row="3" Grid.ColumnSpan="2" Spacing="8" Margin="0,18,0,0">
+              <TextBlock x:Name="InstalledDisc" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+              <TextBlock Text="Game language — saved when you press Play" Classes="muted" FontSize="13" />
+              <ComboBox x:Name="GameLanguageChoice" SelectedIndex="0" AutomationProperties.Name="Game language" />
+              <TextBlock Text="Driving controls — applied when you press Play" Classes="muted" FontSize="13" />
+              <ComboBox x:Name="ControlsChoice" SelectedIndex="0" AutomationProperties.Name="Driving controls">
+                <ComboBoxItem Content="Keep current controls" />
+                <ComboBoxItem Content="PC keyboard + mouse camera" />
+                <ComboBoxItem Content="PC keyboard + mouse steering" />
+                <ComboBoxItem Content="Controller only" />
+              </ComboBox>
+              <TextBlock Text="PC preset: W/S accelerate/brake · A/D steer · Space handbrake · R rewind · Q/E shift · Esc pause · Arrows navigate menus · Enter confirms · Backspace returns · Shift+Arrows look around. F6 opens settings and releases the mouse. Replaces keyboard bindings; a backup is kept."
+                         Classes="muted" FontSize="12" TextWrapping="Wrap" />
+              <CheckBox x:Name="TrainerEnabled" Content="Enable trainer (F10) on a separate modded save" />
+              <TextBlock Text="Original progress stays separate. Language availability depends on the files on your disc." Classes="muted" FontSize="12" TextWrapping="Wrap" />
+            </StackPanel>
+          </Grid>
+        </Border>
+        <Border x:Name="SettingsPanel" Classes="card" IsVisible="False">
+          <StackPanel Spacing="18">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="Graphics settings" FontSize="19" FontWeight="SemiBold" />
+              <TextBlock Grid.Column="1" Text="Vulkan" Foreground="#5CD08A" VerticalAlignment="Center" />
+            </Grid>
+            <Grid ColumnDefinitions="*,20,*">
+              <StackPanel>
+                <TextBlock Text="Internal resolution" Classes="label" />
+                <ComboBox x:Name="Resolution" SelectedIndex="0" SelectionChanged="Resolution_Changed" AutomationProperties.Name="Internal resolution">
+                  <ComboBoxItem Content="1× · 1280 × 720" />
+                  <ComboBoxItem Content="2× · 2560 × 1440" />
+                  <ComboBoxItem Content="3× · 3840 × 2160" />
+                  <ComboBoxItem Content="4× · 5120 × 2880" />
+                </ComboBox>
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock Text="Output scaling" Classes="label" />
+                <ComboBox x:Name="Scaling" SelectedIndex="0" AutomationProperties.Name="Output scaling">
+                  <ComboBoxItem Content="Bilinear" />
+                  <ComboBoxItem Content="CAS sharpening" />
+                  <ComboBoxItem Content="FSR 1" />
+                </ComboBox>
+              </StackPanel>
+            </Grid>
+            <TextBlock x:Name="ResolutionHint" Classes="muted" FontSize="13" TextWrapping="Wrap" />
+            <StackPanel Spacing="6">
+              <TextBlock Text="Render limit (fps)" Classes="label" />
+              <NumericUpDown x:Name="RenderFps" Minimum="0" Maximum="240" Increment="1" FormatString="0" Value="0" />
+              <TextBlock Text="0 keeps rendering uncapped. Try 60 fps at 1× resolution for steadier frame times; shader and loading hitches may remain."
+                         Classes="muted" FontSize="12" TextWrapping="Wrap" />
+            </StackPanel>
+            <CheckBox x:Name="TreasureMap" IsChecked="True">
+              <StackPanel Spacing="4">
+                <TextBlock Text="Treasure Map" />
+                <TextBlock Text="Every discount sign and barn find. Once applied, it stays with that save."
+                           FontSize="12" Classes="muted" TextWrapping="Wrap" />
+              </StackPanel>
+            </CheckBox>
+            <TextBlock Text="Everything else is in the game: press F6 while playing." Classes="muted" FontSize="12" />
+            <WrapPanel Orientation="Horizontal">
+              <Button x:Name="RestoreSettingsButton" Content="Restore backup" Classes="link" Click="Restore_Click" />
+              <Button x:Name="ResetSettingsButton" Content="Reset to defaults" Classes="link" Click="Reset_Click" />
+              <Button Content="Cancel" Classes="quiet" Margin="12,0,10,0" Click="CloseSettings_Click" />
+              <Button x:Name="SaveSettingsButton" Content="Save settings" Classes="primary" Click="SaveSettings_Click" />
+            </WrapPanel>
+          </StackPanel>
+        </Border>
+        <Border x:Name="ProgressPanel" Classes="card" IsVisible="False">
+          <StackPanel Spacing="12">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock x:Name="ProgressMessage" Text="Preparing…" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="1" x:Name="PercentText" Foreground="#5CD08A" Margin="12,0,0,0" />
+            </Grid>
+            <ProgressBar x:Name="Progress" Minimum="0" Maximum="100" Foreground="#5CD08A" />
+            <TextBlock x:Name="Stages" Text="Verify  →  Tools  →  Extract  →  Build  →  Play" Classes="muted" FontSize="12" />
+            <Expander Header="Details" HorizontalAlignment="Stretch">
+              <TextBox x:Name="LogText" IsReadOnly="True" TextWrapping="Wrap" Height="175" FontSize="11"
+                       FontFamily="DejaVu Sans Mono" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                       AutomationProperties.Name="Build and launch log" />
+            </Expander>
+          </StackPanel>
+        </Border>
+        <Border x:Name="NoticePanel" Background="#34291A" BorderBrush="#7A6033" BorderThickness="1"
+                CornerRadius="10" Padding="18,14" IsVisible="False">
+          <StackPanel Spacing="10">
+            <TextBlock x:Name="NoticeText" TextWrapping="Wrap" Foreground="#F1D5A2" />
+            <Button x:Name="ReportFolderButton" Content="Open diagnostic report folder" Classes="quiet"
+                    HorizontalAlignment="Left" IsVisible="False" Click="Reports_Click" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="34,0">
+      <StackPanel VerticalAlignment="Center" Spacing="3">
+        <TextBlock x:Name="VersionText" Classes="muted" FontSize="12" />
+        <TextBlock x:Name="PortCredit" Text="Unofficial Linux port" Classes="muted" FontSize="11" />
+        <TextBlock Text="Based on Pinyon Shift by arcanite24 and contributors." Classes="muted" FontSize="11" />
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal">
+        <Button x:Name="VersionsButton" Content="Versions" Classes="link" Click="Versions_Click" IsVisible="False" />
+        <Button Content="Saves" Classes="link" Click="Saves_Click" />
+        <Button Content="Logs" Classes="link" Click="Logs_Click" />
+        <Button Content="Licenses" Classes="link" Click="Licenses_Click" />
+        <Button Content="GitHub" Classes="link" Click="GitHub_Click" />
+      </StackPanel>
+    </Grid>
+  </Grid>
+</Window>

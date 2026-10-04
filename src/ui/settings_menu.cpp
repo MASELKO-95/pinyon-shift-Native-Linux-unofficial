@@ -337,7 +337,7 @@ std::unique_ptr<MenuScreen> SettingsPages::Display() {
                           {"60", {{"host_present_fps_limit", "60"}}},
                           {"120", {{"host_present_fps_limit", "120"}}},
                           {"240", {{"host_present_fps_limit", "240"}}}}));
-#if !defined(__ANDROID__)
+#if defined(_WIN32)
   rows.push_back(Toggle("VARIABLE REFRESH RATE", "d3d12_allow_variable_refresh_rate_and_tearing"));
 #endif
   // How the rendered image is scaled to the window: FSR 1 and CAS keep 2x
@@ -418,7 +418,7 @@ std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
 #endif
   // Vulkan (the default since config schema 27) records draws on a second
   // thread; Direct3D 12 loads prebuilt shader packs and keeps one thread.
-#if !defined(__ANDROID__)
+#if defined(_WIN32)
   rows.push_back(Setting("GRAPHICS API",
                          {{"VULKAN", {{"gpu_backend", "\"vulkan\""}, {"gpu_record_thread", "true"}}},
                           {"DIRECT3D 12",
@@ -686,11 +686,12 @@ std::unique_ptr<MenuScreen> SettingsPages::TrainerPlayer() {
   // Any scalar profile field goes through cheat_set_profile_fields; the
   // wristband level also unlocks the events it gates.
   std::vector<Choice> wristbands;
-  wristbands.push_back({"UNCHANGED", {{"cheat_set_profile_fields", ""}}});
+  // Choice values are TOML literals; bare strings invalidate the entire config.
+  wristbands.push_back({"UNCHANGED", {{"cheat_set_profile_fields", config::Quote("")}}});
   for (const char* level : {"1", "2", "3", "4", "5", "6", "7", "8"}) {
     wristbands.push_back(
         {std::string("LEVEL ") + level,
-         {{"cheat_set_profile_fields", std::string("Main/WristbandLevel=") + level}}});
+         {{"cheat_set_profile_fields", config::Quote(std::string("Main/WristbandLevel=") + level)}}});
   }
   rows.push_back(Setting("SET WRISTBAND", std::move(wristbands)));
   return std::make_unique<MenuScreen>("PLAYER", std::move(rows), [] {

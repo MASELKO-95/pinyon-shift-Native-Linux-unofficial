@@ -4,6 +4,11 @@
 #include <cstdlib>
 #include <system_error>
 #include <vector>
+#if defined(PINYON_SHIFT_SDL_DISPLAY)
+#include <cmath>
+#include <SDL3/SDL_video.h>
+#include <SDL3/SDL_keyboard.h>
+#endif
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -183,6 +188,23 @@ std::optional<uint32_t> DisplayRefreshRate(void* native_window) {
       EnumDisplaySettingsW(monitor_info.szDevice, ENUM_CURRENT_SETTINGS, &mode) &&
       mode.dmDisplayFrequency > 1) {
     return uint32_t(mode.dmDisplayFrequency);
+  }
+  return std::nullopt;
+#elif defined(PINYON_SHIFT_SDL_DISPLAY)
+  (void)native_window;  // ShiftGlue exposes no native handle on Wayland/X11.
+  SDL_Window* window = SDL_GetKeyboardFocus();
+  if (!window) {
+    int count = 0;
+    SDL_Window** windows = SDL_GetWindows(&count);
+    if (windows && count == 1) window = windows[0];
+    SDL_free(windows);
+  }
+  if (!window) return std::nullopt;
+  const SDL_DisplayID display = SDL_GetDisplayForWindow(window);
+  const SDL_DisplayMode* mode = display ? SDL_GetCurrentDisplayMode(display) : nullptr;
+  if (mode && std::isfinite(mode->refresh_rate) && mode->refresh_rate > 1.0f &&
+      mode->refresh_rate < 1000.0f) {
+    return static_cast<uint32_t>(std::lround(mode->refresh_rate));
   }
   return std::nullopt;
 #else

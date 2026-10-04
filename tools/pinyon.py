@@ -13,9 +13,9 @@ environment the game reads and starts it, then reports how it exited:
 
 On Windows the D3D12 shader pack is prepared first through
 tools/prepare-fh1-shaders.ps1 (skip it with --skip-shader-preparation); on
-Linux the game runs on Vulkan and translates shaders itself, so there is
-nothing to prepare. A crash on Windows is bundled by
-tools/create-crash-report.ps1; elsewhere the exit code is reported.
+Linux Vulkan pipelines are warmed in a private fresh profile before the first
+start. A crash on Windows is bundled by
+tools/create-crash-report.ps1; on Linux a minimal local report is bundled.
 
 `android` builds, installs and runs the game on an Android device from this
 PC (AP-6.1); see tools/pinyon_android.py.
@@ -94,6 +94,13 @@ def build_mods(state: Path, game: Path, build: Path) -> None:
 
 
 def prepare_shaders(state: Path, game: Path, build: Path) -> None:
+    if not WINDOWS:
+        from prepare_fh1_vulkan import prepare
+        try:
+            prepare(state, game, build, lambda message: print(message, file=sys.stderr, flush=True))
+        except OSError as error:
+            print(f"warning: Vulkan preparation skipped: {error}", file=sys.stderr)
+        return
     shell = powershell()
     if shell is None:
         raise LaunchError("PowerShell is needed to prepare the D3D12 shader pack "
@@ -106,6 +113,13 @@ def prepare_shaders(state: Path, game: Path, build: Path) -> None:
 
 def crash_report(state: Path, executable: Path, started: datetime, pid: int,
                  exit_code: int) -> dict:
+    if not WINDOWS:
+        from linux_support import crash_report as posix_report
+        try:
+            return posix_report(state, executable, started, pid, exit_code)
+        except OSError as error:
+            print(f"warning: could not write crash report: {error}", file=sys.stderr)
+            return {}
     shell = powershell()
     if not WINDOWS or shell is None:
         return {}
@@ -131,8 +145,11 @@ def launch(args: argparse.Namespace) -> dict:
         raise LaunchError(f"game files are missing at {game}")
     if game_running():
         raise LaunchError("Pinyon Shift is already running")
+    if not WINDOWS:
+        from linux_support import prepare_launch_config
+        prepare_launch_config(state)
     prepare_state(state)
-    if WINDOWS and not args.skip_shader_preparation and not args.render_test_script:
+    if not args.skip_shader_preparation and not args.render_test_script:
         prepare_shaders(state, game, build)
     build_mods(state, game, build)
 
@@ -141,6 +158,31 @@ def launch(args: argparse.Namespace) -> dict:
                         "PINYON_SHIFT_GAME_ROOT": str(game),
                         "REX_D3D12_ALLOW_VARIABLE_REFRESH_RATE_AND_TEARING": "false"})
     arguments = list(args.game_arguments)
+    if not WINDOWS:
+        # Enforce the only Linux backend even if state came from Windows or
+        # a stale config/command line explicitly selected Direct3D 12.
+        backend = "vulkan"
+        if args.render_test_script:
+            for index, argument in enumerate(arguments):
+                if argument == "--gpu_backend=null" or (
+                    argument == "--gpu_backend" and index + 1 < len(arguments)
+                    and arguments[index + 1] == "null"
+                ):
+                    backend = "null"
+        environment["REX_GPU_BACKEND"] = backend
+        filtered = []
+        skip_value = False
+        for argument in arguments:
+            if skip_value:
+                skip_value = False
+                if not argument.startswith("--"):
+                    continue
+            if argument == "--gpu_backend":
+                skip_value = True
+            elif not argument.startswith("--gpu_backend="):
+                filtered.append(argument)
+        arguments = filtered
+        arguments.append(f"--gpu_backend={backend}")
     if args.hidden:
         environment["REX_WINDOW_HIDDEN"] = "1"
         arguments.append("--audio_mute=true")
@@ -149,7 +191,8 @@ def launch(args: argparse.Namespace) -> dict:
         if args.render_test_output:
             environment["PINYON_SHIFT_FH1_RENDER_TEST_OUTPUT"] = str(
                 args.render_test_output.resolve())
-        arguments.append("--pinyon_shift_skip_opening_movies=true")
+        if not args.include_opening_movies:
+            arguments.append("--pinyon_shift_skip_opening_movies=true")
     started = datetime.now(timezone.utc)
     process = subprocess.Popen([str(executable)] + arguments, cwd=str(build), env=environment)
     try:
@@ -183,6 +226,7 @@ def main(argv: list[str] | None = None) -> int:
     start.add_argument("--skip-shader-preparation", action="store_true")
     start.add_argument("--render-test-script", type=Path)
     start.add_argument("--render-test-output", type=Path)
+    start.add_argument("--include-opening-movies", action="store_true")
     start.add_argument("--timeout", type=float, help="seconds before the game is stopped")
     start.add_argument("--json", action="store_true", help="print the result as JSON")
     start.add_argument("game_arguments", nargs="*", help="after --, passed to the game")
@@ -192,7 +236,7 @@ def main(argv: list[str] | None = None) -> int:
         return pinyon_android.main(args)
     try:
         result = launch(args)
-    except LaunchError as error:
+    except (LaunchError, OSError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     print(json.dumps(result) if args.json else "\n".join(f"{k}: {v}" for k, v in result.items()))

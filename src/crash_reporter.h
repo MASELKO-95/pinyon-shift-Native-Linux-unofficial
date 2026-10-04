@@ -13,8 +13,8 @@ namespace pinyon_shift::diagnostics::crash {
 // Installs the handlers; later crashes in any thread are reported.
 void Install(const std::filesystem::path& crash_root, const std::string& session_id);
 
-// Installs the unhandled-crash handler again, for runtime components that
-// replace it after startup.
+// Call after runtime setup. Restores the Windows unhandled-crash handler;
+// on POSIX, appends a reporter after the runtime's recoverable fault handlers.
 void Refresh();
 
 // Crash self-tests (PINYON_SHIFT_CRASH_SELF_TEST and

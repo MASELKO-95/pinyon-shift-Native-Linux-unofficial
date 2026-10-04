@@ -41,7 +41,9 @@
         "PINYON_SHIFT_CPU_BASELINE": "sse4.1",
         "REXSDK_DIR": "${sourceDir}/thirdparty/shiftglue-sdk",
         "PINYON_SHIFT_GENERATED_ROOT": "${sourceDir}/.local/generated",
-        "PINYON_SHIFT_GENERATED_DIR": "${sourceDir}/.local/generated/default"
+        "PINYON_SHIFT_GENERATED_DIR": "${sourceDir}/.local/generated/default",
+        "REXGLUE_USE_VULKAN": "ON",
+        "REXGLUE_USE_D3D12": "OFF"
       },
       "condition": {
         "type": "equals",

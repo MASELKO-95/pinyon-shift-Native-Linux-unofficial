@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstddef>
 #include <vector>
 
 namespace pinyon_shift::save {
@@ -19,5 +20,12 @@ struct LiveCandidate {
 std::vector<LiveCandidate> FindLiveProfileValue(uint32_t value, uint32_t neighbour_a,
                                                 uint32_t neighbour_b, uint32_t window,
                                                 size_t max_candidates = 32);
+
+#if defined(__linux__)
+// Separate from kernel discovery so mapped/unmapped guest heaps can be tested
+// without game files or an initialized runtime.
+std::vector<LiveCandidate> FindLinuxProfileValue(uintptr_t base, uint32_t value,
+    uint32_t neighbour_a, uint32_t neighbour_b, uint32_t window, size_t max_candidates);
+#endif
 
 }  // namespace pinyon_shift::save

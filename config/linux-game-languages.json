@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "languages": [
+    {
+      "id": "en-US",
+      "label": "English (US)",
+      "user_language": 1,
+      "user_country": 103
+    },
+    {
+      "id": "en-GB",
+      "label": "English (UK)",
+      "user_language": 1,
+      "user_country": 35
+    },
+    {
+      "id": "pl-PL",
+      "label": "Polski",
+      "user_language": 11,
+      "user_country": 82
+    },
+    {
+      "id": "fr-FR",
+      "label": "Français",
+      "user_language": 4,
+      "user_country": 34
+    },
+    {
+      "id": "de-DE",
+      "label": "Deutsch",
+      "user_language": 3,
+      "user_country": 24
+    },
+    {
+      "id": "it-IT",
+      "label": "Italiano",
+      "user_language": 6,
+      "user_country": 50
+    },
+    {
+      "id": "es-ES",
+      "label": "Español (España)",
+      "user_language": 5,
+      "user_country": 31
+    },
+    {
+      "id": "es-MX",
+      "label": "Español (México)",
+      "user_language": 5,
+      "user_country": 71
+    },
+    {
+      "id": "pt-BR",
+      "label": "Português (Brasil)",
+      "user_language": 9,
+      "user_country": 13
+    },
+    {
+      "id": "nl-NL",
+      "label": "Nederlands",
+      "user_language": 16,
+      "user_country": 74
+    },
+    {
+      "id": "da-DK",
+      "label": "Dansk",
+      "user_language": 1,
+      "user_country": 25
+    },
+    {
+      "id": "nb-NO",
+      "label": "Norsk",
+      "user_language": 15,
+      "user_country": 75
+    },
+    {
+      "id": "sv-SE",
+      "label": "Svenska",
+      "user_language": 13,
+      "user_country": 90
+    },
+    {
+      "id": "fi-FI",
+      "label": "Suomi",
+      "user_language": 1,
+      "user_country": 32
+    },
+    {
+      "id": "cs-CZ",
+      "label": "Čeština",
+      "user_language": 1,
+      "user_country": 23
+    },
+    {
+      "id": "hu-HU",
+      "label": "Magyar",
+      "user_language": 1,
+      "user_country": 42
+    },
+    {
+      "id": "ru-RU",
+      "label": "Русский",
+      "user_language": 12,
+      "user_country": 88
+    },
+    {
+      "id": "ja-JP",
+      "label": "日本語",
+      "user_language": 2,
+      "user_country": 53
+    },
+    {
+      "id": "ko-KR",
+      "label": "한국어",
+      "user_language": 7,
+      "user_country": 56
+    },
+    {
+      "id": "zh-TW",
+      "label": "繁體中文",
+      "user_language": 8,
+      "user_country": 101
+    }
+  ]
+}

@@ -4079,42 +4079,63 @@ static void PinyonShiftHoldTimeOfDay() {
 // (sub_82486B40) to the player with sub_825A86F8. Applied when the setting
 // changes, as a guest task on the title's main thread.
 static void PinyonShiftApplyFreeCamera() {
-  static bool applied = false;
+  static std::atomic<bool> applied{false};
+  static std::atomic<bool> queued{false};
+  static std::atomic<uint32_t> wait_frames{0};
   const bool wanted = pinyon_shift::cheats::FreeCamera();
-  if (wanted == applied) {
+  if (wanted == applied.load(std::memory_order_acquire) ||
+      queued.load(std::memory_order_acquire)) {
     return;
   }
-  applied = wanted;
+  if (wait_frames.load(std::memory_order_relaxed) > 0) {
+    wait_frames.fetch_sub(1, std::memory_order_relaxed);
+    return;
+  }
+  queued.store(true, std::memory_order_release);
   pinyon_shift::mod::EnqueueHostGuestTask([wanted] {
-    constexpr uint32_t kWorldHolder = 0x832DF024u;
-    const uint32_t holder = LoadGuestU32(kWorldHolder);
-    if (holder == 0 || !PinyonShiftGuestRangeReadable(holder + 4u, 4)) {
-      return;
-    }
-    const uint32_t handle = LoadGuestU32(holder + 4u);
-    if (handle == 0 || !PinyonShiftGuestRangeReadable(handle + 4u, 4)) {
-      return;
-    }
-    const uint32_t world = LoadGuestU32(handle + 4u);
-    if (world == 0) {
-      return;
-    }
-    const uint32_t count = pinyon_shift::mod::CallGuest(0x82486C40u, {world});
-    for (uint32_t i = 0; i < count && i < 4; ++i) {
-      if (wanted) {
-        const uint32_t controller = pinyon_shift::mod::CallGuest(0x82486C70u, {world, i});
-        if (controller != 0) {
-          pinyon_shift::mod::CallGuest(0x82858638u, {controller, 6u});
-        }
-      } else {
-        const uint32_t controller = pinyon_shift::mod::CallGuest(0x82486B40u, {world, i});
-        if (controller != 0) {
-          pinyon_shift::mod::CallGuest(0x825A86F8u, {controller});
+    // A request made before the world loads must wait for its controllers.
+    // Marking it applied before this task ran used to lose the request.
+    const bool success = [&] {
+      if (!pinyon_shift::dlc::GameModeReady()) return false;
+      constexpr uint32_t kWorldHolder = 0x832DF024u;
+      const uint32_t holder = LoadGuestU32(kWorldHolder);
+      if (holder == 0 || !PinyonShiftGuestRangeReadable(holder + 4u, 4)) return false;
+      const uint32_t handle = LoadGuestU32(holder + 4u);
+      if (handle == 0 || !PinyonShiftGuestRangeReadable(handle + 4u, 4)) return false;
+      const uint32_t world = LoadGuestU32(handle + 4u);
+      if (world == 0) return false;
+      const uint32_t count = pinyon_shift::mod::CallGuest(0x82486C40u, {world});
+      if (count == 0 || count > 4) return false;
+      std::array<uint32_t, 4> controllers{};
+      for (uint32_t i = 0; i < count; ++i) {
+        controllers[i] = pinyon_shift::mod::CallGuest(
+            wanted ? 0x82486C70u : 0x82486B40u, {world, i});
+        if (controllers[i] == 0 || !PinyonShiftGuestRangeReadable(controllers[i], 24)) return false;
+        if (wanted) {
+          // sub_82858638 forwards the active camera's +16 subject to the
+          // free camera. Its initializer dereferences subject +40 without
+          // a null check; controllers can already exist during loading.
+          const uint32_t camera = LoadGuestU32(controllers[i] + 20);
+          if (camera == 0 || !PinyonShiftGuestRangeReadable(camera, 20)) return false;
+          const uint32_t subject = LoadGuestU32(camera + 16);
+          if (subject == 0 || !PinyonShiftGuestRangeReadable(subject, 44) ||
+              LoadGuestU32(subject + 40) == 0) return false;
         }
       }
-    }
-    pinyon_shift::diagnostics::RecordEvent(
-        "cheat.free_camera", {{"enabled", wanted ? "1" : "0"}, {"cameras", fmt::format("{}", count)}});
+      for (uint32_t i = 0; i < count; ++i) {
+        if (wanted) {
+          pinyon_shift::mod::CallGuest(0x82858638u, {controllers[i], 6u});
+        } else {
+          pinyon_shift::mod::CallGuest(0x825A86F8u, {controllers[i]});
+        }
+      }
+      pinyon_shift::diagnostics::RecordEvent(
+          "cheat.free_camera", {{"enabled", wanted ? "1" : "0"}, {"cameras", fmt::format("{}", count)}});
+      return true;
+    }();
+    if (success) applied.store(wanted, std::memory_order_release);
+    else wait_frames.store(30, std::memory_order_relaxed);
+    queued.store(false, std::memory_order_release);
   });
 }
 

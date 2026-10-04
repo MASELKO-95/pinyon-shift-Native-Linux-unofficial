@@ -21,6 +21,13 @@ sdk/
 private/
 /docs/*
 !/docs/BUILDING.md
+!/docs/LINUX_PORT.md
+!/docs/LINUX_UPSTREAM_CHANGES.md
+!/docs/LINUX_LAUNCHER.md
+!/docs/LINUX_PUBLICATION.md
+!/docs/LINUX_DIFFERENCES.md
+!/docs/LINUX_HANDOFF.md
+!/docs/GAME_EDITIONS.md
 !/docs/LEGAL.md
 !/docs/TROUBLESHOOTING.md
 !/docs/DEVELOPMENT.md

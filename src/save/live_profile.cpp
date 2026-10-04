@@ -20,6 +20,7 @@
 namespace pinyon_shift::save {
 namespace {
 
+#if defined(_WIN32)
 uint32_t LoadBe32(const uint8_t* bytes) {
   return (uint32_t(bytes[0]) << 24) | (uint32_t(bytes[1]) << 16) | (uint32_t(bytes[2]) << 8) |
          uint32_t(bytes[3]);
@@ -30,7 +31,7 @@ uint32_t LoadBe32(const uint8_t* bytes) {
 std::optional<int32_t> FindNear(const uint8_t* begin, const uint8_t* end, const uint8_t* center,
                                 uint32_t value, uint32_t window) {
   const uint8_t* low = std::max(begin, center - std::min<size_t>(window, center - begin));
-  const uint8_t* high = std::min(end - 4, center + window);
+  const uint8_t* high = center + std::min<size_t>(window, (end - 4) - center);
   std::optional<int32_t> best;
   for (const uint8_t* p = low + ((center - low) & 3); p <= high; p += 4) {
     if (LoadBe32(p) == value) {
@@ -41,12 +42,14 @@ std::optional<int32_t> FindNear(const uint8_t* begin, const uint8_t* end, const 
   return best;
 }
 
+#endif
 }  // namespace
 
 std::vector<LiveCandidate> FindLiveProfileValue(uint32_t value, uint32_t neighbour_a,
                                                 uint32_t neighbour_b, uint32_t window,
                                                 size_t max_candidates) {
   std::vector<LiveCandidate> candidates;
+  if (!max_candidates) return candidates;
 #if defined(_WIN32)
   auto* kernel_state = rex::system::kernel_state();
   if (!kernel_state) return candidates;
@@ -88,6 +91,12 @@ std::vector<LiveCandidate> FindLiveProfileValue(uint32_t value, uint32_t neighbo
       cursor = region_end > cursor ? region_end : cursor + 0x1000;
     }
   }
+#elif defined(__linux__)
+  auto* kernel_state = rex::system::kernel_state();
+  if (!kernel_state) return candidates;
+  return FindLinuxProfileValue(
+      reinterpret_cast<uintptr_t>(kernel_state->memory()->virtual_membase()),
+      value, neighbour_a, neighbour_b, window, max_candidates);
 #else
   (void)value;
   (void)neighbour_a;

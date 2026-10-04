@@ -19,6 +19,8 @@
 #include <cstdint>
 #include <cstring>
 
+#include <rex/exception_handler.h>
+
 #if defined(__GLIBC__) || defined(__APPLE__) || \
     (defined(__ANDROID__) && __ANDROID_API__ >= 33)
 #include <execinfo.h>
@@ -36,6 +38,7 @@ std::array<char, 4096> g_report_prefix{};
 size_t g_report_prefix_length = 0;
 std::atomic_flag g_reported = ATOMIC_FLAG_INIT;
 std::array<std::byte, 64 * 1024> g_signal_stack{};
+bool g_runtime_reporter_installed = false;
 
 const char* SignalName(int signal) {
   switch (signal) {
@@ -85,7 +88,7 @@ uint64_t ProgramCounter(const void* context) {
 #endif
 }
 
-void Handler(int signal, siginfo_t* info, void* context) {
+void Report(int signal, uint64_t fault_address, uint64_t pc) {
   if (!g_reported.test_and_set()) {
     char path[4200];
     std::memcpy(path, g_report_prefix.data(), g_report_prefix_length);
@@ -98,8 +101,7 @@ void Handler(int signal, siginfo_t* info, void* context) {
       Write(file, "Pinyon Shift fatal signal\nsignal=");
       Write(file, SignalName(signal));
       Write(file, "\n");
-      WriteHex(file, "fault_address=", uint64_t(uintptr_t(info ? info->si_addr : nullptr)));
-      const uint64_t pc = ProgramCounter(context);
+      WriteHex(file, "fault_address=", fault_address);
       WriteHex(file, "pc=", pc);
       // The library holding the PC and the offset into it, which a
       // symbolizer needs where the load address differs per run.
@@ -126,6 +128,20 @@ void Handler(int signal, siginfo_t* info, void* context) {
   raise(signal);
 }
 
+void Handler(int signal, siginfo_t* info, void* context) {
+  Report(signal, uint64_t(uintptr_t(info ? info->si_addr : nullptr)),
+         ProgramCounter(context));
+}
+
+bool UnhandledRuntimeException(rex::arch::Exception* exception, void*) {
+  const int signal = exception->code() ==
+                             rex::arch::Exception::Code::kIllegalInstruction
+                         ? SIGILL
+                         : SIGSEGV;
+  Report(signal, exception->fault_address(), exception->pc());
+  return true;
+}
+
 }  // namespace
 
 void Install(const std::filesystem::path& crash_root, const std::string& session_id) {
@@ -141,10 +157,6 @@ void Install(const std::filesystem::path& crash_root, const std::string& session
   stack.ss_sp = g_signal_stack.data();
   stack.ss_size = g_signal_stack.size();
   sigaltstack(&stack, nullptr);
-  Refresh();
-}
-
-void Refresh() {
   struct sigaction action {};
   action.sa_sigaction = Handler;
   action.sa_flags = SA_SIGINFO | SA_ONSTACK;
@@ -165,6 +177,17 @@ void Refresh() {
       continue;
     }
     sigaction(signal, &action, nullptr);
+  }
+}
+
+void Refresh() {
+  // Called after runtime setup, when ReXGlue has installed its MMIO and GPU
+  // write-watch handlers. These faults are recoverable: replacing the SDK's
+  // sigaction would turn normal guest writes into fatal crashes. Append a
+  // last-chance reporter instead, leaving the SDK first refusal on faults.
+  if (!g_runtime_reporter_installed) {
+    rex::arch::ExceptionHandler::Install(UnhandledRuntimeException, nullptr);
+    g_runtime_reporter_installed = true;
   }
 }
 
