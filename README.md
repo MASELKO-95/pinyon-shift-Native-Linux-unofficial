@@ -1,3 +1,6 @@
+[![Downloads](https://img.shields.io/github/downloads/MASELKO-95/pinyon-shift-Native-Linux-unofficial/total?style=for-the-badge&logo=github&label=Downloads)](https://github.com/MASELKO-95/pinyon-shift-Native-Linux-unofficial/releases)
+[![Visitors](https://hits.sh/github.com/MASELKO-95/pinyon-shift-Native-Linux-unofficial.svg?style=for-the-badge&label=Visitors&logo=github)](https://hits.sh/github.com/MASELKO-95/pinyon-shift-Native-Linux-unofficial/)
+
 # Pinyon Shift for Linux
 
 Unofficial native Linux port by **MASELKO-95**. Independently maintained at
