@@ -53,7 +53,10 @@ REXCVAR_DEFINE_BOOL(pinyon_shift_touch_controls, REX_PLATFORM_ANDROID, "Pinyon S
                     "On-screen controls for touch screens: a steering stick, throttle, brake "
                     "and buttons, shown on a touch and hidden after a while without one")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
-REXCVAR_DEFINE_UINT32(pinyon_shift_config_schema, 27, "Pinyon Shift",
+// Zero is deliberately not a valid on-disk schema. The cvar serializer omits
+// values equal to their defaults; using 27 here erased the migration marker
+// whenever the SDK settings overlay saved the configuration.
+REXCVAR_DEFINE_UINT32(pinyon_shift_config_schema, 0, "Pinyon Shift",
                       "Pinyon Shift host configuration schema version");
 REXCVAR_DEFINE_STRING(enabled_mods, "", "Mods",
                       "Mods to load from <state>/mods, in order, separated by commas. With any "

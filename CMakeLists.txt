@@ -102,6 +102,8 @@ else()
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_executable(pinyon_shift_dlc_extract tools/fh1_dlc_extract.cpp)
+    target_link_libraries(pinyon_shift_dlc_extract PRIVATE rex::runtime)
     if(NOT PINYON_SHIFT_HOST_TESTS_ONLY)
         target_sources(pinyon_shift PRIVATE src/save/live_profile_linux.cpp)
     endif()

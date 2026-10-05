@@ -14,9 +14,10 @@ PY
     setup) exec bash "$script_dir/setup-preview.sh" "$@" ;;
     launch|play) exec bash "$script_dir/launch-preview.sh" "$@" ;;
     settings) exec bash "$script_dir/set-graphics-experiment.sh" "$@" ;;
+    dlc) exec python3 "$script_dir/dlc.py" "$@" ;;
     verify) exec bash "$script_dir/verify-game.sh" "$@" ;;
     build) exec bash "$script_dir/build-preview.sh" "$@" ;;
-    --help|-h) echo 'Usage: pinyon-shift-cli.sh [setup|launch|settings|verify|build|version] [options]
+    --help|-h) echo 'Usage: pinyon-shift-cli.sh [setup|launch|settings|dlc|verify|build|version] [options]
 Run with no arguments for the interactive menu. Each command accepts --help.'; exit 0 ;;
     *) echo "Unknown command: $command" >&2; exit 2 ;;
   esac

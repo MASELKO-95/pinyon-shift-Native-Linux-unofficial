@@ -88,6 +88,8 @@
                          Classes="muted" FontSize="12" TextWrapping="Wrap" />
               <CheckBox x:Name="TrainerEnabled" Content="Enable trainer (F10) on a separate modded save" />
               <TextBlock Text="Original progress stays separate. Language availability depends on the files on your disc." Classes="muted" FontSize="12" TextWrapping="Wrap" />
+              <Button x:Name="InstallDlcButton" Content="Install original DLC…" Click="InstallDlc_Click" />
+              <TextBlock Text="Import your own Xbox 360 DLC package. Installed content is kept with this profile; no downloads are included." Classes="muted" FontSize="12" TextWrapping="Wrap" />
             </StackPanel>
           </Grid>
         </Border>

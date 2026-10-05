@@ -82,3 +82,40 @@ Version 1.0 maps plain arrow keys to the controller D-pad for the main menu
 and pause menu, Enter to confirm and Backspace to return. Shift+Arrows moves
 the camera instead. Existing PC presets with the old default arrow bindings
 are migrated at launch with a configuration backup; custom bindings are kept.
+
+The corrected 1.0.0 also repairs configurations whose schema marker was omitted
+by the old in-game settings writer. It restores the recorded schema from a
+backup, or requests the full legacy migration when no marker can be recovered.
+Changing language no longer requires deleting settings. English and Polish
+remain console-language selections using the installed disc's assets.
+
+## Original DLC packages
+
+On the ready screen choose **Install original DLC…** and select your own
+Xbox 360 LIVE/PIRS/CON package for Forza Horizon (title ID `4D5309C9`). Rebuild
+an older installation first so it has `pinyon_shift_dlc_extract`. ZIP archives
+and packages for other titles are rejected. No DLC is downloaded or bundled.
+
+The importer extracts into temporary storage, verifies successful reads, keeps
+the package's license metadata, and installs into:
+
+```text
+<state>/user/0000000000000000/4D5309C9/00000002/<package-id>/
+```
+
+Existing packages and saves are never overwritten. Close the game before
+installing. The runtime enumerates this content on the next launch. The trainer
+uses a separate `user-modded` profile; an already-created trainer profile does
+not automatically receive additions to the normal profile.
+
+CLI equivalents, from the source directory:
+
+```bash
+./tools/pinyon-shift-cli.sh dlc list --state-root /path/to/preview
+./tools/pinyon-shift-cli.sh dlc install --state-root /path/to/preview --package /path/to/package
+```
+
+The extraction path has been tested with synthetic STFS content. Compatibility
+of individual car packs and the Rally expansion still requires testing with
+the owner's actual packages and their matching game revision/title update.
+The built-in treasure-map option is separate from installing original DLC.

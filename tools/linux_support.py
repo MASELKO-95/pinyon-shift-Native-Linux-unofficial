@@ -169,6 +169,35 @@ def repair_trainer_literal(text: str) -> str:
     return re.sub(pattern, replace, text)
 
 
+def recover_config_schema(text: str, path: Path) -> str:
+    """Recover a marker omitted by the old default-only cvar serializer.
+
+    Prefer a recorded schema from the latest valid backup. Without evidence,
+    use the oldest migratable schema, never label an unknown file current.
+    """
+    parsed = tomllib.loads(text)
+    schema = parsed.get('pinyon_shift_config_schema')
+    if schema is not None:
+        if type(schema) is not int or not 1 <= schema <= 27:
+            raise ValueError('unsupported configuration schema')
+        return text
+    candidates = list((path.parent / 'backups').glob('pinyon_shift-*.toml'))
+    candidates += list(path.parent.glob(path.name + '.schema*.bak'))
+    candidates.sort(key=lambda item: item.stat().st_mtime_ns, reverse=True)
+    recovered = 1
+    for candidate in candidates:
+        try:
+            previous = tomllib.loads(read_text(candidate)).get('pinyon_shift_config_schema')
+        except (OSError, tomllib.TOMLDecodeError):
+            continue
+        if type(previous) is int:
+            if not 1 <= previous <= 27:
+                raise ValueError('configuration backup has an unsupported schema')
+            recovered = previous
+            break
+    return toml_set(text, 'pinyon_shift_config_schema', str(recovered))
+
+
 def prepare_launch_config(state: Path) -> None:
     path = state / 'config/pinyon_shift.toml'
     if not path.is_file():
@@ -189,7 +218,7 @@ def prepare_launch_config(state: Path) -> None:
                 repaired = toml_set(repaired, stick, json.dumps('Shift+' + key))
     # A failed SDK parse otherwise silently falls back to English and defaults.
     try:
-        tomllib.loads(repaired)
+        repaired = recover_config_schema(repaired, path)
     except tomllib.TOMLDecodeError as error:
         raise ValueError(f'Invalid configuration in {path}: {error}') from error
     if repaired != original:
@@ -219,6 +248,7 @@ def graphics(args: argparse.Namespace) -> dict:
             text = ''  # The game supplies defaults and performs schema migration.
         else:
             backup = backup_config(path)
+            text = recover_config_schema(repair_trainer_literal(text), path)
             settings = {'gpu_backend': '"vulkan"', 'gpu_record_thread': 'true'}
             for argument, key in [('output_scaling', 'present_effect'),
                                   ('post_effect', 'swap_post_effect')]:

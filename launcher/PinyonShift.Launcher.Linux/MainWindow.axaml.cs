@@ -116,6 +116,7 @@ public partial class MainWindow : Window
         SetupPanel.IsVisible = !ready && !_busy && !SettingsPanel.IsVisible;
         ReadyPanel.IsVisible = ready && !_busy && !SettingsPanel.IsVisible;
         SettingsButton.IsEnabled = !_busy && !gameRunning;
+        InstallDlcButton.IsEnabled = ready && !_busy && !gameRunning;
         ControlsChoice.IsEnabled = GameLanguageChoice.IsEnabled = TrainerEnabled.IsEnabled = DiscEditionChoice.IsEnabled = !_busy && !gameRunning;
         SaveSettingsButton.IsEnabled = ResetSettingsButton.IsEnabled =
             RestoreSettingsButton.IsEnabled = !_busy && !gameRunning;
@@ -177,6 +178,23 @@ public partial class MainWindow : Window
         string text = LogText.Text + batch;
         LogText.Text = text.Length > 32_000 ? text[^24_000..] : text;
         LogText.CaretIndex = LogText.Text.Length;
+    }
+
+    private async void InstallDlc_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_busy || LauncherBackend.GameRunning()) return;
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Select your original FH1 DLC package (LIVE, PIRS or CON)",
+            AllowMultiple = false
+        });
+        string? package = files.FirstOrDefault()?.TryGetLocalPath();
+        if (package is null) return;
+        await RunOperation("Installing original DLC", (log, token) =>
+            _backend.ScriptAsync("pinyon-shift-cli.sh",
+                ["dlc", "install", "--state-root", _backend.Options.State,
+                 "--package", package, "--extractor",
+                 Path.Combine(_backend.BuildDirectory, "pinyon_shift_dlc_extract")], log, token));
     }
 
     private async Task RunOperation(string headline,
